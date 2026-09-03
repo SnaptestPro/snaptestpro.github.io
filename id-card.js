@@ -179,12 +179,27 @@
       setImgOrFallback("#idcard-inst-logo-right-img", "#idcard-inst-logo-right-fallback", instLogo);
 
       // Serial No → ID Number (missing ho to yahin turant assign kar dete hain)
+      // (v113) DEBUG: agar assign fail ho, ab "-" ki jagah asli error
+      // seedha card par dikhta hai — taaki DevTools/console khole bina
+      // hi pata chal jaaye ki wajah kya hai (permission, missing
+      // instituteId, network, waghera). Ek baar sahi wajah pata chal
+      // jaaye aur fix ho jaaye, is debug-text ko wapas hata denge.
       let serialNo = sdata.serialNo || null;
-      if (!serialNo && instituteId) {
-        try { serialNo = await getOrAssignStudentSerial(db, instituteId, mobile); }
-        catch (e) { console.warn("[idcard] serial assign failed", e); }
+      if (!serialNo) {
+        if (!instituteId) {
+          setText("#idcard-id-number", "⚠️ No instituteId on student");
+        } else {
+          try {
+            serialNo = await getOrAssignStudentSerial(db, instituteId, mobile);
+            setText("#idcard-id-number", formatIdNumber(instName, serialNo));
+          } catch (e) {
+            console.warn("[idcard] serial assign failed", e);
+            setText("#idcard-id-number", "⚠️ " + (e && e.code ? e.code + ": " : "") + (e && e.message ? e.message : String(e)));
+          }
+        }
+      } else {
+        setText("#idcard-id-number", formatIdNumber(instName, serialNo));
       }
-      setText("#idcard-id-number", formatIdNumber(instName, serialNo));
 
       // Issue date
       const issuedAt = await ensureIssuedAt(db, STUDENTS_COLLECTION, mobile, sdata);
