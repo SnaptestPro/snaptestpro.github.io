@@ -69,10 +69,39 @@
     return Array.from(document.querySelectorAll('#practice-chapter-list input[type=checkbox]:checked')).map(cb => cb.value);
   }
 
+  // ── Student-side Class scoping (FIX) ───────────────────────────────
+  // getCustomSubjectOptions()/getCustomChapterOptions() (script.js) sirf
+  // ADMIN ke globals (CURRENT_ADMIN_ALLOWED_CLASSES) se scope hote hain
+  // — ek logged-in STUDENT session mein wo globals set hi nahi hote,
+  // isliye Practice Mode ka Subject/Chapter dropdown is filter se bach
+  // jaata tha aur student ko SAARI Classes ke sawal dikh/mil jaate the,
+  // chahe unhone registration ke waqt koi bhi ek Class select ki ho. Ab
+  // ye dono helper script.js ke getStudentClassScopedQuestionBank() use
+  // karte hain — jo sirf student ki apni registered Class ke sawal
+  // deta hai (Class abhi resolve na hui ho to backward-compat poora
+  // bank hi milta hai, kabhi khaali screen nahi).
+  function getPracticeQuestionPool() {
+    return (typeof getStudentClassScopedQuestionBank === "function")
+      ? getStudentClassScopedQuestionBank()
+      : questionBank;
+  }
+  function getPracticeSubjectOptions() {
+    const pool = getPracticeQuestionPool().filter(isValidQ);
+    if (window.SubjectResolver) return window.SubjectResolver.getSubjectFilterOptions(pool, getQuestionSubject);
+    return [...new Set(pool.map(getQuestionSubject).filter(Boolean))].sort();
+  }
+  function getPracticeChapterOptions(subject) {
+    return [...new Set(getPracticeQuestionPool()
+      .filter(q => isValidQ(q) && (subject === "all" || getQuestionSubject(q) === subject))
+      .map(q => q.chapter)
+      .filter(Boolean)
+    )].sort();
+  }
+
   function renderPracticeChapterList(subject) {
     const container = document.getElementById("practice-chapter-list");
-    if (!container || typeof getCustomChapterOptions !== "function") return;
-    const chapters = getCustomChapterOptions(subject);
+    if (!container) return;
+    const chapters = getPracticeChapterOptions(subject);
     const key = subject + "::" + chapters.join("|");
     if (key === lastPracticeChapterKey && container.children.length) return; // avoid needless rebuild/flicker
     lastPracticeChapterKey = key;
@@ -99,8 +128,15 @@
   function syncPracticeFilters() {
     const subjSel = document.getElementById("practice-subject-filter");
     if (!subjSel || typeof questionBank === "undefined") return;
+    // Fire-and-forget: agar is (purane, is fix se pehle ke) session mein
+    // Class abhi tak cache nahi hui, to ek chhota one-time Firestore
+    // read use resolve karke session mein cache kar deta hai — is
+    // function ke agle hi tick (setInterval, neeche) mein list khud
+    // apne-aap sahi (Class-scoped) ho jaayegi, koi extra wiring nahi
+    // chahiye.
+    if (typeof ensureMyClassId === "function") ensureMyClassId();
 
-    const subjects = getCustomSubjectOptions();
+    const subjects = getPracticeSubjectOptions();
     const key = subjects.join("|");
     if (key !== lastPracticeOptionsKey || !subjSel.options.length) {
       lastPracticeOptionsKey = key;
@@ -122,7 +158,7 @@
     const count = Number(document.getElementById("practice-question-count")?.value || 10);
     if (!count || count <= 0) { alert("Questions count 0 se zyada hona chahiye."); return; }
 
-    let pool = questionBank
+    let pool = getPracticeQuestionPool()
       .filter(q => isValidQ(q) &&
         (subject === "all" || getQuestionSubject(q) === subject) &&
         (checkedChapters.length === 0 || checkedChapters.includes(q.chapter)))

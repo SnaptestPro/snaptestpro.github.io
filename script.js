@@ -860,6 +860,12 @@ function showMode(mode, opts) {
   // link istemal karta hai (wo link sirf usi ko dikhta hai, real student
   // ko kabhi nahi).
   const studentIsLoggedIn = !!getStudentSession();
+  // REMOVED-STUDENT FIX: agar session pehle se maujood hai (jaise page
+  // reload, ya purani baar login kiya hua device), to bhi ye watcher
+  // shuru ho jaata hai — sirf registerStudent/loginStudent ke turant
+  // baad hi nahi. watchStudentAccountStatus() khud hi dedupe karta hai
+  // (ek session mein dobara-dobara watcher nahi lagta).
+  if (studentIsLoggedIn && typeof watchStudentAccountStatus === "function") watchStudentAccountStatus();
   const adminTabBtn = $("#admin-tab");
   if (adminTabBtn) {
     adminTabBtn.classList.toggle("hidden", studentIsLoggedIn);
@@ -951,8 +957,14 @@ async function ensureMyInstituteId() {
     try {
       const mobile = normalizeMobile(session.mobile);
       const snap = await db.collection(STUDENTS_COLLECTION).doc(mobile).get();
-      const instituteId = snap.exists ? (snap.data().instituteId || null) : null;
-      setStudentSession({ ...session, instituteId });
+      const data = snap.exists ? snap.data() : {};
+      const instituteId = data.instituteId || null;
+      // Isi read mein classId bhi cache kar dete hain (ek hi student doc
+      // hai) — taaki Practice Mode ka Class-scoping (dekhein
+      // ensureMyClassId/getStudentClassScopedQuestionBank neeche) ke
+      // liye ek alag Firestore read na karni pade.
+      const classId = data.classId || null;
+      setStudentSession({ ...session, instituteId, classId });
       return instituteId;
     } catch (e) {
       console.warn("[ensureMyInstituteId] failed", e);
@@ -965,6 +977,22 @@ async function ensureMyInstituteId() {
 }
 window.ensureMyInstituteId = ensureMyInstituteId;
 
+// ── Student's own registered Class (PRACTICE MODE CLASS-SCOPING FIX) ──
+// Practice Mode ka Subject/Chapter list pehle student ki apni
+// registration-time-selected Class ka koi dhyaan nahi rakhta tha (sab
+// Classes ke sawal mil jaate the) — dekhein getStudentClassScopedQuestionBank()
+// neeche. Ye helper wahi one-time-cache pattern follow karta hai jo
+// upar ensureMyInstituteId() mein hai.
+async function ensureMyClassId() {
+  const session = getStudentSession();
+  if (!session) return null;
+  if (session.classId !== undefined) return session.classId; // already cached
+  await ensureMyInstituteId(); // same student doc read caches classId too
+  const updated = getStudentSession();
+  return updated ? (updated.classId !== undefined ? updated.classId : null) : null;
+}
+window.ensureMyClassId = ensureMyClassId;
+
 function populateStudentFormFromSession(session) {
   const nameEl = $("#student-name");
   const mobileEl = $("#student-mobile");
@@ -974,7 +1002,109 @@ function populateStudentFormFromSession(session) {
   if (welcomeName) welcomeName.textContent = session.name;
   const cdName = $("#cd-student-name");
   if (cdName && session.name) cdName.textContent = session.name;
+  // Settings card ke DP-block ka naam/mobile bhi turant (Firestore ke
+  // bina hi, session se) bhar dete hain — photo ke liye ek chhota
+  // Firestore read chahiye hota hai, wo loadStudentDpProfile() (Settings
+  // section khulte hi, goStudentSection se) karta hai.
+  const dpName = $("#student-dp-name");
+  if (dpName) dpName.textContent = session.name || "-";
+  const dpMobile = $("#student-dp-mobile");
+  if (dpMobile) dpMobile.textContent = session.mobile || "-";
 }
+
+/* ══════════════════════════════════════════
+   STUDENT SELF-SERVICE PROFILE PHOTO (DP)
+   ------------------------------------------
+   Student apni Settings se khud apni photo circle "DP" ke roop mein
+   laga/badal sakta hai — turant Firestore mein save hoti hai (usi
+   "students/{mobile}".photoDataUrl field mein jo Admin ka Students
+   Directory → 🪪 Profile form bhi use karta hai — dekhein neeche
+   handleStudentProofPhotoChange), isliye Admin ko bhi wahi photo apne
+   Profile form mein turant dikhti hai, koi alag sync/duplicate field
+   nahi. Naam + Mobile bhi yahin (readonly) dikhte hain — ye dono
+   registration se hi tay hote hain, yahan se badle nahi ja sakte.
+══════════════════════════════════════════ */
+async function loadStudentDpProfile() {
+  const session = getStudentSession();
+  if (!session) return;
+  const dpName = $("#student-dp-name");
+  if (dpName) dpName.textContent = session.name || "-";
+  const dpMobile = $("#student-dp-mobile");
+  if (dpMobile) dpMobile.textContent = session.mobile || "-";
+
+  const db = getDB();
+  if (!db) return;
+  try {
+    const mobile = normalizeMobile(session.mobile);
+    const snap = await db.collection(STUDENTS_COLLECTION).doc(mobile).get();
+    const photoDataUrl = snap.exists ? (snap.data().photoDataUrl || "") : "";
+    renderStudentDpPhoto(photoDataUrl);
+  } catch (e) {
+    console.warn("[loadStudentDpProfile] failed", e);
+  }
+}
+window.loadStudentDpProfile = loadStudentDpProfile;
+
+function renderStudentDpPhoto(photoDataUrl) {
+  const img = $("#student-dp-preview");
+  const placeholder = $("#student-dp-placeholder");
+  if (img) { img.src = photoDataUrl || ""; img.style.display = photoDataUrl ? "block" : "none"; }
+  if (placeholder) placeholder.style.display = photoDataUrl ? "none" : "flex";
+}
+
+// Photo capture: existing project convention jaisa hi (canvas resize +
+// JPEG compress, seedha Firestore doc mein base64 — koi Firebase
+// Storage/Blaze plan ki zaroorat nahi) — dekhein handleStudentProofPhotoChange
+// (Admin's Profile form) jo yehi tareeka use karta hai.
+function handleStudentDpPhotoChange(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const session = getStudentSession();
+  if (!session) return;
+  const statusEl = $("#student-dp-photo-status");
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = async () => {
+      const maxW = 360;
+      const scale = Math.min(1, maxW / img.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      let quality = 0.8;
+      let dataUrl = canvas.toDataURL("image/jpeg", quality);
+      while (dataUrl.length > 350000 && quality > 0.4) { // ~350KB safe margin
+        quality -= 0.1;
+        dataUrl = canvas.toDataURL("image/jpeg", quality);
+      }
+      // Turant local preview update — save hone ka wait nahi karna.
+      renderStudentDpPhoto(dataUrl);
+
+      const db = getDB();
+      if (!db) { if (statusEl) statusEl.textContent = "⚠️ Internet/Firebase connection nahi hai — dobara try karein."; return; }
+      if (statusEl) statusEl.textContent = "⏳ Save ho raha hai...";
+      try {
+        const mobile = normalizeMobile(session.mobile);
+        await db.collection(STUDENTS_COLLECTION).doc(mobile).set({ photoDataUrl: dataUrl }, { merge: true });
+        // Admin agar isi session/device mein Students Directory khol
+        // chuka ho, to uska cache bhi turant (bina refresh) update kar dete hain.
+        if (typeof allStudentsCache !== "undefined" && Array.isArray(allStudentsCache)) {
+          const idx = allStudentsCache.findIndex(s => s.mobile === mobile);
+          if (idx > -1) allStudentsCache[idx] = { ...allStudentsCache[idx], photoDataUrl: dataUrl };
+        }
+        if (statusEl) statusEl.textContent = "✅ Photo save ho gaya.";
+      } catch (err) {
+        console.error(err);
+        if (statusEl) statusEl.textContent = "❌ Photo save nahi hua: " + (err.message || err);
+      }
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+window.handleStudentDpPhotoChange = handleStudentDpPhotoChange;
+
 
 /* ══════════════════════════════════════════════════════════════════
    LAST-VIEW PERSISTENCE
@@ -1025,6 +1155,10 @@ function goStudentSection(id) {
   // Analysis" mein badal jaaye, poora page reload kiye bina.
   if (id === "student-form-fields-anchor" && typeof loadMyTestAttempts === "function") {
     loadMyTestAttempts(true).then(() => renderStudentTestCards());
+  }
+  // Student ne Settings kholi — apni Photo/Naam/Mobile turant dikhao.
+  if (id === "student-settings-card" && typeof loadStudentDpProfile === "function") {
+    loadStudentDpProfile();
   }
 }
 window.goStudentSection = goStudentSection;
@@ -1146,8 +1280,9 @@ async function registerStudent(e) {
       hash, pinHash, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     await ref.set({ name, mobile, hasPin: true, instituteId, classId, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-    setStudentSession({ name, mobile, instituteId: instituteId || null });
+    setStudentSession({ name, mobile, instituteId: instituteId || null, classId: classId || null });
     showMode("student");
+    watchStudentAccountStatus();
   } catch (err) {
     console.error(err);
     alert("Registration fail hua. Firestore rules/connection check karein.");
@@ -1192,8 +1327,9 @@ async function loginStudent(e) {
       } catch (migErr) {
         console.error("Legacy secret migration failed:", migErr);
       }
-      setStudentSession({ name: data.name, mobile, instituteId: data.instituteId || null });
+      setStudentSession({ name: data.name, mobile, instituteId: data.instituteId || null, classId: data.classId || null });
       showMode("student");
+      watchStudentAccountStatus();
       if (!data.pinHash) setTimeout(() => promptSetSecurityPin(mobile), 400);
       return;
     }
@@ -1212,8 +1348,9 @@ async function loginStudent(e) {
       return;
     }
 
-    setStudentSession({ name: data.name, mobile, instituteId: data.instituteId || null });
+    setStudentSession({ name: data.name, mobile, instituteId: data.instituteId || null, classId: data.classId || null });
     showMode("student");
+    watchStudentAccountStatus();
     // Purane accounts jinme Security PIN set nahi hai — ab jab pass sahi pata
     // hai (matlab ye account ka asli malik hai), to ek PIN set karwa lete hain
     // taaki aage "forgot password" surakshit ho sake.
@@ -1358,6 +1495,7 @@ async function adminResetStudentPassword() {
 }
 
 function logoutStudent() {
+  if (typeof stopWatchingStudentAccountStatus === "function") stopWatchingStudentAccountStatus();
   clearStudentSession();
   showMode("student");
 }
@@ -1746,6 +1884,63 @@ function forceAdminLogoutDeactivated(message) {
 }
 
 /* ══════════════════════════════════════════
+   STUDENT ACCOUNT REMOVED → FORCE RE-REGISTER (FIX)
+   ------------------------------------------
+   PEHLE: Admin jab Students Directory se kisi student ka account
+   PERMANENTLY delete karta tha (deleteStudentAccount), to us student
+   ke apne phone/browser ka localStorage session (jo login/register ke
+   time save hota hai) waisa hi bana rehta tha — is app use fir bhi
+   "logged in" maan kar seedha dashboard dikhata rehta tha, kabhi
+   dobara Register/Login karne ko nahi kehta tha (jab tak wo khud
+   manually logout na kare). Matlab "sirf Directory mein maujood
+   student hi login kar sake, jise remove kiya gaya use dobara
+   register karna pade" — ye guarantee nahi thi.
+
+   FIX: jab bhi koi student session ke saath app khole (ya register/
+   login kare), ek halka real-time watcher uske apne "students/{mobile}"
+   document par lag jaata hai. Agar wo doc kabhi delete ho jaaye (Admin
+   ne remove kiya), to turant local session clear karke wapas Register/
+   Login screen par bhej diya jaata hai. (Admin ke false-deactivation
+   fix jaisa hi — sirf SERVER-confirmed data par react karta hai, stale
+   offline cache par nahi, taaki koi galat/premature logout na ho.)
+══════════════════════════════════════════ */
+let _studentAccountWatchUnsub = null;
+function watchStudentAccountStatus() {
+  if (_studentAccountWatchUnsub) return; // already watching is session mein
+  const session = getStudentSession();
+  if (!session || !session.mobile) return;
+  const db = getDB();
+  if (!db) return;
+  const mobile = normalizeMobile(session.mobile);
+  if (!mobile) return;
+  _studentAccountWatchUnsub = db.collection(STUDENTS_COLLECTION).doc(mobile).onSnapshot(
+    snap => {
+      // Sirf server-confirmed data par react karo — offline-persistence
+      // ke stale LOCAL cache snapshot par nahi (dekhein forceAdminLogoutDeactivated
+      // ke upar wala comment, wahi wajah yahan bhi lagti hai).
+      if (snap.metadata.fromCache) return;
+      if (!snap.exists) forceStudentLogoutRemoved();
+    },
+    () => {} // students read khula hai — error yahan practically nahi aata
+  );
+}
+window.watchStudentAccountStatus = watchStudentAccountStatus;
+
+function stopWatchingStudentAccountStatus() {
+  if (_studentAccountWatchUnsub) { try { _studentAccountWatchUnsub(); } catch (e) {} _studentAccountWatchUnsub = null; }
+}
+
+function forceStudentLogoutRemoved() {
+  stopWatchingStudentAccountStatus();
+  clearStudentSession();
+  alert("⚠️ Aapka account Admin dwara remove kar diya gaya hai. Kripya dobara Register karein.");
+  // Poora page reload — in-memory student data/listeners saaf karke
+  // seedha Register/Login screen par bhej deta hai.
+  location.href = location.pathname;
+}
+
+
+/* ══════════════════════════════════════════
    MULTI-TENANT: INSTITUTE ISOLATION
    ------------------------------------------
    Har admin ek instituteId se bandha hota hai. Isi ID se Tests, Exam
@@ -1795,6 +1990,27 @@ function isQuestionClassAllowedForCurrentAdmin(q) {
 function getClassScopedQuestionBank() {
   return questionBank.filter(isQuestionClassAllowedForCurrentAdmin);
 }
+
+// ── STUDENT-SIDE Class scoping (fix) ─────────────────────────────────
+// getClassScopedQuestionBank() (upar) sirf ADMIN ke globals
+// (CURRENT_ADMIN_ALLOWED_CLASSES) se scope hoti hai — ek logged-in
+// STUDENT session mein ye globals set hi nahi hote, isliye Practice
+// Mode ka Subject/Chapter dropdown is filter se poori tarah bach
+// jaata tha aur student ko SAARI Classes ke sawal dikh/mil jaate the,
+// chahe unhone registration ke waqt koi bhi ek Class select ki ho.
+// Ab Practice Mode (student-features.js) isi function ka use karta
+// hai — sirf student ki apni registered Class ke sawal milte hain.
+// Class abhi tak resolve na hui ho (bahut purana session, pehli baar
+// ek chhota one-time Firestore read baaki ho — dekhein ensureMyClassId
+// upar) to backward-compat poora bank hi milta hai, taaki koi achanak
+// khaali screen na dikhe.
+function getStudentClassScopedQuestionBank() {
+  const session = (typeof getStudentSession === "function") ? getStudentSession() : null;
+  const myClassId = session ? session.classId : null;
+  if (!myClassId) return questionBank;
+  return questionBank.filter(q => !q.classId || q.classId === myClassId);
+}
+window.getStudentClassScopedQuestionBank = getStudentClassScopedQuestionBank;
 
 // Ek test/exam is admin ka apna hai ya nahi — instituteId match karke.
 // instituteId abhi resolve NAHI hua ho to safe default "false" (kuch mat
@@ -5445,7 +5661,24 @@ function renderStudentResultPicker() {
   const sel = $("#result-test-select");
   if (!sel) return;
   const cur = sel.value;
-  const tests = getTestsWithResults();
+  // ── Institute Isolation (FIX) ──────────────────────────────────────
+  // PEHLE koi filter nahi tha — is dropdown mein site ke sabhi (SAARE
+  // institutes ke) recent tests dikhte the, aur ek student koi bhi test
+  // chunkar uska poora Result Sheet (sabhi students ke naam+marks, rank
+  // ke saath) dekh sakta tha, chahe wo test kisi bilkul alag coaching
+  // institute ka kyun na ho. Ab sirf apne institute ke tests hi dikhte
+  // hain. "tests" (global test-definitions object) yahan explicitly
+  // capture kar lete hain, kyunki neeche getTestsWithResults() ka
+  // result usi naam ki local variable mein store hota hai.
+  const _globalTestsMetaForPicker = window.tests || {};
+  const mySessionForPicker = (typeof getStudentSession === "function") ? getStudentSession() : null;
+  const myInstIdForPicker = mySessionForPicker ? mySessionForPicker.instituteId : undefined;
+  // instituteId abhi resolve hi nahi hua (bahut purana session, pehli
+  // baar ek chhota one-time Firestore read baaki) — safe default khaali
+  // list, kabhi bhi galti se kisi aur institute ka data flash na ho.
+  const tests = (myInstIdForPicker === undefined)
+    ? []
+    : getTestsWithResults().filter(t => ((_globalTestsMetaForPicker[t.testId] && _globalTestsMetaForPicker[t.testId].instituteId) || null) === myInstIdForPicker);
   sel.innerHTML = '<option value="">— Test chunein —</option>';
   tests.forEach(t => {
     const op = document.createElement("option");
@@ -5462,6 +5695,18 @@ function renderStudentResultSheet() {
   if (!sel || !wrap) return;
   const testId = sel.value;
   if (!testId) {
+    wrap.innerHTML = '<p class="empty-state">Upar se test select karein.</p>';
+    return;
+  }
+  // SECURITY FIX (defense-in-depth): sirf dropdown se hataana kaafi
+  // nahi — agar koi student seedha <select> ki value browser console se
+  // badal de (kisi doosre institute ke asli testId ke saath), to bhi
+  // yahan dobara wahi institute-check hota hai jo renderStudentResultPicker()
+  // mein hai, taaki us test ka Result Sheet kabhi na render ho.
+  const mySessionForSheet = (typeof getStudentSession === "function") ? getStudentSession() : null;
+  const myInstIdForSheet = mySessionForSheet ? mySessionForSheet.instituteId : undefined;
+  const testInstIdForSheet = (tests[testId] && tests[testId].instituteId) || null;
+  if (myInstIdForSheet === undefined || testInstIdForSheet !== myInstIdForSheet) {
     wrap.innerHTML = '<p class="empty-state">Upar se test select karein.</p>';
     return;
   }
@@ -6515,6 +6760,25 @@ async function viewStudentAnswers(mobile) {
     console.warn("Firestore query fail hui, local records se try kar rahe hain:", err);
     myRecs = (records || []).filter(r => normalizeMobile(r.mobile) === mobile);
   }
+  // ── Institute Isolation (FIX) ─────────────────────────────────────
+  // PEHLE: ye lookup poori "studentRecords" collection se seedha mobile
+  // se match karta tha, koi institute-check nahi tha — matlab admin
+  // koi bhi 10-digit mobile number type karke KISI BHI doosre institute
+  // ke student ka result/answers bhi dekh sakta tha, jabki Students
+  // Directory list khud already sirf apne institute tak scoped hai.
+  // Ab har record uske TEST ke instituteId se verify hota hai (records
+  // khud instituteId nahi rakhte, lekin unka testId hamesha kisi test
+  // se juda hota hai, aur us test ka instituteId `tests` cache mein
+  // already maujood hai) — sirf apne institute ke tests ke records hi
+  // dikhte hain. Bahut purane/legacy records jinka test hi delete ho
+  // chuka hai (instituteId resolve nahi ho paata) unhe backward-compat
+  // dikha diya jaata hai, taaki purana data achanak gayab na ho jaaye.
+  const myInstIdForAnswers = (typeof getCurrentAdminInstituteId === "function") ? getCurrentAdminInstituteId() : null;
+  myRecs = myRecs.filter(r => {
+    const testInst = (r.testId && tests[r.testId]) ? (tests[r.testId].instituteId || null) : null;
+    return !testInst || testInst === myInstIdForAnswers;
+  });
+
   myRecs.sort((a, b) => (b.submittedIso || "").localeCompare(a.submittedIso || ""));
 
   const student = allStudentsCache.find(s => s.mobile === mobile);

@@ -430,6 +430,26 @@
       <div class="card hidden" id="student-settings-card">
         <h3 class="section-title">⚙️ Settings</h3>
 
+        <!-- ── Student Profile: Photo (DP) + Naam + Mobile ──────────────
+             Student yahan se apni photo khud upload/badal sakta hai — turant
+             online (Firestore) save ho jaati hai, aur Admin ke Students
+             Directory ke "🪪 Profile" mein bhi wahi photo turant dikhne
+             lagti hai (dono ek hi field — students/{mobile}.photoDataUrl —
+             use karte hain). -->
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap;">
+          <div style="position:relative;flex:0 0 auto;">
+            <img id="student-dp-preview" src="" alt="Profile Photo" style="width:84px;height:84px;border-radius:50%;object-fit:cover;border:3px solid #c7d2fe;display:none;" />
+            <div id="student-dp-placeholder" style="width:84px;height:84px;border-radius:50%;background:#eef2ff;align-items:center;justify-content:center;font-size:2rem;color:#6366f1;border:3px solid #c7d2fe;display:flex;">🧑‍🎓</div>
+          </div>
+          <div style="flex:1 1 180px;min-width:180px;">
+            <div id="student-dp-name" style="font-weight:700;font-size:1.05rem;color:#1e1b4b;">-</div>
+            <div id="student-dp-mobile" style="color:#64748b;font-size:.85rem;">-</div>
+            <label for="student-dp-photo-input" class="btn-secondary" style="display:inline-block;margin-top:8px;cursor:pointer;font-size:.8rem;padding:6px 12px;">📷 Photo Lagayein/Badlein</label>
+            <input type="file" id="student-dp-photo-input" accept="image/*" style="display:none;" onchange="handleStudentDpPhotoChange(event)" />
+            <p id="student-dp-photo-status" class="muted-text" style="margin:6px 0 0;font-size:.78rem;"></p>
+          </div>
+        </div>
+
         <div id="student-welcome-bar" style="display:flex;align-items:center;justify-content:space-between;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px 14px;margin-bottom:14px;">
           <span>👋 <strong id="student-welcome-name"></strong> <span id="student-streak-badge" style="display:none;background:#fff7ed;border:1px solid #fdba74;color:#c2410c;border-radius:999px;padding:2px 10px;font-size:.78rem;font-weight:700;margin-left:6px;"></span></span>
         </div>
