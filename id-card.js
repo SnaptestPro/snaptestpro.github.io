@@ -152,10 +152,13 @@
       if (typeof renderStudentDpPhoto === "function") renderStudentDpPhoto(sdata.photoDataUrl || "");
       setText("#student-dp-name", sdata.name || session.name);
 
-      // Class label
+      // Class label — "Class:" field-label ke saath sirf number/naam
+      // dikhana hai (jaise "10"), "Class 10" poora nahi — warna card
+      // par "Class: Class 10" jaisa "Class" do baar likha dikhta hai.
       const classId = sdata.classId || session.classId || null;
       const classOpt = (window.SAVYA_CLASS_OPTIONS || []).find(c => c.id === classId);
-      setText("#idcard-class", classOpt ? classOpt.label : (classId || "-"));
+      const classRaw = classOpt ? classOpt.label : (classId || "-");
+      setText("#idcard-class", classRaw.replace(/^Class\s+/i, ""));
 
       // Institute (naam + logo + ASLI Owner ka naam — signature ke liye)
       const instituteId = sdata.instituteId || session.instituteId || null;
