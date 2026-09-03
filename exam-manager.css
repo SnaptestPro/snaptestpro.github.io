@@ -1,0 +1,479 @@
+/* ══════════════════════════════════════════════════════════════════
+   EXAM MANAGER — OMR hub ka naya section
+   Sirf isi feature ke liye classes (prefix: examgr-). Baaki sab
+   (.card, .btn-primary, .field-row, .test-analysis-overlay wagera)
+   site ki maujooda styles.css se hi aa rahi hain, isliye ye section
+   design mein alag nahi lagta.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ---------- full-screen override ----------
+   Site ke test-analysis-overlay ka default look ek bottom-sheet hai
+   (upar background dikhta rehta hai). Exam Manager ke screens ke liye
+   ye poori screen cover karte hain — jaisa ek native app-screen karta
+   hai — taaki "piche ki screen dikhna" wala confusion na ho. */
+.test-analysis-overlay.examgr-overlay-full {
+  background: #fff;
+  backdrop-filter: none;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+}
+.test-analysis-overlay.examgr-overlay-full .test-analysis-sheet {
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  border-radius: 0;
+  box-shadow: none;
+  padding-top: max(20px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(24px, env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 640px) {
+  .test-analysis-overlay.examgr-overlay-full .test-analysis-sheet {
+    border-radius: 0;
+    max-height: 100%;
+  }
+}
+
+/* ---------- intro + list ---------- */
+.examgr-intro-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.examgr-sort-btn {
+  background: none;
+  border: none;
+  color: var(--blue);
+  font-weight: 700;
+  font-size: .82rem;
+  cursor: pointer;
+  padding: 6px 4px;
+  white-space: nowrap;
+}
+.examgr-empty {
+  text-align: center;
+  color: var(--muted);
+  font-size: .9rem;
+  padding: 30px 12px;
+  border: 1.5px dashed rgba(30,27,75,.15);
+  border-radius: var(--radius);
+}
+.examgr-card {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 4px 16px rgba(31,38,135,.08);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.examgr-card-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  cursor: pointer;
+}
+.examgr-date-badge {
+  flex-shrink: 0;
+  width: 52px;
+  height: 60px;
+  border-radius: 10px;
+  background: var(--soft);
+  color: var(--navy);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.1;
+}
+.examgr-date-badge span { font-size: .68rem; font-weight: 700; text-transform: uppercase; }
+.examgr-date-badge strong { font-size: 1.25rem; font-weight: 800; }
+.examgr-date-badge-lg { width: 64px; height: 74px; }
+.examgr-card-body { min-width: 0; flex: 1; }
+.examgr-card-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.examgr-card-name {
+  font-weight: 800;
+  color: var(--navy);
+  font-size: .95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.examgr-pub-badge {
+  font-size: .68rem;
+  font-weight: 700;
+  background: #dcfce7;
+  color: #15803d;
+  padding: 2px 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.examgr-card-class { display: block; font-size: .78rem; color: var(--muted); margin-top: 1px; }
+.examgr-card-stats {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: .78rem;
+  color: var(--muted);
+  flex-wrap: wrap;
+}
+.examgr-delete-btn {
+  flex-shrink: 0;
+  width: 44px;
+  border: none;
+  background: #fef2f2;
+  color: var(--red);
+  font-size: 1.05rem;
+  cursor: pointer;
+}
+.examgr-delete-btn:hover { background: #fee2e2; }
+
+/* ---------- exam details sheet ---------- */
+.examgr-details-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.examgr-progress-wrap { margin-bottom: 14px; }
+.examgr-progress-label { font-size: .82rem; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+.examgr-progress-track { height: 8px; border-radius: 6px; background: #eef0f6; overflow: hidden; }
+.examgr-progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--blue), #7c3aed); border-radius: 6px; transition: width .25s ease; }
+.examgr-stats-row { display: flex; gap: 18px; font-size: .85rem; color: var(--navy); margin-bottom: 10px; }
+.examgr-notice {
+  font-size: .82rem;
+  font-weight: 600;
+  color: #15803d;
+  background: #f0fdf4;
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 0 0 14px;
+}
+.examgr-section-label {
+  font-size: .74rem;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 16px 0 8px;
+}
+.examgr-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.examgr-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 6px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(30,27,75,.10);
+  background: #fff;
+  color: var(--navy);
+  font-size: .74rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1.2;
+}
+.examgr-action-btn span { font-size: 1.3rem; }
+.examgr-action-btn:hover { background: var(--soft); border-color: var(--soft); }
+
+/* ---------- answer key sheet ---------- */
+.examgr-akey-sheet { max-width: 460px; }
+.examgr-akey-list { max-height: 52vh; overflow-y: auto; border-top: 1px solid rgba(30,27,75,.08); margin-bottom: 14px; }
+.examgr-akey-row {
+  display: grid;
+  grid-template-columns: 30px repeat(4, 1fr);
+  align-items: center;
+  column-gap: 6px;
+  padding: 11px 6px;
+  border-bottom: 1px solid rgba(30,27,75,.08);
+}
+.examgr-akey-qnum { font-size: .88rem; font-weight: 700; color: var(--navy); }
+.examgr-akey-opt {
+  justify-self: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: none;
+  background: #eef0f6;
+  color: #5a5f78;
+  font-size: .9rem;
+  font-weight: 700;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease;
+}
+.examgr-akey-opt:hover { background: var(--soft); }
+.examgr-akey-opt.selected { background: var(--blue); color: #fff; }
+.examgr-akey-opt.selected:hover { background: var(--blue); }
+
+/* Per-option bubble crops shown above an .examgr-akey-row — same grid so
+   each little cropped square lines up directly above its A/B/C/D button. */
+.examgr-akey-croprow {
+  display: grid;
+  grid-template-columns: 30px repeat(4, 1fr);
+  align-items: center;
+  column-gap: 6px;
+  padding: 8px 6px 0;
+}
+.examgr-akey-crop-img {
+  justify-self: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #eef0f6;
+  border: 1px solid rgba(30,27,75,.15);
+  filter: grayscale(1) contrast(1.15);
+}
+.examgr-akey-crop-blank { display: block; }
+
+.examgr-akey-footer { display: flex; gap: 12px; }
+.examgr-akey-footer .btn-primary,
+.examgr-akey-footer .btn-secondary { flex: 1; }
+
+/* ---------- OMR / bubble sheet preview ---------- */
+.examgr-sheet-modal { max-width: 640px; }
+.examgr-sheet-preview-wrap {
+  overflow: auto;
+  max-height: 55vh;
+  border-radius: 10px;
+  border: 1px solid rgba(30,27,75,.12);
+  background: #f4f5fa;
+  padding: 12px;
+}
+.examgr-sheet-preview { transform: scale(.42); transform-origin: top left; width: 1203px; }
+@media (min-width: 640px) {
+  .examgr-sheet-preview { transform: scale(.5); }
+}
+.examgr-omr-sheet { position: relative; background: #fff; color: #000; font-family: Arial, Helvetica, sans-serif; overflow: hidden; }
+.examgr-omr-sheet * { box-sizing: border-box; }
+/* Force every fill/background on the printable sheet to come out at full
+   ink strength. Chrome/Safari/Firefox all skip background-color by
+   default when printing (or exporting print-to-PDF) unless told
+   otherwise — a plain filled div like .examgr-omr-marker has no border,
+   so without this it can print faint/washed-out instead of solid black.
+   A washed-out registration square is exactly what trips "poor print
+   quality for marker square blocks" in scanner apps, so this is applied
+   sheet-wide (matches the same fix already used for board-result-sheet
+   in styles.css and .paper-header in qgen-style.css). */
+.examgr-omr-sheet, .examgr-omr-sheet * {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.examgr-omr-header-box { position: absolute; border: 1.6px solid #333; color: #000; background: #fff; }
+.examgr-omr-header-line { position: absolute; left: 0; right: 0; display: flex; border-bottom: 1.6px solid #333; }
+.examgr-omr-header-line:last-child { border-bottom: none; }
+.examgr-omr-header-cell { flex: 1; padding: 11px 10px 0; font-size: 24px; line-height: 1; color: #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.examgr-omr-header-cell + .examgr-omr-header-cell { border-left: 1.6px solid #333; }
+/* Solid fill AND a matching border: if a print path ever still drops the
+   background fill, the border alone keeps the square visible as a crisp
+   dark outline instead of vanishing to blank white. */
+.examgr-omr-marker { position: absolute; width: 20px; height: 20px; background: #000; border: 1px solid #000; }
+.examgr-omr-text { position: absolute; color: #111; font-size: 18px; line-height: 1; font-weight: 400; white-space: nowrap; }
+.examgr-omr-small { font-size: 17px; }
+.examgr-omr-center { text-align: center; transform: translateX(-50%); }
+.examgr-omr-roll-title { font-size: 17px; }
+.examgr-omr-roll-digit { position: absolute; width: 30px; height: 30px; border: 2px solid #333; background: #fff; }
+.examgr-omr-bubble { position: absolute; width: 22px; height: 22px; border: 1.7px solid #222; border-radius: 50%; background: #fff; }
+
+/* ---------- scanner (kept dark — a camera view reads best on a dark UI regardless of site theme) ---------- */
+.examgr-scan-modal { max-width: 460px; }
+.examgr-scan-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1203 / 1536;
+  max-height: 58vh;
+  margin: 0 auto;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0b0c0d;
+}
+.examgr-scan-video, .examgr-scan-capture { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.examgr-scan-capture[hidden] { display: none; }
+.examgr-scan-torch-btn {
+  position: absolute; top: 10px; right: 10px; z-index: 5;
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(0,0,0,.55); color: #fff; border: 1.5px solid rgba(255,255,255,.35);
+  border-radius: 20px; padding: 6px 13px; font-size: .76rem; font-weight: 700;
+  cursor: pointer;
+}
+.examgr-scan-torch-btn[hidden] { display: none; }
+.examgr-scan-torch-btn.is-on {
+  background: #ffb300; color: #1a1a1a; border-color: #ffb300;
+  box-shadow: 0 0 14px rgba(255,179,0,.65);
+}
+.examgr-scan-overlay-ui { position: absolute; inset: 0; pointer-events: none; }
+.examgr-scan-guide {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  max-width: calc(100% - 24px); padding: 7px 12px; border-radius: 8px;
+  background: rgba(0,0,0,.56); color: #fff; font-size: .74rem; text-align: center;
+}
+.examgr-scan-corner { position: absolute; width: 11%; aspect-ratio: 1 / 1; border: 2px solid var(--blue); box-shadow: 0 0 0 1px rgba(255,255,255,.25), 0 0 12px rgba(79,70,229,.4); transition: border-color .12s ease, box-shadow .12s ease; }
+.examgr-scan-corner.tl { top: 9%; left: 7%; }
+.examgr-scan-corner.tr { top: 9%; right: 7%; }
+.examgr-scan-corner.bl { bottom: 5%; left: 7%; }
+.examgr-scan-corner.br { bottom: 5%; right: 7%; }
+.examgr-scan-corner.is-detected { border-color: #18d631; box-shadow: 0 0 0 1px rgba(255,255,255,.35), 0 0 16px rgba(24,214,49,.7); }
+.examgr-scan-dot { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; border-radius: 50%; background: #18d631; transform: translate(-50%, -50%); opacity: 0; }
+.examgr-scan-corner.is-detected .examgr-scan-dot { opacity: 1; }
+.examgr-scan-status { position: absolute; left: 12px; right: 12px; bottom: 14px; display: flex; align-items: center; justify-content: center; gap: 7px; color: #fff; font-size: .78rem; text-align: center; }
+.examgr-scan-status-dot { width: 8px; height: 8px; border-radius: 50%; background: #ffb300; box-shadow: 0 0 0 3px rgba(255,179,0,.18); }
+.examgr-scan-status.is-ready .examgr-scan-status-dot { background: #18d631; box-shadow: 0 0 0 3px rgba(24,214,49,.18); }
+.examgr-scan-permission { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0,0,0,.8); }
+.examgr-scan-permission[hidden] { display: none; }
+.examgr-scan-permission-panel { max-width: 300px; padding: 20px; border-radius: 12px; background: #fff; text-align: center; }
+.examgr-scan-permission-panel strong { display: block; font-size: 1rem; color: var(--navy); }
+.examgr-scan-permission-panel p { margin: 8px 0 16px; color: var(--muted); font-size: .82rem; line-height: 1.45; }
+.examgr-scan-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0 2px; }
+.examgr-scan-footer span { color: var(--muted); font-size: .8rem; }
+.examgr-scan-footer button { padding: 6px 16px; font-size: .8rem; }
+
+/* ---------- graded header (Roll No / Set / Marks) ---------- */
+.examgr-scan-graded-head {
+  display: flex; justify-content: space-between; gap: 8px;
+  background: var(--soft); border-radius: 10px; padding: 8px 12px; margin-bottom: 10px;
+  font-size: .8rem; color: var(--navy);
+}
+.examgr-scan-graded-head strong { font-size: .92rem; }
+
+/* v22: OCR name-guess line, sits right under the graded header */
+.examgr-scan-name-guess {
+  font-size: .78rem; padding: 2px 12px 10px; margin-top: -4px;
+}
+
+/* ---------- Blurry/dark capture warning (shown between the graded
+   head and the photo, only after a capture that failed the quality
+   check — see EG_MIN_ACCEPTABLE_SHARPNESS / EG_MIN_ACCEPTABLE_WHITE) ---------- */
+.examgr-scan-quality-warn {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: #fff7ed; border: 1.5px solid var(--orange); color: #9a3412;
+  border-radius: 10px; padding: 8px 12px; margin-bottom: 10px;
+  font-size: .8rem; font-weight: 600; line-height: 1.35;
+}
+.examgr-scan-quality-warn[hidden] { display: none; }
+.examgr-scan-quality-warn button { flex-shrink: 0; padding: 6px 12px; font-size: .78rem; }
+
+/* ---------- Cancel / Edit / Save review footer ---------- */
+.examgr-scan-review-footer { display: flex; gap: 10px; padding: 10px 0 2px; }
+.examgr-scan-review-footer button { flex: 1; }
+
+/* ---------- "Saved" toast (brief, non-blocking — camera stays live behind it) ---------- */
+.examgr-scan-saved-toast {
+  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  background: rgba(16,185,129,.95); color: #fff; font-weight: 700; font-size: .85rem;
+  padding: 8px 18px; border-radius: 20px; box-shadow: 0 6px 18px rgba(16,185,129,.35);
+  z-index: 4;
+}
+.examgr-scan-saved-toast[hidden] { display: none; }
+
+/* ---------- Answer Key: per-Set tabs ---------- */
+.examgr-akey-tabs { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.examgr-akey-tabs[hidden] { display: none; }
+.examgr-akey-tab {
+  border: 1.5px solid rgba(30,27,75,.15); background: #fff; color: var(--navy);
+  font-weight: 700; font-size: .78rem; padding: 6px 14px; border-radius: 20px; cursor: pointer;
+}
+.examgr-akey-tab.selected { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+/* ---------- Edit (Roll No / Set correction) ---------- */
+.examgr-edit-block { margin-bottom: 14px; }
+.examgr-edit-block label { display: block; font-size: .8rem; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+.examgr-edit-roll-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.examgr-edit-roll-digit {
+  width: 52px; height: 40px; border-radius: 8px; border: 1.5px solid rgba(30,27,75,.18);
+  text-align: center; font-weight: 700; font-size: .9rem; color: var(--navy); background: #fff;
+}
+.examgr-edit-set-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- Reports / Analysis ---------- */
+.examgr-reports-summary { display: flex; gap: 12px; margin-bottom: 14px; }
+.examgr-reports-summary-card {
+  flex: 1; background: var(--soft); border-radius: 12px; padding: 10px 14px; text-align: center;
+}
+.examgr-reports-summary-card span { display: block; font-size: .72rem; color: var(--muted); font-weight: 700; text-transform: uppercase; }
+.examgr-reports-summary-card strong { font-size: 1.2rem; color: var(--navy); }
+.examgr-reports-list { display: flex; flex-direction: column; gap: 10px; max-height: 62vh; overflow-y: auto; }
+.examgr-report-row {
+  display: flex; align-items: center; gap: 10px; background: #fff; border-radius: 12px;
+  box-shadow: 0 3px 12px rgba(31,38,135,.08); padding: 10px 12px;
+}
+.examgr-report-avatar {
+  flex-shrink: 0; width: 38px; height: 38px; border-radius: 50%; background: var(--soft);
+  display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+}
+.examgr-report-body { flex: 1; min-width: 0; }
+.examgr-report-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.examgr-report-roll { font-weight: 700; color: var(--navy); font-size: .85rem; }
+.examgr-report-rank { font-size: .78rem; color: var(--muted); }
+.examgr-report-stats { display: flex; gap: 10px; margin-top: 4px; font-size: .78rem; flex-wrap: wrap; }
+.examgr-report-sum { font-weight: 700; color: var(--navy); }
+.examgr-report-ok { color: #15803d; }
+.examgr-report-bad { color: var(--red); }
+.examgr-report-blank { color: var(--muted); }
+.examgr-report-thumb { flex-shrink: 0; width: 40px; height: 52px; object-fit: cover; border-radius: 6px; border: 1px solid rgba(30,27,75,.12); cursor: pointer; }
+
+#examgr-report-photo-overlay { background: rgba(0,0,0,.85); display: flex; align-items: center; justify-content: center; }
+#examgr-report-photo-overlay.hidden { display: none; }
+
+/* ---------- Report Detail (single student) ---------- */
+.examgr-rd-sheet { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.examgr-rd-head {
+  display: flex; align-items: center; gap: 4px; padding: 12px 10px; border-bottom: 1px solid rgba(30,27,75,.08);
+  flex-shrink: 0;
+}
+.examgr-rd-title { flex: 1; min-width: 0; font-size: 1.05rem; font-weight: 800; color: var(--navy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.examgr-rd-icon-btn {
+  border: none; background: none; font-size: 1.15rem; line-height: 1; padding: 8px; border-radius: 8px;
+  color: var(--blue); cursor: pointer; flex-shrink: 0;
+}
+.examgr-rd-icon-btn:hover { background: var(--soft); }
+.examgr-rd-body { flex: 1; overflow-y: auto; padding: 4px 16px 16px; }
+
+.examgr-rd-info-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid rgba(30,27,75,.06); font-size: .88rem; }
+.examgr-rd-info-row span:first-child { color: var(--muted); font-weight: 600; }
+.examgr-rd-info-row span:last-child { color: var(--navy); font-weight: 700; }
+
+.examgr-rd-table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: .82rem; }
+.examgr-rd-table th, .examgr-rd-table td { padding: 9px 8px; text-align: left; border-bottom: 1px solid rgba(30,27,75,.06); }
+.examgr-rd-table th { background: var(--soft); color: var(--navy); font-weight: 700; }
+.examgr-rd-table tr.examgr-rd-total-row td { font-weight: 800; color: var(--navy); background: rgba(79,70,229,.05); }
+.examgr-rd-table td.examgr-rd-num { font-variant-numeric: tabular-nums; }
+
+.examgr-rd-sheet-img-wrap { border-radius: 12px; overflow: hidden; border: 1px solid rgba(30,27,75,.1); margin: 4px 0 16px; background: #f4f5f9; }
+.examgr-rd-sheet-img { width: 100%; display: block; cursor: zoom-in; image-rendering: -webkit-optimize-contrast; }
+
+.examgr-rd-qtable-wrap { max-height: none; }
+.examgr-rd-qtable td.examgr-rd-flag-multi { color: #b45309; font-weight: 700; }
+.examgr-rd-qtable td.examgr-rd-flag-faint { color: var(--blue); }
+.examgr-rd-qtable tr.examgr-rd-row-wrong td.examgr-rd-attempted { color: var(--red); }
+.examgr-rd-qtable tr.examgr-rd-row-correct td.examgr-rd-attempted { color: #15803d; }
+
+.examgr-rd-footer {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 18px; border-top: 1px solid rgba(30,27,75,.08); font-size: .85rem; color: var(--muted); font-weight: 700;
+}
+.examgr-rd-nav-btn {
+  border: 1.5px solid rgba(30,27,75,.15); background: #fff; color: var(--navy); border-radius: 8px;
+  width: 36px; height: 36px; font-size: 1.2rem; cursor: pointer;
+}
+.examgr-rd-nav-btn:disabled { opacity: .35; cursor: default; }
+.examgr-rd-nav-btn:not(:disabled):hover { background: var(--soft); }
+
+/* Report Detail Edit: reuse .examgr-akey-row/.examgr-akey-opt for A/B/C/D toggles */
+.examgr-rd-edit-qhead { display: flex; justify-content: space-between; align-items: center; font-size: .82rem; color: var(--muted); font-weight: 700; padding: 4px 2px; }
+
+@media (max-width: 380px) {
+  .examgr-actions-grid { grid-template-columns: repeat(2, 1fr); }
+  .examgr-akey-opt { width: 34px; height: 34px; }
+  .examgr-akey-crop-img { width: 34px; height: 34px; }
+}

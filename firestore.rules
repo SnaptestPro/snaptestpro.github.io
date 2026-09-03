@@ -1,0 +1,509 @@
+rules_version = '2';
+
+// ══════════════════════════════════════════════════════════════════
+// SnapTest Pro — FIRESTORE SECURITY RULES
+// ══════════════════════════════════════════════════════════════════
+// IMPORTANT — README pehle padhein: FIREBASE_SECURITY_SETUP.md
+//
+// Ye rules maan kar chalti hain ki:
+//   1) Firebase Console > Authentication mein "Anonymous" provider ON hai
+//      (har visitor — student ho ya admin — silently sign-in ho jata hai,
+//       taaki request.auth kabhi null na ho).
+//   2) Firebase Console > Authentication mein "Email/Password" provider ON hai
+//      (real admin login ke liye).
+//   3) Neeche ADMIN_EMAILS list mein apna asli admin email daal diya hai.
+//      Jab tak yahan email nahi daalenge, KOI BHI admin panel se
+//      likh/delete nahi kar payega — is file ko deploy karne ke baad
+//      ye pehla kaam hai jo karna hai.
+//   4) Neeche OWNER_EMAIL mein apna (product owner ka) email daal diya
+//      hai — sirf yehi ek email "Owner Panel" khol sakta hai jahan se
+//      har institute ka admin add/disable/remove aur uska password
+//      reset kiya ja sakta hai. Details: OWNER_PANEL_SETUP.md
+// ══════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Owner (product/company owner — sabse upar ka role) ────────
+    // Ye admin se ALAG hai: owner kisi ek institute ka data nahi
+    // chalata, balki OWNER PANEL se ye control karta hai ki kaun-kaun
+    // se institutes hain aur unka admin kaun hai (naya admin add
+    // karna, kisi admin ko disable/remove karna, uska password reset
+    // bhejna). Sirf EK hardcoded email — kisi ko is se access nahi
+    // milta jab tak yahan email daal ke publish na karein.
+    function isOwner() {
+      return request.auth != null &&
+        request.auth.token.email != null &&
+        request.auth.token.email == "vishnu1234stm@gmail.com";
+    }
+
+    // ── Admin allow-list ─────────────────────────────────────────
+    // Do tareeke se koi admin banta hai:
+    //   (a) LEGACY: neeche seedha email likh diya (purana single-admin
+    //       tareeka — backward compatibility ke liye rakha hai).
+    //   (b) OWNER PANEL se banaya gaya admin: Owner Panel jab kisi
+    //       institute ke liye naya admin banata hai, to woh email
+    //       `admins/{email}` collection mein ek doc { active: true }
+    //       ke saath likh deta hai. Wahi admin par yahan check hota
+    //       hai — aur "active" false karte hi (Owner "Disable" button
+    //       dabaye) us admin ka access turant band ho jaata hai, bina
+    //       Firebase Auth account delete kiye.
+    //
+    // ⚠️ FIX (v24_12): pehle LEGACY email ko bina kisi condition ke
+    // hardcoded "true" mil jaata tha — matlab Owner Panel se ise
+    // "Disable" karne ka (admins/{email}.active = false likhne ka)
+    // koi asar hi nahi hota tha, kyunki neeche wala hardcoded check
+    // active field dekhta hi nahi tha. Ab legacy email ko bhi access
+    // milta hai SIRF tab tak jab tak uske admins/{email} doc mein
+    // explicitly active:false na likha ho — Owner "Disable" dabaye to
+    // ye legacy admin bhi turant, sach mein, block ho jaata hai.
+    function adminDocActive() {
+      return exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+        ? get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data.active
+        : null;
+    }
+
+    // ⚠️ FIX (v24_16): pehle isAdmin() sirf admin ke APNE doc ka `active`
+    // field dekhta tha — Owner Panel ke Institute-level "Deactivate"
+    // button (jo `institutes/{id}.active = false` likhta hai) ka is par
+    // koi asar hi nahi padta tha. Matlab ek poora institute deactivate
+    // karne ke baad bhi uska admin poora access rakhta reh sakta tha —
+    // aur isi wajah se koi real-time force-logout bhi trigger nahi hota
+    // tha (wo sirf admin-doc ke `active:false`/permission-denied par
+    // depend karta hai, script.js dekhein). Ab isAdminEmailAllowed() —
+    // sirf email/admin-doc wala purana check — ko isAdmin() se ALAG kiya
+    // gaya hai (taaki adminInstituteId() ise call kar sake bina circular
+    // function-call error ke), aur isAdmin() khud ab institute active
+    // bhi check karta hai.
+    function isAdminEmailAllowed() {
+      return request.auth != null &&
+        request.auth.token.email != null &&
+        (
+          (
+            request.auth.token.email in [
+              "vishnu1234stmp@gmail.com"
+            ]
+            && adminDocActive() != false
+          )
+          ||
+          adminDocActive() == true
+        );
+    }
+
+    // ⚠️ FIX (v26 — disable vs. institute-deactivate ka sahi message):
+    // Pehle admin apna khud ka "admins/{email}" doc SIRF isAdmin() (jo
+    // active + institute dono check karta hai) hone par hi padh sakta
+    // tha — matlab jaise hi Owner ne "Disable" dabaya YA institute
+    // deactivate kiya, doc ka read hi "permission-denied" ho jaata tha,
+    // aur client (script.js) dono cases ko ALAG bata hi nahi paata tha
+    // (dono taraf se sirf ek generic "permission-denied" milta tha).
+    // Fix: apna khud ka doc padhna sirf isi baat par depend kare ki
+    // email admin allow-list mein hai ya nahi (chahe abhi active ho ya
+    // na ho) — active/institute-status ka asli WRITE-level gate
+    // (isAdmin()) bilkul waisa hi sakht rehta hai, sirf "apna record
+    // dekh sakna" thoda khula hai taaki client sahi wajah dikha sake.
+    function isKnownAdminEmail() {
+      return request.auth != null &&
+        request.auth.token.email != null &&
+        (
+          request.auth.token.email in [
+            "vishnu1234stmp@gmail.com"
+          ]
+          || exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+        );
+    }
+
+    // ── Multi-tenant: is admin ka apna institute kaunsa hai ────────
+    // Owner Panel se bane admin ke `admins/{email}` doc mein instituteId
+    // already hota hai. Legacy admin ke liye app khud (script.js,
+    // resolveCurrentAdminInstitute()) pehle login par ek instituteId
+    // bana kar isi doc mein likh deta hai — isliye ye function har
+    // admin ke liye kaam karta hai, chahe wo Owner Panel se bana ho ya
+    // purana/legacy ho.
+    function adminInstituteId() {
+      return isAdminEmailAllowed() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+        ? get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data.instituteId
+        : null;
+    }
+
+    // Admin ka apna institute record active hai ya nahi.
+    //   - Koi instituteId hi nahi (legacy, migrate hone se pehle) →
+    //     true maan lo (backward compat, jaisa baaki purana code karta
+    //     hai — isse koi turant lock-out nahi hota).
+    //   - instituteId hai par institute doc hi maujood nahi (orphan,
+    //     "🗑️ Remove" se hata diya gaya) → true maan lo — ye jaan-boojh
+    //     kar hai, kyunki Owner Panel ka apna documentation kehta hai
+    //     "institute hatane se admin ka access khud disable nahi hota".
+    //   - Institute doc hai aur `active` explicitly false hai (Owner ne
+    //     Deactivate dabaya) → sirf tabhi false.
+    function adminInstituteActive() {
+      return adminInstituteId() == null ||
+        !exists(/databases/$(database)/documents/institutes/$(adminInstituteId()))
+        ? true
+        : get(/databases/$(database)/documents/institutes/$(adminInstituteId())).data.active != false;
+    }
+
+    function isAdmin() {
+      return isAdminEmailAllowed() && adminInstituteActive();
+    }
+
+    // ── Class Eligibility (v25) — Multi-Institute Shared Question Bank ──
+    // Har Institute ke `institutes/{id}.allowedClasses` mein un Classes
+    // ki list hoti hai jinke liye wo eligible hai (jaise ["class_10"]).
+    // Ye Master Question Bank/Exam data ko Institute-wise DIVIDE nahi
+    // karti — do institutes jo dono "class_10" ke liye eligible hain,
+    // unhe class_10 ka poora data barabar milega. Ye sirf itna control
+    // karti hai ki kaun-si Class ka data kis Institute ko dikhega.
+    //
+    // Backward-compat (bilkul upar wale instituteId pattern jaisa):
+    //   - `allowedClasses` field hi nahi hai (purana institute, is
+    //     feature se pehle bana) → null → sab Classes allowed maani
+    //     jaati hain, koi turant lock-out nahi hota.
+    //   - Doc mein `classId` hi nahi hai (purana exam, is feature se
+    //     pehle bana) → check hi skip ho jaata hai (backward compat).
+    function adminAllowedClasses() {
+      return adminInstituteId() != null &&
+        exists(/databases/$(database)/documents/institutes/$(adminInstituteId())) &&
+        ('allowedClasses' in get(/databases/$(database)/documents/institutes/$(adminInstituteId())).data)
+        ? get(/databases/$(database)/documents/institutes/$(adminInstituteId())).data.allowedClasses
+        : null;
+    }
+
+    function classAllowedForAdmin(classId) {
+      return classId == null ||
+        adminAllowedClasses() == null ||
+        (classId in adminAllowedClasses());
+    }
+
+    // Koi bhi signed-in visitor — chahe anonymous ho ya admin.
+    // (App load hote hi anonymous sign-in ho jata hai, isliye ye
+    //  practically "app se aaya hua request" ke barabar hai, random
+    //  script/bot ke barabar nahi.)
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // ── Public/shared content: question bank & tests ─────────────
+    // Student app ko ye padhna zaroori hai taaki test/questions load ho
+    // sakein. Likhna/delete karna sirf admin kar sakta hai.
+    match /questionBank/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /tests/{docId} {
+      // Read khula rehta hai (isSignedIn()) — students ko sabhi tests
+      // dikhne zaroori hain taaki wo attempt kar sakein. Institute-wise
+      // isolation sirf ADMIN ke apne management view (Tests list, Edit,
+      // Delete) mein hai — write side par.
+      allow read: if isSignedIn();
+
+      // Naya test — sirf apne institute ke instituteId ke saath ban
+      // sakta hai (ya instituteId field hi na ho, purane app-version
+      // compatibility ke liye).
+      allow create: if isAdmin() && (
+        !('instituteId' in request.resource.data) ||
+        request.resource.data.instituteId == adminInstituteId()
+      );
+
+      // Edit/Delete — sirf wahi admin kar sakta hai jiska instituteId us
+      // test ke instituteId se match kare. Purane (migrate hone se pehle)
+      // instituteId-less docs par abhi bhi access hai — taaki koi turant
+      // lock-out na ho jaaye, migration hote hi ye apne aap tight ho
+      // jaata hai.
+      allow update, delete: if isAdmin() && (
+        !('instituteId' in resource.data) ||
+        resource.data.instituteId == adminInstituteId()
+      );
+
+      // ── Nested subcollection fix ──────────────────────────────────
+      // Test ke questions "tests/{id}/qchunks/{chunkId}" subcollection
+      // mein save hote hain (1MB doc-limit se bachne ke liye). Firestore
+      // rules mein har collection/subcollection ka apna alag match
+      // chahiye — upar wala "tests/{docId}" rule sirf test ke main doc
+      // par lagu hota hai, is nested subcollection par nahi. Isi wajah
+      // se pehle "Save Test Online" hamesha "Missing or insufficient
+      // permissions" ke saath fail ho raha tha aur test 0 questions par
+      // atka reh jaata tha.
+      match /qchunks/{chunkId} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
+      }
+    }
+
+    // ── Admin-only working data (trash bin, drafts, chunks, keys) ──
+    // Inhe students ko kabhi dekhne/chhedne ki zaroorat nahi.
+    match /deletedQuestions/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Permanent record of question IDs that admin ne kabhi delete kiya —
+    // isse seed functions unhe dobara Firebase mein wapas nahi likhte,
+    // chahe Recycle Bin se "Delete Forever" bhi kyun na ho gaya ho.
+    match /seedExclusions/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /deletedTests/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /pdfDrafts/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /draftQuestions/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /qchunks/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // omrTemplates: admin ne khud "🎯 Naya Sheet Sikhayein" se train ki
+    // hui custom OMR sheet layouts — sirf admin panel scan/train karta
+    // hai, students ka isse koi lena-dena nahi, isliye admin-only.
+    match /omrTemplates/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // examManagerExams: OMR hub ke "🗂️ Exam Manager" section ke offline/
+    // paper exams (naam, answer key, scan-count, reports) — sirf admin
+    // banata/manage karta hai, students ka isse koi lena-dena nahi.
+    match /examManagerExams/{docId} {
+      // Institute-wise isolation: apna institute ke exams hi read/write
+      // ho sakte hain. Purane (migrate hone se pehle) instituteId-less
+      // docs par abhi bhi access hai, taaki koi turant lock-out na ho —
+      // pehli login par app khud unhe migrate kar deta hai (script.js,
+      // resolveCurrentAdminInstitute()).
+      allow read: if isAdmin() && (
+        !('instituteId' in resource.data) ||
+        resource.data.instituteId == adminInstituteId()
+      );
+      // Class Eligibility (v25): agar exam par classId lagi hai, to wo
+      // classId admin ke institute ki allowedClasses list mein honi
+      // chahiye — warna backend hi request reject kar deta hai (frontend
+      // par dropdown chhupana kaafi nahi hai, jaisa master-prompt rule
+      // 14 mein bataya gaya hai).
+      allow create: if isAdmin() && (
+        !('instituteId' in request.resource.data) ||
+        request.resource.data.instituteId == adminInstituteId()
+      ) && classAllowedForAdmin(
+        'classId' in request.resource.data ? request.resource.data.classId : null
+      );
+      allow update: if isAdmin() && (
+        !('instituteId' in resource.data) ||
+        resource.data.instituteId == adminInstituteId()
+      ) && (
+        !('instituteId' in request.resource.data) ||
+        request.resource.data.instituteId == adminInstituteId()
+      ) && classAllowedForAdmin(
+        'classId' in request.resource.data ? request.resource.data.classId : null
+      );
+      allow delete: if isAdmin() && (
+        !('instituteId' in resource.data) ||
+        resource.data.instituteId == adminInstituteId()
+      );
+
+      // scanPhotos subcollection: sharp (900px) scanned OMR photos, one
+      // doc per result — kept OUT of the parent exam doc so each photo
+      // gets its own independent 1MB Firestore budget instead of sharing
+      // the parent doc's 1MB across every result. Same nested-rule
+      // requirement as tests/{docId}/qchunks above — a parent match does
+      // NOT cover a subcollection.
+      match /scanPhotos/{resultId} {
+        allow read, write: if isAdmin();
+      }
+
+      // scanResults subcollection: one small doc per scanned OMR result
+      // (roll, marks, answers, thumb, etc.) — kept OUT of the parent exam
+      // doc's `results` array on purpose. Every scan used to append to
+      // that single array field via arrayUnion(), so the write got bigger
+      // and slower to process the longer a scanning session ran (session
+      // -duration slowdown, separate from the per-frame camera hang fixed
+      // above). One doc per result here means every scan's write stays
+      // the same small size no matter how long the session runs. Same
+      // nested-rule requirement as scanPhotos above — a parent match does
+      // NOT cover a subcollection.
+      match /scanResults/{resultId} {
+        allow read, write: if isAdmin();
+      }
+    }
+
+    // app_settings holds sensitive things like the Groq AI API key —
+    // admin-only, full stop.
+    match /app_settings/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Legacy admin-credentials doc (old hash-based system). Kept locked
+    // to admin only; safe to ignore/delete once migration is complete.
+    match /appSettings/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ── Student accounts & records ────────────────────────────────
+    // "students/{mobile}" ab sirf PUBLIC-ish profile info rakhta hai:
+    // naam, mobile, aur ek "hasPin" flag. Password hash / PIN hash
+    // yahan KABHI nahi jaate — wo neeche "studentSecrets" mein locked
+    // rehte hain. Isliye is doc ka simple isSignedIn() access theek hai.
+    // DELETE sirf admin kar sakta hai — isse accidental/malicious mass
+    // data-loss nahi ho sakta.
+    match /students/{mobile} {
+      allow get, create, update: if isSignedIn();
+      allow list: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Student secrets (password hash + Security PIN hash) ────────
+    // ══════════════════════════════════════════════════════════════
+    // SECURITY FIX: pehle hash/pinHash "students/{mobile}" doc mein
+    // hote the, jise koi bhi signed-in (anonymous bhi) client seedha
+    // `.get()` kar sakta tha — matlab jis kisi ko bhi student ka mobile
+    // number pata ho, wo uska password/PIN hash padh kar offline crack
+    // kar sakta tha, YA seedha `.set({hash: ...})` bulakar bina kuch
+    // proof diye hi password overwrite kar sakta tha. Yahi wo bug tha
+    // jiski wajah se "kisi ka bhi password koi bhi reset kar sakta tha
+    // agar uska number pata ho".
+    //
+    // FIX: is collection ko admin ke alawa kisi ke liye bhi `read`
+    // allowed nahi — student kabhi apna hash/pinHash seedha nahi
+    // padhta. Login aur "password bhool gaye" ab ek chhoti si WRITE
+    // attempt karte hain (sha256(entered password/PIN) ke saath), aur
+    // Firestore Rules khud, server-side, use stored hash se compare
+    // karti hain — sahi na ho to write reject (permission-denied) ho
+    // jaata hai. Isse secret kabhi client tak pahunchta hi nahi.
+    // ══════════════════════════════════════════════════════════════
+    match /studentSecrets/{mobile} {
+      allow read: if isAdmin();
+
+      // Registration (aur legacy-account migration) — pehli baar create.
+      allow create: if isSignedIn();
+
+      allow update: if isAdmin() ||
+        (
+          // (a) LOGIN proof: client bhejta hai lastLoginProof = sha256(entered
+          // password); tabhi accept hoga jab ye stored "hash" se match kare.
+          isSignedIn() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastLoginProof', 'lastLoginAt']) &&
+          request.resource.data.lastLoginProof == resource.data.hash
+        ) ||
+        (
+          // (b) Pehli baar Security PIN set karna — sirf tabhi jab abhi
+          // tak koi pinHash set na ho (isliye koi baad mein bina purana
+          // PIN jaane ise overwrite nahi kar sakta).
+          isSignedIn() &&
+          !('pinHash' in resource.data) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinHash'])
+        ) ||
+        (
+          // (c) PASSWORD RESET via PIN: client bhejta hai naya "hash" +
+          // pinProof = sha256(entered PIN); tabhi accept hoga jab pinProof
+          // stored "pinHash" se match kare.
+          isSignedIn() &&
+          'pinHash' in resource.data &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hash', 'pinProof']) &&
+          request.resource.data.pinProof == resource.data.pinHash
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    match /studentRecords/{docId} {
+      allow get, create, update: if isSignedIn();
+      allow list: if isSignedIn();
+      allow delete: if isAdmin();
+    }
+
+    // ── Scanned paper/OMR exam reports linked to a student ─────────
+    // Written by admin (Exam Manager → Report Detail → 🔗 Link to
+    // Student) when a scanned result's roll number is matched to a
+    // real student account. Student's "My Result" screen reads these
+    // by mobile — same read/write trust model as studentRecords above,
+    // but writes stay admin-only since linking is an admin action.
+    match /studentScanReports/{docId} {
+      allow get, list: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── My Mistakes (auto-collected wrong answers, per student) ────
+    // Doc id = student's mobile number. Same trust model as
+    // "students/{mobile}" above — any signed-in client can read/write
+    // its own or (in principle) another student's mistake list, but
+    // there's nothing sensitive here (just question text + answers
+    // already visible in the question bank). Delete stays admin-only.
+    match /studentMistakes/{mobile} {
+      allow get, create, update: if isSignedIn();
+      allow list: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── OWNER PANEL: institutes & their admins ─────────────────────
+    // Sirf owner in dono collections ko padh/likh sakta hai — koi
+    // admin (chahe apna hi record ho) inhe seedha nahi chhed sakta.
+    // Admin ki apni access `isAdmin()` ke andar wale `exists()`/`get()`
+    // check se hi tay hoti hai, is doc ko read kiye bina.
+    match /institutes/{instituteId} {
+      allow read, write: if isOwner();
+
+      // v25: Student Registration ke Institute+Class dropdown ke liye
+      // koi bhi signed-in (anonymous student bhi) institutes ki basic
+      // list (naam + allowedClasses) padh sake — isme koi sensitive
+      // data nahi hai (admin emails yahan kabhi nahi aate).
+      allow read: if isSignedIn();
+
+      // ── Legacy-admin self-migration ──────────────────────────────
+      // Purana admin (Owner Panel se nahi, seedha ADMIN_EMAILS list se
+      // aaya hua) ke paas koi instituteId nahi hoti. App khud (script.js,
+      // resolveCurrentAdminInstitute()) pehli login par uske liye ek
+      // institute record banata hai — taaki wo Owner Panel mein bhi
+      // dikhe aur uska purana data isolate ho sake. Sirf CREATE allowed
+      // hai (apna record ek baar banane ke liye), update/delete nahi —
+      // aur ID hamesha "legacy_" se shuru hona zaroori hai (Owner Panel
+      // ke ".add()" se bane real institute IDs kabhi is prefix se
+      // shuru nahi hote), taaki koi admin kisi real/doosre institute ko
+      // kabhi chhed na sake.
+      allow read: if isAdmin();
+      allow create: if isAdmin() && instituteId.matches('^legacy_.*');
+    }
+
+    // Doc ID = admin ka email address (isAdmin() function isi se
+    // seedha lookup karta hai — /admins/{unka-email}).
+    match /admins/{email} {
+      allow read, write: if isOwner();
+
+      // Admin apna khud ka record padh sake (apna instituteId maalum
+      // karne ke liye). Legacy admin (jiska record abhi tak hai hi
+      // nahi) ke liye khud bana/update bhi kar sakta hai — sirf apne
+      // hi email wale doc par, sirf "legacy_" institute ke saath, aur
+      // ek baar instituteId set hone ke baad khud se badal nahi sakta
+      // (privilege-escalation se bachne ke liye).
+      allow read: if isKnownAdminEmail() && request.auth.token.email == email;
+      allow create: if isAdmin() && request.auth.token.email == email &&
+        request.resource.data.instituteId.matches('^legacy_.*');
+      allow update: if isAdmin() && request.auth.token.email == email &&
+        resource.data.instituteId == request.resource.data.instituteId;
+    }
+
+    // ── OWNER PANEL: institute-removal OTP/confirm-link gate (v26) ──
+    // "Remove" ab seedha delete nahi karta — pehle ek pending-removal
+    // token yahan likha jaata hai, phir Owner ke registered email par
+    // ek confirm-link bheja jaata hai (Firebase Auth ka apna, free,
+    // signed/unforgeable email-link mechanism — bina kisi paid backend
+    // ke). Sirf jab wahi link wapas click karke verify ho, tabhi asli
+    // institute delete hota hai — isse ek galti se tap/refresh se koi
+    // institute turant hamesha ke liye nahi mit sakta.
+    match /ownerPendingRemovals/{token} {
+      allow read, write: if isOwner();
+    }
+
+    // ── Default deny ──────────────────────────────────────────────
+    // Koi bhi collection jo upar explicitly list nahi hui, uska
+    // access poori tarah band. Ye "test mode" jaisi open-access
+    // galti se dobara hone se rokta hai.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,4498 @@
+/* ══════════════════════════════════════════════════════════════════
+   SnapTest Pro — EXAM MANAGER (OMR hub ka 5th section)
+   ══════════════════════════════════════════════════════════════════
+   Ye ek halka, self-contained bookkeeping tool hai offline/paper exams
+   ke liye — question bank ya "Tests" collection se koi lena-dena nahi.
+   Ismein ye sab hai:
+     • Exam banayein (naam, class, date, questions, sets, students,
+       roll-no digit count)
+     • Answer Key — har question ke liye A/B/C/D par click karke bharein
+       (1 se zyada Set ho to har Set ki apni alag key)
+     • Scan Sheet — camera se sheet ke 4 corner ke kaale square detect
+       karke, sab align hote hi (chhota "beep" ke saath) photo apne aap
+       capture karta hai, phir usi photo par:
+         1) Exam Set (A–E) bubble aur Roll No bubble grid padhta hai
+         2) har question ka bhara hua bubble padh kar us Set ki Answer
+            Key se compare karta hai
+         3) photo ke upar hi seedha rang daal deta hai — sahi jawab par
+            HARA dot, galat par LAAL dot, aur jo chhoda/galat hai uske
+            "sahi jawab" wale bubble par ek chhota SUNHRA (gold) dot,
+            bilkul jaisa reference video mein dikhta hai
+       Roll No/Marks/Set header mein turant dikh jaata hai, neeche
+       Cancel / Edit / Save milta hai — Edit se galat padhi reading
+       (roll, set, koi bhi answer) haath se theek kar sakte hain. Save
+       dabate hi "✅ Saved" toast dikh kar camera turant agli sheet ke
+       liye taiyaar ho jaata hai (bina dobara camera permission maange),
+       taaki poora bandle lagataar scan ho sake.
+     • OMR/Bubble Sheet — fixed 100-question/5-column printable sheet,
+       Exam Set (A–E) row + Roll No block ke saath
+     • Reports — har scanned sheet ka Roll No, Set, Marks, ✓/✗/○ count
+       (reference video ke Reports screen jaisa)
+     • Settings, Web Link, Download Excel (ab per-student rows sahit),
+       Analysis (per-question difficulty), Publish, Absentees, Delete
+
+   Pehle ye sab ek alag prototype app mein localStorage par tha; ab
+   sab kuch Firestore collection "examManagerExams" mein save hota hai,
+   isliye kisi bhi device/browser se same data dikhega. Har scanned
+   sheet ka result us exam document ke "results" array field mein save
+   hota hai (alag subcollection nahi — isliye koi extra firestore.rules
+   deploy karne ki zaroorat nahi padi).
+
+   Reuses from script.js:  getDB(), escHtml()
+   Reuses from styles.css: .test-analysis-overlay / .test-analysis-sheet
+                            / .test-analysis-close, .card, .btn-primary,
+                            .btn-secondary, .btn-danger, .field-row,
+                            .two-col, .muted-text
+   Apni CSS sirf exam-manager.css mein (prefix: examgr-).
+
+   ⚠️ IMPORTANT: firestore.rules mein "examManagerExams" collection ke
+   liye rule add ki gayi hai — wo Firebase Console/CLI se deploy karna
+   zaroori hai, warna reads/writes "permission-denied" denge.
+   ══════════════════════════════════════════════════════════════════ */
+
+(function () {
+  "use strict";
+
+  const COLLECTION = "examManagerExams";
+  const MAX_QUESTIONS = 100;
+  const OPTION_LETTERS = ["A", "B", "C", "D"];
+  const SET_LETTERS = ["A", "B", "C", "D", "E"]; // Exam Set bubble row — max 5 sets
+
+  // ---- state ----
+  let examMgrExams = {};        // id -> Firestore doc data (local cache)
+  let examMgrSortDesc = true;   // true = newest date first
+  let examMgrSelectedId = null; // currently open exam (details sheet)
+
+  // Answer Key draft (working copy until Save is pressed)
+  let akeyDraft = [];
+  let akeyOriginal = [];
+  let akeySelectedSet = "A";    // which Set's key is being edited right now
+
+  // Scanner state
+  let scannerStream = null;
+  let scannerAnimationFrame = null;
+  let scannerLastDetectionAt = 0;
+  let scannerStableFrames = 0;
+  // Rolling window of the last few "all-4-markers-found" frames' corner
+  // positions (see EG_MARKER_HISTORY_SIZE / egAverageMarkerFrames below) —
+  // averaged together at capture time instead of trusting the single last
+  // frame, to cancel out hand-tremor jitter in the corner read itself.
+  let scannerMarkerHistory = [];
+  let scannerCapturing = false;
+  let scannerCameraRequestInProgress = false;
+  // Manual flash/torch toggle (🔦 button) — scannerTorchSupported gates
+  // whether the button is even shown (many phones/laptops don't expose
+  // this capability at all), scannerTorchOn tracks its current state so
+  // resumeScannerDetectionLoop() between consecutive scans in the same
+  // session can leave it exactly as the admin left it (no re-toggling
+  // needed sheet after sheet in a dark room).
+  let scannerTorchSupported = false;
+  let scannerTorchOn = false;
+  // Most recent capture's detection + grading result, kept so Edit/Save can
+  // act on it without re-running detection.
+  let scannerDetected = null;   // { setLetter, roll, rollDigits:[...], answers:[{q,opt}] }
+  let scannerGraded = null;     // { marks, correct, wrong, blank, perQuestion:[...] }
+  let scannerAudioCtx = null;
+  // Pristine (no colored dots) copy of the last capture, so Edit can
+  // re-paint from scratch instead of drawing new dots over old ones.
+  let scannerRawCanvas = null;
+  // Scratch canvas holding the untouched, full-resolution video frame at
+  // the instant of capture — input to the perspective warp below.
+  let scannerRawVideoCanvas = null;
+  // v10: SHARPEST-OF-WINDOW CAPTURE
+  // 6 consecutive "all-4-corners-found" frames only proves the sheet was
+  // held steady enough for the SQUARE DETECTOR to keep tracking it — it
+  // says nothing about motion blur. A hand that's "steady" by that
+  // measure can still be trembling enough, especially in dim light where
+  // the phone's camera picks a slower shutter speed, to blur the actual
+  // ink on the frame that happens to be live at the exact instant the
+  // 6th tick fires (this is what produced the wildly different Roll No /
+  // Marks readings on repeated attempts of the SAME physical sheet).
+  // Fix: track the sharpest frame seen so far in the current steady
+  // streak (via egQuickSharpness, a relative/self-normalizing measure —
+  // no device- or lighting-specific magic threshold needed since it's
+  // only ever compared against other frames from this same streak) and
+  // capture-and-warp THAT frame's pixels instead of whatever is live the
+  // instant the streak hits its length target. Paired with the existing
+  // temporally-averaged corner positions (v8) — those two fixes target
+  // different noise sources (geometry jitter vs. pixel-content blur) and
+  // stack cleanly.
+  let scannerBestSharpness = -Infinity;
+  let scannerBestRawVideoCanvas = null;
+  // Perf: the "is this the sharpest frame yet" check above is cheap (a
+  // 160px probe), but actually SAVING a candidate means drawImage-ing the
+  // full native video frame (often ~1920×2560, i.e. ~5MP) onto
+  // scannerBestRawVideoCanvas. Early in a steady streak, sharpness tends
+  // to fluctuate upward on almost every tick (tiny hand micro-adjustments
+  // each briefly "improving" on the last), so without a limit this full
+  // -res copy was firing on nearly every ~130ms tick of the ~780ms+ hold
+  // — several 5MP canvas copies per second is exactly the kind of main
+  // -thread work that shows up to the admin as the live preview
+  // "lagging". Debounced to at most one such copy per
+  // EG_BEST_FRAME_MIN_GAP_MS, EXCEPT in the last couple of ticks before
+  // capture actually fires (scannerStableFrames close to the trigger),
+  // where we always save so the true best/final frame is never skipped
+  // right when it matters most.
+  let scannerLastBestDrawAt = 0;
+  const EG_BEST_FRAME_MIN_GAP_MS = 220;
+  // v22: NAME OCR state — a background guess of the handwritten name,
+  // read from OMR_NAME_BOX (see its comment) via Tesseract.js (free,
+  // client-side, no server/billing needed — accuracy on real handwriting
+  // is moderate, treat it as a SUGGESTION for the Link-to-Student step
+  // below, never an auto-decision).
+  let scannerOcrWorker = null;      // reused across scans this session — loading Tesseract's language model fresh every scan would be slow
+  let scannerOcrNamePromise = null; // the in-flight recognize() call for the current capture, if any
+  let scannerOcrNameGuess = "";     // resolved raw text once OCR finishes ("" if not run / failed / nothing legible)
+  // v20: CORNER-FLICKER GRACE + FASTER LOCK
+  //
+  // Reported: "scanning slow hai, kabhi ek corner red ho jaata hai" — the
+  // square detector itself (v19's rotation-invariant fill-ratio test) is
+  // accurate, but it is a per-tick, all-or-nothing read: a SINGLE bad tick
+  // for just ONE corner (autofocus hunting for a frame, a hand-tremor
+  // micro-blur, a stray reflection) makes findBlackSquare return nothing
+  // for that one corner that one time. Before this fix, that single miss
+  // immediately dropped detectedCount below 4, painted that corner red,
+  // and reset scannerStableFrames all the way to 0 — so a genuinely
+  // well-aligned sheet that had 5-6 good ticks in a row before one bad
+  // tick had to start the whole 6-tick streak over from scratch. That is
+  // what reads as "slow to lock" even though the sheet never actually
+  // moved.
+  //
+  // Fix (grace): remember each corner's last-known position for up to
+  // GRACE_MAX_MISS_TICKS consecutive ticks after it stops being detected.
+  // While within that short grace window the corner still counts as
+  // "found" (using its last known position, kept fresh at most ~260ms
+  // old) instead of instantly failing the whole frame. This does NOT
+  // relax what counts as a valid marker — findBlackSquare's own
+  // detection logic (Otsu threshold, rotation-invariant shape test) is
+  // completely unchanged; a corner that's ACTUALLY gone (sheet pulled
+  // away, corner rotated out of frame) still ages out and turns red once
+  // the grace ticks run out.
+  const scannerCornerGrace = {};
+  const GRACE_MAX_MISS_TICKS = 2; // ~2 × 130ms ≈ 260ms of tolerance per corner
+  // Fix (faster trigger): scannerStableFrames required 6 consecutive
+  // ready ticks (~780ms) to fire capture, but the position-averaging
+  // window (EG_MARKER_HISTORY_SIZE, below) only ever keeps the last 4
+  // ready frames anyway — ticks 5 and 6 were pure extra wait with no
+  // extra averaging benefit, since by tick 4 the history is already full
+  // and every later tick just displaces the oldest one out of the
+  // average. Matching the trigger to the window size (4) removes that
+  // dead ~260ms without changing how many frames get averaged into the
+  // final corner position.
+  //
+  // v21: set to 1 tick — capture fires the INSTANT all 4 corners first
+  // read green, no steady-hold wait at all. Explicitly asked for
+  // ("4 corner green hote hi turant scan ho, koi deri na ho"). Trade-off
+  // (see the v21 note further down, right where this constant is used):
+  // with only 1 tick there is nothing left to average or pick-sharpest
+  // from, so a single unlucky frame (mid-blink of hand tremor, one soft
+  // frame) is now captured as-is instead of being smoothed out the way
+  // v7/v8/v10 were originally built to do. If bad captures start
+  // showing up again, raise this back to 3-4 first before touching
+  // anything else.
+  const SCANNER_CAPTURE_TRIGGER_FRAMES = 1;
+
+  function $id(id) { return document.getElementById(id); }
+  function db() { return typeof getDB === "function" ? getDB() : null; }
+
+  // ────────────────────────────────────────────────────────────────
+  // small helpers
+  // ────────────────────────────────────────────────────────────────
+  function currentIsoDate() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  function fmtDateBadge(iso) {
+    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const d = new Date(`${iso || currentIsoDate()}T00:00:00`);
+    if (isNaN(d.getTime())) return { month: "—", day: "—" };
+    return { month: MONTHS[d.getMonth()], day: d.getDate() };
+  }
+
+  function safeFileName(value) {
+    return (value || "exam").toString()
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .slice(0, 80);
+  }
+
+  function downloadBlob(content, type, filename) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function csvCell(value) {
+    return `"${String(value == null ? "" : value).replace(/"/g, '""')}"`;
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // Firestore: load / create / update / delete
+  // ────────────────────────────────────────────────────────────────
+  async function loadExamManagerExams() {
+    const listEl = $id("examgr-list");
+    const database = db();
+    if (!database) {
+      if (listEl) listEl.innerHTML = '<div class="examgr-empty">⚠️ Firebase se connect nahi ho paya — internet check karein.</div>';
+      return;
+    }
+    if (listEl) listEl.innerHTML = '<div class="examgr-empty">⏳ Exams load ho rahe hain...</div>';
+    try {
+      // Multi-tenant: pehle apna instituteId resolve/confirm karo (agar
+      // pehli baar hai to script.js legacy-migration bhi isi ke andar
+      // ek hi baar chala deta hai), phir SIRF apne institute ke exams
+      // query karo — kisi doosre admin ka exam yahan kabhi nahi aayega.
+      const instituteId = (typeof ensureAdminInstituteResolved === "function")
+        ? await ensureAdminInstituteResolved()
+        : null;
+      let snap;
+      if (instituteId) {
+        snap = await database.collection(COLLECTION).where("instituteId", "==", instituteId).get();
+      } else {
+        // instituteId resolve nahi ho paaya (offline/auth issue) — kuch
+        // mat dikhao, taaki galti se kisi aur ka data flash na ho.
+        examMgrExams = {};
+        if (listEl) listEl.innerHTML = '<div class="examgr-empty">⚠️ Aapka institute pehchana nahi gaya — dobara login karke try karein.</div>';
+        return;
+      }
+      examMgrExams = {};
+      snap.forEach(doc => { examMgrExams[doc.id] = doc.data(); });
+      renderExamMgrList();
+    } catch (err) {
+      if (listEl) listEl.innerHTML = `<div class="examgr-empty">⚠️ Exams load nahi ho paye: ${escHtml(err.message || String(err))}</div>`;
+    }
+  }
+  window.loadExamManagerExams = loadExamManagerExams;
+
+  // Lazily loads this exam's scanned results from the scanResults
+  // subcollection (one small doc per result — see the save handler and
+  // the SCAN_SESSION_PERF_FIX notes for why they no longer live in a
+  // single growing array field on the parent doc). Cached on the exam
+  // object after the first load per session (ex._resultsLoaded), and
+  // kept in sync locally on every new scan/edit/delete after that, so
+  // this only ever does one subcollection read per exam per session —
+  // opening Reports/Analysis/CSV repeatedly does NOT re-fetch.
+  async function ensureExamResultsLoaded(id, ex) {
+    if (ex._resultsLoaded) return Array.isArray(ex.results) ? ex.results : [];
+    const database = db();
+    if (!database) return Array.isArray(ex.results) ? ex.results : [];
+    try {
+      const snap = await database.collection(COLLECTION).doc(id).collection("scanResults").get();
+      const byId = new Map();
+      snap.forEach(doc => byId.set(doc.id, doc.data()));
+
+      // One-time migration: an exam scanned before this perf fix still
+      // has its old results sitting in the legacy `results` ARRAY field
+      // on the parent doc (that's exactly what `doc.data()` handed us at
+      // load time, into ex.results, before this function ran). Any of
+      // those not already present as their own scanResults doc get
+      // written out individually here, then the bulky legacy field is
+      // cleared off the parent doc — so it only ever costs one small
+      // migration write, and every scan/edit after that is back to O(1)
+      // regardless of session length, same as a brand-new exam.
+      const legacy = (Array.isArray(ex.results) ? ex.results : []).filter(r => r && r.id && !byId.has(r.id));
+      if (legacy.length) {
+        try {
+          const examRef = database.collection(COLLECTION).doc(id);
+          for (let i = 0; i < legacy.length; i += 400) {
+            const chunk = legacy.slice(i, i + 400);
+            const batch = database.batch();
+            chunk.forEach(r => batch.set(examRef.collection("scanResults").doc(r.id), r));
+            await batch.commit();
+          }
+          await examRef.update({ results: firebase.firestore.FieldValue.delete() });
+        } catch (migrateErr) {
+          // Non-fatal — legacy data still shows up fine via the merge
+          // below either way, just won't be migrated off the parent doc
+          // until a future successful attempt.
+          console.warn("[ensureExamResultsLoaded] legacy migration failed:", migrateErr);
+        }
+        legacy.forEach(r => byId.set(r.id, r));
+      }
+
+      // Keep anything already pushed locally this session (e.g. a scan
+      // that just landed) even if it raced ahead of this fetch.
+      (Array.isArray(ex.results) ? ex.results : []).forEach(r => { if (r && r.id && !byId.has(r.id)) byId.set(r.id, r); });
+      ex.results = Array.from(byId.values());
+      ex._resultsLoaded = true;
+    } catch (err) {
+      console.warn("[ensureExamResultsLoaded] failed:", err);
+      if (!Array.isArray(ex.results)) ex.results = [];
+    }
+    return ex.results;
+  }
+
+  async function createExamManagerExam(fields) {
+    const database = db();
+    if (!database) { alert("Firebase se connect nahi ho paya — internet check karein."); return null; }
+    const id = database.collection(COLLECTION).doc().id;
+    const myInstituteId = (typeof getCurrentAdminInstituteId === "function") ? getCurrentAdminInstituteId() : null;
+    const payload = {
+      examName: fields.examName,
+      className: fields.className || "",
+      classId: fields.classId || null,  // v25: Class Eligibility — SAVYA_CLASS_OPTIONS id
+      date: fields.date,
+      questions: fields.questions,
+      sets: fields.sets,
+      students: fields.students,
+      scanned: 0,
+      answerKey: [],   // legacy single key — used as Set "A"'s key / fallback
+      answerKeys: {},  // { A: [...], B: [...], ... } per-set keys
+      results: [],     // [{id, roll, setLetter, marks, correct, wrong, blank, answers, scannedAt, thumb}]
+      absentees: "",
+      webLink: "",
+      published: false,
+      rollDigits: Math.max(1, Math.min(5, Number(fields.rollDigits) || 2)),
+      ...(myInstituteId ? { instituteId: myInstituteId } : {}),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    try {
+      await database.collection(COLLECTION).doc(id).set(payload);
+      examMgrExams[id] = { ...payload, createdAt: new Date(), updatedAt: new Date() };
+      return id;
+    } catch (err) {
+      alert("Exam save nahi ho paya: " + (err.message || err));
+      return null;
+    }
+  }
+
+  async function updateExamManagerExam(id, patch) {
+    const database = db();
+    if (!database) { alert("Firebase se connect nahi ho paya — internet check karein."); return false; }
+    try {
+      await database.collection(COLLECTION).doc(id).update({
+        ...patch,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      if (examMgrExams[id]) Object.assign(examMgrExams[id], patch);
+      return true;
+    } catch (err) {
+      alert("Save nahi ho paya: " + (err.message || err));
+      return false;
+    }
+  }
+
+  async function incrementExamScanned(id) {
+    const database = db();
+    if (!database) return false;
+    try {
+      await database.collection(COLLECTION).doc(id).update({
+        scanned: firebase.firestore.FieldValue.increment(1),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      if (examMgrExams[id]) examMgrExams[id].scanned = (Number(examMgrExams[id].scanned) || 0) + 1;
+      return true;
+    } catch (err) {
+      alert("Scan count save nahi ho paya: " + (err.message || err));
+      return false;
+    }
+  }
+
+  async function deleteExamManagerExam(id) {
+    const ex = examMgrExams[id];
+    if (!ex) return;
+    if (!confirm(`"${ex.examName || "Ye exam"}" delete karein? Ye wapas nahi aayega.`)) return;
+    const database = db();
+    if (!database) return;
+    try {
+      await database.collection(COLLECTION).doc(id).delete();
+      delete examMgrExams[id];
+      if (examMgrSelectedId === id) examgrCloseDetails(true);
+      renderExamMgrList();
+    } catch (err) {
+      alert("Delete nahi ho paya: " + (err.message || err));
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // list rendering
+  // ────────────────────────────────────────────────────────────────
+  function renderExamMgrList() {
+    const listEl = $id("examgr-list");
+    if (!listEl) return;
+    const ids = Object.keys(examMgrExams);
+    if (!ids.length) {
+      listEl.innerHTML = '<div class="examgr-empty">🗂️ Abhi koi exam nahi bana — "+ Naya Exam Banayein" se shuru karein.</div>';
+      return;
+    }
+    ids.sort((a, b) => {
+      const da = examMgrExams[a].date || "", dbb = examMgrExams[b].date || "";
+      return examMgrSortDesc ? dbb.localeCompare(da) : da.localeCompare(dbb);
+    });
+    listEl.innerHTML = ids.map(id => {
+      const ex = examMgrExams[id];
+      const d = fmtDateBadge(ex.date);
+      const scanned = Number(ex.scanned) || 0;
+      const students = Number(ex.students) || 0;
+      return `<div class="examgr-card">
+        <div class="examgr-card-main" data-open="${id}" role="button" tabindex="0">
+          <div class="examgr-date-badge"><span>${d.month}</span><strong>${d.day}</strong></div>
+          <div class="examgr-card-body">
+            <div class="examgr-card-top">
+              <span class="examgr-card-name">${escHtml(ex.examName || "Untitled Exam")}</span>
+              ${ex.published ? '<span class="examgr-pub-badge">✅ Published</span>' : ""}
+            </div>
+            ${ex.className ? `<span class="examgr-card-class">Class: ${escHtml(ex.className)}</span>` : ""}
+            <div class="examgr-card-stats">
+              <span>📝 ${Number(ex.questions) || 0}Q</span>
+              <span>📚 ${Number(ex.sets) || 1} set${(Number(ex.sets) || 1) > 1 ? "s" : ""}</span>
+              <span>👥 ${scanned}/${students} scanned</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="examgr-delete-btn" data-delete="${id}" aria-label="Delete exam" title="Delete">🗑️</button>
+      </div>`;
+    }).join("");
+  }
+
+  $id("examgr-list")?.addEventListener("click", (e) => {
+    const delBtn = e.target.closest("[data-delete]");
+    if (delBtn) { deleteExamManagerExam(delBtn.dataset.delete); return; }
+    const openEl = e.target.closest("[data-open]");
+    if (openEl) examgrOpenDetails(openEl.dataset.open);
+  });
+
+  $id("examgr-sort-btn")?.addEventListener("click", () => {
+    examMgrSortDesc = !examMgrSortDesc;
+    $id("examgr-sort-btn").textContent = examMgrSortDesc ? "⇅ Newest first" : "⇅ Oldest first";
+    renderExamMgrList();
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // Add New Exam
+  // ────────────────────────────────────────────────────────────────
+  function examgrOpenAdd() {
+    $id("examgr-add-name").value = "";
+    $id("examgr-add-class").value = "";
+    $id("examgr-add-date").value = currentIsoDate();
+    $id("examgr-add-questions").value = "100";
+    $id("examgr-add-sets").value = "1";
+    $id("examgr-add-students").value = "10";
+    if ($id("examgr-add-roll-digits")) $id("examgr-add-roll-digits").value = "2";
+    examgrPopulateClassIdDropdown();
+    $id("examgr-add-overlay")?.classList.remove("hidden");
+    $id("examgr-add-name")?.focus();
+  }
+  window.examgrOpenAdd = examgrOpenAdd;
+
+  // ── Class Eligibility (v25) ────────────────────────────────────────
+  // Dropdown sirf is admin ke institute ki allowedClasses se populate
+  // hota hai (SAVYA_CLASS_OPTIONS — owner-panel.js — list ka sirf wahi
+  // hissa jo allowed hai). allowedClasses null ho (backward-compat,
+  // purana institute) to poori list dikha do. Firestore rules mein bhi
+  // yahi check server-side dobara hota hai — dropdown chhupana hi
+  // kaafi nahi (master-prompt Rule 14).
+  function examgrPopulateClassIdDropdown() {
+    const sel = $id("examgr-add-classid");
+    if (!sel) return;
+    const allOptions = (window.SAVYA_CLASS_OPTIONS || [{ id: "class_10", label: "Class 10" }]);
+    const allowed = (typeof getCurrentAdminAllowedClasses === "function") ? getCurrentAdminAllowedClasses() : null;
+    const options = allowed ? allOptions.filter(c => allowed.includes(c.id)) : allOptions;
+    const finalOptions = options.length ? options : allOptions; // safety net — kabhi khaali select na ho
+    sel.innerHTML = finalOptions.map(c => `<option value="${c.id}">${escHtml(c.label)}</option>`).join("");
+    // Default: Class 10 agar list mein hai, warna pehla option.
+    sel.value = finalOptions.some(c => c.id === "class_10") ? "class_10" : (finalOptions[0]?.id || "");
+    // Sirf 1 hi option ho to dropdown ki zaroorat nahi — kam friction ke
+    // liye chhupa dete hain (value phir bhi save hoti rehti hai).
+    const row = $id("examgr-add-classid-row");
+    if (row) row.style.display = finalOptions.length > 1 ? "" : "none";
+  }
+
+  function examgrCloseAdd() {
+    $id("examgr-add-overlay")?.classList.add("hidden");
+  }
+  window.examgrCloseAdd = examgrCloseAdd;
+
+  $id("examgr-add-save-btn")?.addEventListener("click", async () => {
+    const examName = ($id("examgr-add-name").value || "").trim();
+    const className = ($id("examgr-add-class").value || "").trim();
+    const classId = ($id("examgr-add-classid")?.value || "").trim() || null;
+    const date = $id("examgr-add-date").value || currentIsoDate();
+    let questions = parseInt($id("examgr-add-questions").value, 10) || 0;
+    let sets = parseInt($id("examgr-add-sets").value, 10) || 1;
+    let students = parseInt($id("examgr-add-students").value, 10) || 0;
+    let rollDigits = parseInt($id("examgr-add-roll-digits")?.value, 10) || 2;
+
+    if (!examName) { alert("Exam ka naam likhein."); return; }
+    questions = Math.max(1, Math.min(MAX_QUESTIONS, questions));
+    sets = Math.max(1, Math.min(SET_LETTERS.length, sets));
+    students = Math.max(0, students);
+    rollDigits = Math.max(1, Math.min(5, rollDigits));
+
+    const btn = $id("examgr-add-save-btn");
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "⏳ Save ho raha hai...";
+    const id = await createExamManagerExam({ examName, className, classId, date, questions, sets, students, rollDigits });
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+
+    if (id) {
+      examgrCloseAdd();
+      renderExamMgrList();
+      examgrOpenDetails(id);
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // Exam Details sheet
+  // ────────────────────────────────────────────────────────────────
+  function examgrOpenDetails(id) {
+    if (!examMgrExams[id]) return;
+    examMgrSelectedId = id;
+    examgrShowNotice("");
+    renderExamMgrDetails();
+    $id("examgr-details-overlay")?.classList.remove("hidden");
+  }
+
+  function renderExamMgrDetails() {
+    const ex = examMgrExams[examMgrSelectedId];
+    if (!ex) return;
+    const d = fmtDateBadge(ex.date);
+    $id("examgr-d-month").textContent = d.month;
+    $id("examgr-d-day").textContent = d.day;
+    $id("examgr-d-name").textContent = ex.examName || "Untitled Exam";
+    $id("examgr-d-class").textContent = ex.className ? `Class: ${ex.className}` : (ex.date || "");
+    const scanned = Number(ex.scanned) || 0;
+    const students = Number(ex.students) || 0;
+    $id("examgr-d-scanned-text").textContent = `${scanned}/${students} sheets scanned`;
+    const pct = students > 0 ? Math.min(100, Math.round((scanned / students) * 100)) : 0;
+    $id("examgr-d-progress").style.width = pct + "%";
+    $id("examgr-d-questions").textContent = Number(ex.questions) || 0;
+    $id("examgr-d-sets").textContent = Number(ex.sets) || 1;
+  }
+
+  function examgrCloseDetails(skipRefresh) {
+    $id("examgr-details-overlay")?.classList.add("hidden");
+    examgrShowNotice("");
+    if (!skipRefresh) renderExamMgrList();
+  }
+  window.examgrCloseDetails = examgrCloseDetails;
+
+  let examgrNoticeTimer = null;
+  function examgrShowNotice(msg) {
+    const el = $id("examgr-d-notice");
+    if (!el) return;
+    clearTimeout(examgrNoticeTimer);
+    if (!msg) { el.hidden = true; el.textContent = ""; return; }
+    el.hidden = false;
+    el.textContent = msg;
+  }
+
+  $id("examgr-delete-btn")?.addEventListener("click", () => {
+    if (examMgrSelectedId) deleteExamManagerExam(examMgrSelectedId);
+  });
+
+  document.querySelectorAll("#examgr-details-overlay [data-action]").forEach(btn => {
+    btn.addEventListener("click", () => handleExamMgrAction(btn.dataset.action));
+  });
+
+  async function handleExamMgrAction(action) {
+    const id = examMgrSelectedId;
+    const ex = examMgrExams[id];
+    if (!ex) return;
+
+    if (action === "answer-key") {
+      examgrOpenAnswerKey();
+    } else if (action === "scan-sheet") {
+      examgrOpenScanner();
+    } else if (action === "omr-sheet") {
+      examgrOpenOmrSheet();
+    } else if (action === "exam-settings") {
+      const val = window.prompt("Is exam mein kitne questions hain? (max 100)", String(ex.questions || 0));
+      if (val === null) return;
+      const n = parseInt(val, 10);
+      if (!Number.isInteger(n) || n < 1) { examgrShowNotice("⚠️ Sahi number bharein (1-100)."); return; }
+      const setsVal = window.prompt(`Kitne Sets hain? (A–E, max ${SET_LETTERS.length})`, String(ex.sets || 1));
+      if (setsVal === null) return;
+      const setsN = parseInt(setsVal, 10);
+      if (!Number.isInteger(setsN) || setsN < 1 || setsN > SET_LETTERS.length) { examgrShowNotice(`⚠️ Sahi number bharein (1-${SET_LETTERS.length}).`); return; }
+      const rollVal = window.prompt("Roll No sheet par kitne digit ke bubble columns hon? (1-5)", String(ex.rollDigits || 2));
+      if (rollVal === null) return;
+      const rollN = parseInt(rollVal, 10);
+      if (!Number.isInteger(rollN) || rollN < 1 || rollN > 5) { examgrShowNotice("⚠️ Sahi number bharein (1-5)."); return; }
+      updateExamManagerExam(id, { questions: Math.min(MAX_QUESTIONS, n), sets: setsN, rollDigits: rollN }).then(ok => {
+        if (ok) { renderExamMgrDetails(); renderExamMgrList(); examgrShowNotice("✅ Settings save ho gayi. (Roll No/Sets badalne ke baad OMR/Bubble Sheet dobara print karein.)"); }
+      });
+    } else if (action === "web-features") {
+      const val = window.prompt("Is exam ke liye web link daalein:", ex.webLink || "");
+      if (val === null) return;
+      updateExamManagerExam(id, { webLink: val.trim() }).then(ok => { if (ok) examgrShowNotice("✅ Web link save ho gaya."); });
+    } else if (action === "view-reports") {
+      await examgrOpenReports();
+    } else if (action === "download-excel") {
+      await examgrDownloadCsv(ex);
+    } else if (action === "analysis") {
+      await examgrOpenAnalysis();
+    } else if (action === "publish") {
+      updateExamManagerExam(id, { published: true }).then(ok => { if (ok) { renderExamMgrDetails(); examgrShowNotice("🚀 Exam publish ho gaya."); } });
+    } else if (action === "absentees") {
+      const val = window.prompt("Absent students ke naam, comma se separate karke likhein:", ex.absentees || "");
+      if (val === null) return;
+      updateExamManagerExam(id, { absentees: val.trim() }).then(ok => { if (ok) examgrShowNotice("✅ Absentees save ho gaye."); });
+    }
+  }
+
+  async function examgrDownloadCsv(ex) {
+    await ensureExamResultsLoaded(examMgrSelectedId, ex);
+    const rows = [
+      ["Exam Name", "Class", "Date", "Questions", "Sets", "Scanned", "Students", "Absentees", "Published"],
+      [ex.examName || "", ex.className || "", ex.date || "", ex.questions || 0, ex.sets || 1, ex.scanned || 0, ex.students || 0, ex.absentees || "", ex.published ? "Yes" : "No"]
+    ];
+    const results = Array.isArray(ex.results) ? ex.results.slice() : [];
+    if (results.length) {
+      results.sort((a, b) => (Number(b.marks) || 0) - (Number(a.marks) || 0));
+      rows.push([]);
+      const qCount = Math.max(1, Math.min(MAX_QUESTIONS, Number(ex.questions) || 0));
+      const qHeaders = Array.from({ length: qCount }, (_, i) => `Q${i + 1}`);
+      rows.push(["Roll No", "Set", "Marks", "Correct", "Wrong", "Blank", "Scanned At", ...qHeaders]);
+      results.forEach(r => {
+        const ans = Array.isArray(r.answers) ? r.answers : [];
+        const answerCells = Array.from({ length: qCount }, (_, i) => (ans[i] == null ? "" : ans[i]));
+        rows.push([
+          r.roll || "—", r.setLetter || "—", (Number(r.marks) || 0).toFixed(1),
+          r.correct || 0, r.wrong || 0, r.blank || 0,
+          r.scannedAt ? new Date(r.scannedAt).toLocaleString() : "",
+          ...answerCells
+        ]);
+      });
+    }
+    const csv = rows.map(r => r.map(csvCell).join(",")).join("\n");
+    downloadBlob(csv, "text/csv;charset=utf-8", safeFileName(ex.examName) + (results.length ? "-results.csv" : "-summary.csv"));
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // Answer Key (manual bubble entry) — one key per Set (A–E). Single-set
+  // exams just always use Set "A", and that key doubles up as the legacy
+  // "answerKey" field so older saved exams keep working unchanged.
+  // ────────────────────────────────────────────────────────────────
+  function examgrGetAnswerKeyArray(ex, setLetter) {
+    const count = Math.max(1, Math.min(MAX_QUESTIONS, Number(ex.questions) || MAX_QUESTIONS));
+    const fromSets = ex.answerKeys && Array.isArray(ex.answerKeys[setLetter]) ? ex.answerKeys[setLetter] : null;
+    // Fall back to the legacy single key for Set A (or if no per-set key saved yet)
+    const saved = fromSets || ((setLetter === "A" || !fromSets) && Array.isArray(ex.answerKey) ? ex.answerKey : []) || [];
+    const arr = new Array(count).fill(null);
+    for (let i = 0; i < count; i++) {
+      const val = saved[i];
+      if (OPTION_LETTERS.includes(val)) arr[i] = val;
+    }
+    return arr;
+  }
+
+  // Resolve the answer key that should actually be used for grading a
+  // scanned sheet whose Exam Set bubble came out as `setLetter` (may be
+  // null if that bubble wasn't marked/detected).
+  function examgrResolveAnswerKeyForGrading(ex, setLetter) {
+    if (setLetter && ex.answerKeys && Array.isArray(ex.answerKeys[setLetter]) && ex.answerKeys[setLetter].some(v => v)) {
+      return examgrGetAnswerKeyArray(ex, setLetter);
+    }
+    // No usable per-set key for the detected set (or no set detected) —
+    // fall back to Set A / the legacy single key, which is what a
+    // single-set exam always uses.
+    return examgrGetAnswerKeyArray(ex, "A");
+  }
+
+  function examgrRenderAnswerKeyTabs(ex) {
+    const wrap = $id("examgr-akey-tabs");
+    if (!wrap) return;
+    const setsCount = Math.max(1, Math.min(SET_LETTERS.length, Number(ex.sets) || 1));
+    if (setsCount <= 1) { wrap.innerHTML = ""; wrap.hidden = true; return; }
+    wrap.hidden = false;
+    wrap.innerHTML = SET_LETTERS.slice(0, setsCount).map(letter =>
+      `<button type="button" class="examgr-akey-tab${akeySelectedSet === letter ? " selected" : ""}" data-set="${letter}">Set ${letter}</button>`
+    ).join("");
+  }
+
+  function examgrRenderAnswerKeyList() {
+    const listEl = $id("examgr-akey-list");
+    if (!listEl) return;
+    listEl.innerHTML = akeyDraft.map((val, i) => {
+      const opts = OPTION_LETTERS.map(letter =>
+        `<button type="button" class="examgr-akey-opt${val === letter ? " selected" : ""}" data-q="${i}" data-letter="${letter}" aria-pressed="${val === letter}">${letter}</button>`
+      ).join("");
+      return `<div class="examgr-akey-row"><span class="examgr-akey-qnum">${i + 1}</span>${opts}</div>`;
+    }).join("");
+  }
+
+  function examgrHasUnsavedAkeyChanges() {
+    return akeyDraft.some((v, i) => v !== akeyOriginal[i]);
+  }
+
+  function examgrLoadAnswerKeyForSet(setLetter) {
+    const ex = examMgrExams[examMgrSelectedId];
+    if (!ex) return;
+    akeySelectedSet = setLetter;
+    akeyDraft = examgrGetAnswerKeyArray(ex, setLetter);
+    akeyOriginal = akeyDraft.slice();
+    const sub = $id("examgr-akey-sub");
+    const setsCount = Math.max(1, Math.min(SET_LETTERS.length, Number(ex.sets) || 1));
+    if (sub) sub.textContent = `${ex.examName || "Exam"}${setsCount > 1 ? " — Set " + setLetter : ""} — ${akeyDraft.length} questions. Sahi option par click karein.`;
+    examgrRenderAnswerKeyTabs(ex);
+    examgrRenderAnswerKeyList();
+  }
+
+  function examgrOpenAnswerKey() {
+    const ex = examMgrExams[examMgrSelectedId];
+    if (!ex) return;
+    examgrLoadAnswerKeyForSet("A");
+    $id("examgr-details-overlay")?.classList.add("hidden");
+    $id("examgr-akey-overlay")?.classList.remove("hidden");
+  }
+
+  function examgrCloseAnswerKey(force) {
+    if (!force && examgrHasUnsavedAkeyChanges()) {
+      if (!confirm("Answer key mein kiye gaye changes save nahi hue hain. Discard karke wapas jaayein?")) return;
+    }
+    $id("examgr-akey-overlay")?.classList.add("hidden");
+    $id("examgr-details-overlay")?.classList.remove("hidden");
+  }
+  window.examgrCloseAnswerKey = examgrCloseAnswerKey;
+
+  $id("examgr-akey-tabs")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-set]");
+    if (!btn) return;
+    if (examgrHasUnsavedAkeyChanges()) {
+      if (!confirm(`Set ${akeySelectedSet} ke changes save nahi hue. Discard karke Set ${btn.dataset.set} par jaayein?`)) return;
+    }
+    examgrLoadAnswerKeyForSet(btn.dataset.set);
+  });
+
+  $id("examgr-akey-reset-btn")?.addEventListener("click", () => {
+    akeyDraft = akeyDraft.map(() => null);
+    examgrRenderAnswerKeyList();
+  });
+
+  $id("examgr-akey-save-btn")?.addEventListener("click", async () => {
+    const id = examMgrSelectedId;
+    const ex = examMgrExams[id];
+    if (!id || !ex) return;
+    const btn = $id("examgr-akey-save-btn");
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "⏳ Save ho raha hai...";
+    const answerKeys = { ...(ex.answerKeys || {}), [akeySelectedSet]: akeyDraft.slice() };
+    const patch = { answerKeys };
+    // Keep the legacy single-key field mirrored to Set A so older code
+    // paths (and the "no set detected" grading fallback) keep working.
+    if (akeySelectedSet === "A") patch.answerKey = akeyDraft.slice();
+    const ok = await updateExamManagerExam(id, patch);
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+    if (ok) {
+      akeyOriginal = akeyDraft.slice();
+      examgrCloseAnswerKey(true);
+      examgrShowNotice(`✅ Set ${akeySelectedSet} ki Answer Key saved.`);
+    }
+  });
+
+  $id("examgr-akey-list")?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".examgr-akey-opt");
+    if (!btn) return;
+    const q = Number(btn.dataset.q);
+    const letter = btn.dataset.letter;
+    const newVal = akeyDraft[q] === letter ? null : letter;
+    akeyDraft[q] = newVal;
+    const row = btn.closest(".examgr-akey-row");
+    row.querySelectorAll(".examgr-akey-opt").forEach(optBtn => {
+      const isSelected = optBtn.dataset.letter === newVal;
+      optBtn.classList.toggle("selected", isSelected);
+      optBtn.setAttribute("aria-pressed", String(isSelected));
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // OMR / Bubble Sheet — fixed 100-question / 5-column printable layout
+  // (geometry matches the physical sheet used for "Scan Sheet" corner
+  // detection below, so a printed copy lines up correctly)
+  // ────────────────────────────────────────────────────────────────
+  const OMR_CANVAS_SIZE = { width: 1203, height: 1536 };
+  const OMR_MARKER_XS = [105, 345, 585, 825, 1065];
+  const OMR_MARKER_YS = [195, 345, 495, 645, 795, 945, 1095, 1245, 1395];
+
+  // v22: NAME write-in box — the header box already prints "NAME :" at
+  // (110, 78) inside the left header cell (box spans x:99-595, y:49-94;
+  // see examgrBuildSheetCanvas below). This is the blank area to the
+  // RIGHT of that label where a student actually writes their name by
+  // hand, in the SAME OMR_CANVAS_SIZE coordinate space scannerCaptureCanvas
+  // is warped to — so this rectangle can be cropped straight out of a
+  // captured scan without any extra alignment work of its own; it rides
+  // on the exact same 4-corner homography every bubble already uses.
+  const OMR_NAME_BOX = { x: 175, y: 52, width: 415, height: 40 };
+
+  // Exam Set (A–E) bubble row — sits in the gap between the header box
+  // (ends y=141) and the Roll No block (starts y=199). Registered here
+  // (not just drawn) so the scanner can read back which bubble got
+  // marked, the same way question/roll bubbles are registered below.
+  const EXAM_SET_Y = { label: 150, header: 168, bubble: 186 };
+  const EXAM_SET_CENTERS = [167, 201, 235, 269, 303];
+  const OMR_COLUMN_SPECS = [
+    {
+      qRight: 164, subjectCenter: 235, subjectTop: 558, sectionTop: 589,
+      optionCenters: [190, 220, 250, 280, 310],
+      groups: [
+        { headerY: 620, rowStart: 655, count: 5 },
+        { headerY: 800, rowStart: 835, count: 5 },
+        { headerY: 980, rowStart: 1015, count: 5 },
+        { headerY: 1160, rowStart: 1195, count: 8 }
+      ]
+    },
+    {
+      qRight: 404, optionCenters: [430, 460, 490, 520, 550],
+      groups: [
+        { headerY: 200, rowStart: 235, count: 7 },
+        { headerY: 440, rowStart: 475, count: 5 },
+        { headerY: 620, rowStart: 655, count: 5 },
+        { headerY: 800, rowStart: 835, count: 5 },
+        { headerY: 980, rowStart: 1015, count: 5 },
+        { headerY: 1160, rowStart: 1195, count: 8 }
+      ]
+    },
+    {
+      qRight: 644, optionCenters: [670, 700, 730, 760, 790],
+      groups: [
+        { headerY: 200, rowStart: 235, count: 7 },
+        { headerY: 440, rowStart: 475, count: 5 },
+        { headerY: 620, rowStart: 655, count: 5 },
+        { headerY: 800, rowStart: 835, count: 5 },
+        { headerY: 980, rowStart: 1015, count: 5 },
+        { headerY: 1160, rowStart: 1195, count: 8 }
+      ]
+    },
+    {
+      qRight: 884, optionCenters: [910, 940, 970, 1000, 1030],
+      groups: [{ headerY: 200, rowStart: 235, count: 7 }]
+    }
+  ];
+  // 4 outer-corner registration squares the scanner looks for while
+  // collecting sheets. Both the HTML preview (egMarkers, via egBoxStyle)
+  // and the printed PDF (doc.rect(mmPos(x), mmPos(y), mmPos(20), mmPos(20)))
+  // draw each 20x20 marker square with its TOP-LEFT corner at
+  // (OMR_MARKER_XS[i], OMR_MARKER_YS[j]) — so the square's true CENTER,
+  // which is what the scanner's blob detector locks onto in the photo
+  // (see the "x + minX + componentWidth / 2" center-of-mass calculation
+  // above), is (x + 10, y + 10), not (x, y).
+  //
+  // These were previously hand-tuned to slightly different values
+  // (116.26/207.16/1086.74/1419.79) that did NOT match that true center,
+  // and by a DIFFERENT amount on each corner (left columns off by ~1.3px,
+  // right columns by ~11.7px; top rows by ~2.2px, bottom rows by
+  // ~14.8px). Because this is the template-space reference the
+  // scan-time homography is solved against, feeding it a corner that
+  // doesn't match where that corner is actually printed distorts the
+  // whole warp — every bubble on the flattened sheet lands off by an
+  // amount that grows toward the bottom-right, exactly matching the
+  // "circle/dot doesn't sit on the bubble" symptom. Using the true
+  // geometric centers here removes that distortion.
+  const OMR_SCAN_MARKERS = {
+    "top-left": { x: 115, y: 205 },
+    "top-right": { x: 1075, y: 205 },
+    "bottom-left": { x: 115, y: 1405 },
+    "bottom-right": { x: 1075, y: 1405 }
+  };
+
+  const egPx = v => `${v.toFixed(3)}px`;
+  function egBoxStyle(l, t, w, h) { return `left:${egPx(l)};top:${egPx(t)};width:${egPx(w)};height:${egPx(h)};`; }
+  function egTextStyle(l, t, w, extra) { return `left:${egPx(l)};top:${egPx(t)};${w == null ? "" : `width:${egPx(w)};`}${extra || ""}`; }
+
+  function egCenterText(text, centerX, top, width) {
+    const half = width == null ? 0 : width / 2;
+    const transform = width == null ? "transform:translateX(-50%);" : "text-align:center;transform:none;";
+    return `<div class="examgr-omr-text examgr-omr-center" style="${egTextStyle(centerX - half, top, width, transform)}">${escHtml(text)}</div>`;
+  }
+  function egRightText(text, right, top, width) {
+    width = width || 48;
+    return `<div class="examgr-omr-text" style="${egTextStyle(right - width, top, width, "text-align:right;")}">${escHtml(String(text))}</div>`;
+  }
+  function egSmallCenterText(text, centerX, top) {
+    return `<div class="examgr-omr-text examgr-omr-center examgr-omr-small" style="${egTextStyle(centerX, top, null, "transform:translateX(-50%);")}">${escHtml(text)}</div>`;
+  }
+  function egBubble(cx, cy) {
+    return `<span class="examgr-omr-bubble" style="${egBoxStyle(cx - 11, cy - 11, 22, 22)}"></span>`;
+  }
+  function egMarkers() {
+    return OMR_MARKER_YS.map(y => OMR_MARKER_XS.map(x => `<span class="examgr-omr-marker" style="${egBoxStyle(x, y, 20, 20)}"></span>`).join("")).join("");
+  }
+  function egHeader(ex) {
+    const examText = `EXAM : ${ex.examName || ""}`;
+    const dateClassText = `DATE : ${ex.date || ""}     CLASS : ${ex.className || ""}`;
+    return `<div class="examgr-omr-header-box" style="${egBoxStyle(99, 49, 992, 92)}">
+      <div class="examgr-omr-header-line" style="top:0;height:${egPx(45)};">
+        <div class="examgr-omr-header-cell">NAME :</div>
+        <div class="examgr-omr-header-cell">${escHtml(examText)}</div>
+      </div>
+      <div class="examgr-omr-header-line" style="top:${egPx(45)};height:${egPx(47)};">
+        <div class="examgr-omr-header-cell">${escHtml(dateClassText)}</div>
+      </div>
+    </div>`;
+  }
+  function egRollBlock(rollDigitsCount) {
+    const rollDigits = Math.max(1, Math.min(5, Number(rollDigitsCount) || 5));
+    const rollCenters = [190, 220, 250, 280, 310].slice(0, rollDigits);
+    let html = egCenterText("Roll No", 250, 199, 100);
+    for (let i = 0; i < rollDigits; i++) {
+      html += `<span class="examgr-omr-roll-digit" style="${egBoxStyle(175 + i * 30, 220, 30, 30)}"></span>`;
+      html += egCenterText(String(i + 1), 175 + i * 30 + 15, 227, 30);
+    }
+    for (let d = 0; d <= 9; d++) {
+      const cy = 265 + d * 30;
+      html += egRightText(d, 166, cy - 9, 32);
+      html += rollCenters.map(cx => egBubble(cx, cy)).join("");
+    }
+    return html;
+  }
+
+  // "Exam Set" A–E row — one bubble per set letter, read back after
+  // scanning to know which Set's Answer Key to grade this sheet against.
+  // Always prints all 5 (even for a 1-set exam) so a printed sheet never
+  // goes stale if Settings later raises the Set count.
+  function egExamSetBlock() {
+    let html = egCenterText("Exam Set", 235, EXAM_SET_Y.label, 180);
+    html += SET_LETTERS.map((letter, i) => egSmallCenterText(letter, EXAM_SET_CENTERS[i], EXAM_SET_Y.header)).join("");
+    html += EXAM_SET_CENTERS.map(cx => egBubble(cx, EXAM_SET_Y.bubble)).join("");
+    return html;
+  }
+  function egOptionHeader(col, headerY) {
+    return OPTION_LETTERS.map((label, i) => egSmallCenterText(label, col.optionCenters[i], headerY)).join("");
+  }
+  function egQuestionRow(col, centerY, qNumber) {
+    return egRightText(qNumber, col.qRight, centerY - 9, 52) +
+      OPTION_LETTERS.map((_, i) => egBubble(col.optionCenters[i], centerY)).join("");
+  }
+
+  function examgrBuildSheetHtml(ex) {
+    const total = Math.max(1, Math.min(MAX_QUESTIONS, Number(ex.questions) || MAX_QUESTIONS));
+    let itemIndex = 0;
+    let html = egHeader(ex) + egMarkers() + egExamSetBlock() + egRollBlock(ex.rollDigits);
+    html += egCenterText(ex.examName || "Exam", OMR_COLUMN_SPECS[0].subjectCenter, OMR_COLUMN_SPECS[0].subjectTop, 150);
+    html += egCenterText(ex.className || "", OMR_COLUMN_SPECS[0].subjectCenter, OMR_COLUMN_SPECS[0].sectionTop, 150);
+    OMR_COLUMN_SPECS.forEach(col => {
+      col.groups.forEach(group => {
+        if (itemIndex >= total) return;
+        html += egOptionHeader(col, group.headerY);
+        for (let r = 0; r < group.count && itemIndex < total; r++) {
+          const cy = group.rowStart + r * 30;
+          html += egQuestionRow(col, cy, itemIndex + 1);
+          itemIndex++;
+        }
+      });
+    });
+    return `<div class="examgr-omr-sheet" style="width:${OMR_CANVAS_SIZE.width}px;height:${OMR_CANVAS_SIZE.height}px;">${html}</div>`;
+  }
+
+  const EXAMGR_SHEET_CSS = `
+.examgr-omr-sheet{position:relative;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;overflow:hidden;}
+.examgr-omr-sheet *{box-sizing:border-box;}
+.examgr-omr-sheet,.examgr-omr-sheet *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.examgr-omr-header-box{position:absolute;border:1.6px solid #333;color:#000;background:#fff;}
+.examgr-omr-header-line{position:absolute;left:0;right:0;display:flex;border-bottom:1.6px solid #333;}
+.examgr-omr-header-line:last-child{border-bottom:none;}
+.examgr-omr-header-cell{flex:1;padding:11px 10px 0;font-size:24px;line-height:1;color:#000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.examgr-omr-header-cell + .examgr-omr-header-cell{border-left:1.6px solid #333;}
+.examgr-omr-marker{position:absolute;width:20px;height:20px;background:#000;border:1px solid #000;}
+.examgr-omr-text{position:absolute;color:#111;font-size:18px;line-height:1;font-weight:400;white-space:nowrap;}
+.examgr-omr-small{font-size:17px;}
+.examgr-omr-center{text-align:center;transform:translateX(-50%);}
+.examgr-omr-roll-digit{position:absolute;width:30px;height:30px;border:2px solid #333;background:#fff;}
+.examgr-omr-bubble{position:absolute;width:22px;height:22px;border:1.7px solid #222;border-radius:50%;background:#fff;}`;
+
+  function examgrOpenOmrSheet() {
+    const ex = examMgrExams[examMgrSelectedId];
+    if (!ex) return;
+    const preview = $id("examgr-sheet-preview");
+    if (preview) preview.innerHTML = examgrBuildSheetHtml(ex);
+    $id("examgr-details-overlay")?.classList.add("hidden");
+    $id("examgr-sheet-overlay")?.classList.remove("hidden");
+  }
+
+  function examgrCloseOmrSheet() {
+    $id("examgr-sheet-overlay")?.classList.add("hidden");
+    $id("examgr-details-overlay")?.classList.remove("hidden");
+  }
+  window.examgrCloseOmrSheet = examgrCloseOmrSheet;
+
+  window.examgrBuildSheetHtml = examgrBuildSheetHtml;
+
+  /* ── OMR Sheet → JPG (direct canvas draw, no html2canvas) ─────────
+     Same reasoning as the PDF generator below: rasterizing the HTML
+     preview via html2canvas is the documented "blank/partial canvas
+     on phones" failure mode, so this draws straight onto a <canvas>
+     with the 2D drawing API instead — nothing to render blank, and
+     the geometry (OMR_CANVAS_SIZE / OMR_MARKER_XS / OMR_COLUMN_SPECS)
+     is reused as-is from the on-screen preview + scanner, so the JPG
+     lines up with the scanner exactly like the preview does.
+     Exposed on window so the per-Test "Generate OMR Sheet" screen
+     (omr.js) can download this SAME sheet for a linked test. ────── */
+  const OMR_JPG_SCALE = 2; // 2x resolution for a crisp print/scan
+
+  function examgrBuildSheetCanvas(ex) {
+    const canvas = document.createElement("canvas");
+    canvas.width = OMR_CANVAS_SIZE.width * OMR_JPG_SCALE;
+    canvas.height = OMR_CANVAS_SIZE.height * OMR_JPG_SCALE;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(OMR_JPG_SCALE, OMR_JPG_SCALE);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, OMR_CANVAS_SIZE.width, OMR_CANVAS_SIZE.height);
+    ctx.fillStyle = "#000";
+    ctx.strokeStyle = "#000";
+
+    // corner-registration markers (solid black squares)
+    OMR_MARKER_YS.forEach(y => OMR_MARKER_XS.forEach(x => ctx.fillRect(x, y, 20, 20)));
+
+    // header box: NAME / EXAM row + DATE/CLASS row
+    ctx.lineWidth = 1.6;
+    ctx.strokeRect(99, 49, 992, 92);
+    ctx.beginPath(); ctx.moveTo(99, 94); ctx.lineTo(1091, 94); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(595, 49); ctx.lineTo(595, 94); ctx.stroke();
+    ctx.textAlign = "left";
+    ctx.font = "24px Arial";
+    ctx.fillText("NAME :", 110, 78);
+    ctx.fillText(`EXAM : ${ex.examName || ""}`, 605, 78);
+    ctx.fillText(`DATE : ${ex.date || ""}     CLASS : ${ex.className || ""}`, 110, 123);
+
+    ctx.textAlign = "center";
+    ctx.font = "bold 30px Arial";
+    ctx.fillText("SnapTest Pro — OMR ANSWER SHEET", OMR_CANVAS_SIZE.width / 2, 34);
+
+    // Exam Set (A–E) row
+    ctx.font = "18px Arial";
+    ctx.fillText("Exam Set", 235, EXAM_SET_Y.label + 10);
+    ctx.font = "16px Arial";
+    SET_LETTERS.forEach((letter, i) => ctx.fillText(letter, EXAM_SET_CENTERS[i], EXAM_SET_Y.header + 4));
+    ctx.lineWidth = 1.7;
+    EXAM_SET_CENTERS.forEach(cx => { ctx.beginPath(); ctx.arc(cx, EXAM_SET_Y.bubble, 11, 0, 2 * Math.PI); ctx.stroke(); });
+
+    // Roll No block
+    const rollDigits = Math.max(1, Math.min(5, Number(ex.rollDigits) || 5));
+    const rollCenters = [190, 220, 250, 280, 310].slice(0, rollDigits);
+    ctx.font = "18px Arial";
+    ctx.fillText("Roll No", 250, 212);
+    ctx.lineWidth = 2;
+    for (let i = 0; i < rollDigits; i++) {
+      ctx.strokeRect(175 + i * 30, 220, 30, 30);
+      ctx.font = "16px Arial";
+      ctx.fillText(String(i + 1), 175 + i * 30 + 15, 239);
+    }
+    ctx.font = "17px Arial";
+    for (let d = 0; d <= 9; d++) {
+      const cy = 265 + d * 30;
+      ctx.textAlign = "right";
+      ctx.fillText(String(d), 166, cy + 4);
+      ctx.textAlign = "center";
+      ctx.lineWidth = 1.7;
+      rollCenters.forEach(cx => { ctx.beginPath(); ctx.arc(cx, cy, 11, 0, 2 * Math.PI); ctx.stroke(); });
+    }
+
+    // Exam name / class under column 0
+    ctx.font = "17px Arial";
+    ctx.fillText(ex.examName || "Exam", OMR_COLUMN_SPECS[0].subjectCenter, OMR_COLUMN_SPECS[0].subjectTop + 8);
+    ctx.fillText(ex.className || "", OMR_COLUMN_SPECS[0].subjectCenter, OMR_COLUMN_SPECS[0].sectionTop + 8);
+
+    // Question grid
+    const total = Math.max(1, Math.min(MAX_QUESTIONS, Number(ex.questions) || MAX_QUESTIONS));
+    let itemIndex = 0;
+    OMR_COLUMN_SPECS.forEach(col => {
+      col.groups.forEach(group => {
+        if (itemIndex >= total) return;
+        ctx.font = "16px Arial";
+        OPTION_LETTERS.forEach((label, i) => ctx.fillText(label, col.optionCenters[i], group.headerY + 4));
+        for (let r = 0; r < group.count && itemIndex < total; r++) {
+          const cy = group.rowStart + r * 30;
+          itemIndex++;
+          ctx.textAlign = "right";
+          ctx.font = "18px Arial";
+          ctx.fillText(String(itemIndex), col.qRight, cy + 4);
+          ctx.textAlign = "center";
+          ctx.lineWidth = 1.7;
+          OPTION_LETTERS.forEach((_, i) => { ctx.beginPath(); ctx.arc(col.optionCenters[i], cy, 11, 0, 2 * Math.PI); ctx.stroke(); });
+        }
+      });
+    });
+
+    return canvas;
+  }
+
+  function examgrBuildSheetJpgBlob(ex) {
+    return new Promise((resolve, reject) => {
+      try {
+        const canvas = examgrBuildSheetCanvas(ex);
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("JPG banane mein dikkat aayi.")), "image/jpeg", 0.92);
+      } catch (err) { reject(err); }
+    });
+  }
+  window.examgrBuildSheetJpgBlob = examgrBuildSheetJpgBlob;
+
+  async function examgrDownloadSheetJpg(ex, filenameBase) {
+    const blob = await examgrBuildSheetJpgBlob(ex);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = safeFileName(filenameBase || ex.examName || "omr") + "-omr-sheet.jpg";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  window.examgrDownloadSheetJpg = examgrDownloadSheetJpg;
+
+  $id("examgr-sheet-jpg-btn")?.addEventListener("click", async () => {
+    const ex = examMgrExams[examMgrSelectedId];
+    if (!ex) return;
+    const btn = $id("examgr-sheet-jpg-btn");
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "⏳ JPG Bana Rahe Hain...";
+    try {
+      await examgrDownloadSheetJpg(ex);
+    } catch (err) {
+      alert("JPG banane mein dikkat aayi: " + (err && err.message ? err.message : err));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
+  });
+
+  /* ── OMR Sheet → real PDF (vector, no html2canvas) ────────────────
+     NOTE: this used to render examgrBuildSheetHtml() into an off-screen
+     div and rasterize it via html2pdf (html2canvas → jsPDF). That
+     pipeline is exactly the "large blank gaps" / unreliable-capture
+     problem already documented and fixed in omr.js's OMR sheet
+     generator — html2canvas has to paint a huge (~2400x3000px at
+     scale:2) off-screen canvas, which silently produces a blank/partial
+     canvas on many phones (low memory → the canvas context allocation
+     fails quietly instead of throwing), and jsPDF's blob-download
+     trick that html2pdf's .save() relies on is unreliable on mobile
+     Safari/Chrome, which is why the download didn't even start there.
+
+     Fix: draw the sheet directly as PDF vector shapes (rects for the
+     header box/markers, circles for bubbles, text for labels) with
+     jsPDF's own drawing API — no HTML, no canvas rasterization, so
+     there is nothing that can render blank and the output file is a
+     few KB instead of a multi-megabyte rasterized image. All layout
+     numbers are reused as-is from OMR_CANVAS_SIZE/OMR_COLUMN_SPECS
+     (same source the on-screen preview and the scanner calibration
+     use), just uniformly scaled from px → mm to fit one A4 page, so
+     corner-marker/bubble geometry stays exactly proportional to what
+     the scanner already expects. ─────────────────────────────────── */
+
+  // Scale the 1203×1536 "px" layout down to fit an A4 page width
+  // (210mm), preserving aspect ratio so bubbles stay circular and the
+  // corner markers keep the same relative geometry the scanner uses.
+  const OMR_PDF_PAGE_MM = { width: 210, height: 297 };
+  const OMR_PX_TO_MM = OMR_PDF_PAGE_MM.width / OMR_CANVAS_SIZE.width;
+  const mmPos = px => px * OMR_PX_TO_MM;
+  // jsPDF font sizes are always in pt regardless of document unit.
+  const pxFontToPt = px => px * OMR_PX_TO_MM * 2.834645669;
+
+  // Slow/mobile connections sometimes click the button before the
+  // deferred jsPDF <script> tag has finished downloading. Instead of
+  // failing immediately, wait briefly for it to show up.
+  function waitForJsPdf(timeoutMs) {
+    return new Promise(resolve => {
+      if (window.jspdf && window.jspdf.jsPDF) return resolve(window.jspdf.jsPDF);
+      const start = Date.now();
+      const iv = setInterval(() => {
+        if (window.jspdf && window.jspdf.jsPDF) {
+          clearInterval(iv);
+          resolve(window.jspdf.jsPDF);
+        } else if (Date.now() - start > timeoutMs) {
+          clearInterval(iv);
+          resolve(null);
+        }
+      }, 150);
+    });
+  }
+
+  async function examgrBuildSheetPdf(ex) {
+    const jsPDF = await waitForJsPdf(6000);
+    if (!jsPDF) throw new Error("PDF library abhi load nahi ho payi — internet check karke page reload karein.");
+    const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+    doc.setDrawColor(40, 40, 40);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "normal");
+
+    // corner-registration markers (solid black squares)
+    doc.setFillColor(0, 0, 0);
+    OMR_MARKER_YS.forEach(y => OMR_MARKER_XS.forEach(x => {
+      doc.rect(mmPos(x), mmPos(y), mmPos(20), mmPos(20), "F");
+    }));
+
+    // header box: NAME / EXAM row + DATE/CLASS row
+    doc.setLineWidth(0.3);
+    doc.rect(mmPos(99), mmPos(49), mmPos(992), mmPos(92)); // outer box
+    doc.line(mmPos(99), mmPos(94), mmPos(1091), mmPos(94)); // row divider
+    doc.line(mmPos(595), mmPos(49), mmPos(595), mmPos(94)); // NAME/EXAM divider
+    doc.setFontSize(pxFontToPt(15));
+    doc.text(`NAME :`, mmPos(110), mmPos(78));
+    doc.text(`EXAM : ${ex.examName || ""}`, mmPos(605), mmPos(78));
+    doc.text(`DATE : ${ex.date || ""}     CLASS : ${ex.className || ""}`, mmPos(110), mmPos(123));
+
+    doc.setFontSize(pxFontToPt(24));
+    doc.text("SnapTest Pro — OMR ANSWER SHEET", mmPos(OMR_CANVAS_SIZE.width / 2), mmPos(30), { align: "center" });
+
+    // Exam Set (A–E) row
+    doc.setFontSize(pxFontToPt(14));
+    doc.text("Exam Set", mmPos(235), mmPos(EXAM_SET_Y.label + 8), { align: "center" });
+    doc.setFontSize(pxFontToPt(12));
+    SET_LETTERS.forEach((letter, i) => doc.text(letter, mmPos(EXAM_SET_CENTERS[i]), mmPos(EXAM_SET_Y.header + 3), { align: "center" }));
+    doc.setLineWidth(0.2);
+    EXAM_SET_CENTERS.forEach(cx => doc.circle(mmPos(cx), mmPos(EXAM_SET_Y.bubble), mmPos(11)));
+
+    // Roll No block
+    const rollDigits = Math.max(1, Math.min(5, Number(ex.rollDigits) || 5));
+    const rollCenters = [190, 220, 250, 280, 310].slice(0, rollDigits);
+    doc.setFontSize(pxFontToPt(14));
+    doc.text("Roll No", mmPos(250), mmPos(208), { align: "center" });
+    doc.setLineWidth(0.25);
+    for (let i = 0; i < rollDigits; i++) {
+      doc.rect(mmPos(175 + i * 30), mmPos(220), mmPos(30), mmPos(30));
+      doc.setFontSize(pxFontToPt(12));
+      doc.text(String(i + 1), mmPos(175 + i * 30 + 15), mmPos(220 + 19), { align: "center" });
+    }
+    doc.setFontSize(pxFontToPt(13));
+    for (let d = 0; d <= 9; d++) {
+      const cy = 265 + d * 30;
+      doc.text(String(d), mmPos(166), mmPos(cy + 3), { align: "right" });
+      rollCenters.forEach(cx => doc.circle(mmPos(cx), mmPos(cy), mmPos(11)));
+    }
+
+    // Exam name / class under column 0
+    doc.setFontSize(pxFontToPt(13));
+    doc.text(ex.examName || "Exam", mmPos(OMR_COLUMN_SPECS[0].subjectCenter), mmPos(OMR_COLUMN_SPECS[0].subjectTop + 8), { align: "center" });
+    doc.text(ex.className || "", mmPos(OMR_COLUMN_SPECS[0].subjectCenter), mmPos(OMR_COLUMN_SPECS[0].sectionTop + 8), { align: "center" });
+
+    // Question grid
+    const total = Math.max(1, Math.min(MAX_QUESTIONS, Number(ex.questions) || MAX_QUESTIONS));
+    let itemIndex = 0;
+    OMR_COLUMN_SPECS.forEach(col => {
+      col.groups.forEach(group => {
+        if (itemIndex >= total) return;
+        doc.setFontSize(pxFontToPt(12));
+        OPTION_LETTERS.forEach((label, i) => doc.text(label, mmPos(col.optionCenters[i]), mmPos(group.headerY + 3), { align: "center" }));
+        for (let r = 0; r < group.count && itemIndex < total; r++) {
+          const cy = group.rowStart + r * 30;
+          itemIndex++;
+          doc.setFontSize(pxFontToPt(14));
+          doc.text(String(itemIndex), mmPos(col.qRight), mmPos(cy + 3), { align: "right" });
+          doc.setLineWidth(0.2);
+          OPTION_LETTERS.forEach((_, i) => doc.circle(mmPos(col.optionCenters[i]), mmPos(cy), mmPos(11)));
+        }
+      });
+    });
+
+    return doc;
+  }
+
+  $id("examgr-sheet-pdf-btn")?.addEventListener("click", async () => {
+    const ex = examMgrExams[examMgrSelectedId];
+    if (!ex) return;
+    const btn = $id("examgr-sheet-pdf-btn");
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "⏳ PDF Bana Rahe Hain...";
+    try {
+      const doc = await examgrBuildSheetPdf(ex);
+      doc.save(safeFileName(ex.examName || "omr") + "-omr-sheet.pdf");
+    } catch (err) {
+      alert("PDF banane mein dikkat aayi: " + (err && err.message ? err.message : err));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // GRADING ENGINE — reads bubbles off a captured, corner-aligned photo
+  // (a canvas already sized/warped to exactly OMR_CANVAS_SIZE, the same
+  // coordinate space egRollBlock/egExamSetBlock/OMR_COLUMN_SPECS print
+  // into) and scores it against the exam's Answer Key. Self-contained —
+  // does not depend on omr.js — but uses the same proven approach as
+  // that module's pixel-darkness scanner: convert to grayscale, estimate
+  // the sheet's OWN local paper-white level (so unfilled bubbles read as
+  // "blank" even under a shadow/warm light), and call a bubble "marked"
+  // when it's darker than its local white level by a clear margin.
+  // ────────────────────────────────────────────────────────────────
+  function egToGrayscale(ctx, w, h) {
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const gray = new Float32Array(w * h);
+    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+      gray[p] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+    }
+    return gray;
+  }
+
+  // Desaturates a captured photo IN PLACE (R=G=B=luminance) right after
+  // capture, before anything else ever reads or displays it. An OMR
+  // sheet is pure black/white by design, but phone camera video frames
+  // are YUV 4:2:0 under the hood (colour sampled at 1/4 the resolution
+  // of brightness) — small, ultra-sharp features like the 20px
+  // registration squares are exactly the kind of high-contrast edge
+  // that chroma-subsampling smears a stray blue/purple tint onto, even
+  // though the paper and printed ink are genuinely neutral black. That
+  // shows up as a blue patch on registration squares (and sometimes
+  // bubbles) in the saved/reviewed photo — cosmetic only (grading
+  // already reads darkness via egToGrayscale, unaffected either way)
+  // but it looks like a bug and erodes trust in the scan. Stripping
+  // colour from the pristine raw capture once, up front, guarantees the
+  // review photo, the saved photo, and every re-paint after Edit are
+  // all clean true-grayscale with zero colour cast — the coloured
+  // green/red/gold grading dots are painted AFTER this, on top, so they
+  // stay fully vivid.
+  function egDesaturateCanvas(canvas) {
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width, h = canvas.height;
+    if (!w || !h) return;
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      data[i] = data[i + 1] = data[i + 2] = lum;
+    }
+    ctx.putImageData(imgData, 0, 0);
+  }
+
+  function egLerp(a, b, t) { return a + (b - a) * t; }
+
+  // ────────────────────────────────────────────────────────────────
+  // PERSPECTIVE CORRECTION (homography)
+  //
+  // A hand-held phone is almost never held perfectly parallel to the
+  // sheet. Even a small tilt makes one edge of the paper sit further from
+  // the camera than the other ("keystoning"), so the 4 printed corner
+  // markers form a skewed quadrilateral in the video frame — never a
+  // clean rectangle. Averaging the 4 corners into one rectangle and doing
+  // a single axis-aligned scale/crop (the old approach) is only correct
+  // when the phone is dead flat; with any real tilt it quietly shifts
+  // every bubble's true pixel position, by an amount that grows with
+  // distance from the corners. That's why the same physical sheet could
+  // read a different Roll No / miss a different option on every attempt
+  // in testing — each hand-held attempt has a slightly different tilt, so
+  // a different set of bubbles drifts far enough to fall outside its
+  // sampling circle.
+  //
+  // Fix: solve the full 3×3 projective transform (homography) from the 4
+  // marker correspondences, then warp the whole frame through it. This
+  // makes every bubble land at (very close to) the exact pixel the print
+  // template expects, regardless of camera tilt/rotation/keystone.
+  // ────────────────────────────────────────────────────────────────
+
+  // Solves H (3x3, row-major, h[8]=1) such that H·[x,y,1]ᵀ ≈ w·[X,Y,1]ᵀ for
+  // 4 point correspondences src_i → dst_i. Straightforward 8-unknown
+  // linear system (Gaussian elimination, partial pivoting) — exact for 4
+  // non-degenerate points, no least-squares needed.
+  function egSolveLinear8(A, b) {
+    const n = 8;
+    const M = A.map((row, i) => row.concat([b[i]]));
+    for (let col = 0; col < n; col++) {
+      let pivot = col;
+      for (let r = col + 1; r < n; r++) { if (Math.abs(M[r][col]) > Math.abs(M[pivot][col])) pivot = r; }
+      if (pivot !== col) { const tmp = M[col]; M[col] = M[pivot]; M[pivot] = tmp; }
+      const pv = M[col][col];
+      if (Math.abs(pv) < 1e-9) return null; // degenerate marker layout — caller falls back
+      for (let r = 0; r < n; r++) {
+        if (r === col) continue;
+        const factor = M[r][col] / pv;
+        if (factor === 0) continue;
+        for (let c = col; c <= n; c++) M[r][c] -= factor * M[col][c];
+      }
+    }
+    return M.map((row, i) => row[n] / row[i]);
+  }
+
+  function egComputeHomography(src, dst) {
+    const A = [], b = [];
+    for (let i = 0; i < 4; i++) {
+      const { x, y } = src[i], X = dst[i].x, Y = dst[i].y;
+      A.push([x, y, 1, 0, 0, 0, -x * X, -y * X]); b.push(X);
+      A.push([0, 0, 0, x, y, 1, -x * Y, -y * Y]); b.push(Y);
+    }
+    const h = egSolveLinear8(A, b);
+    return h ? [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1] : null;
+  }
+
+  function egApplyHomography(H, x, y) {
+    const w = H[6] * x + H[7] * y + H[8];
+    return { x: (H[0] * x + H[1] * y + H[2]) / w, y: (H[3] * x + H[4] * y + H[5]) / w };
+  }
+
+  // Warps sourceCanvas onto a new dstSize canvas using the homography
+  // that maps templateQuad → videoQuad (both [top-left, top-right,
+  // bottom-left, bottom-right]). Walks the OUTPUT pixel-by-pixel
+  // (backward mapping, so there are no holes) and bilinearly samples the
+  // source — smooth edges matter here because the darkness sampling
+  // downstream is sensitive to jagged/aliased ink edges.
+  // Falls back to a plain non-perspective (best-fit affine-ish) copy if
+  // the 4 markers are degenerate (near-collinear) so a capture never hard
+  // fails just because the homography solve couldn't run.
+  //
+  // PERF FIX: this used to only produce the warped colour canvas, and the
+  // caller then ran TWO MORE full-canvas passes over that same
+  // 1203×1536 image — egDesaturateCanvas (getImageData, loop,
+  // putImageData) and examgrDetectFromCanvas's egToGrayscale
+  // (getImageData, loop) — to get the same information this loop is
+  // already computing pixel-by-pixel right here. On a mid/low-end phone,
+  // 3 full-buffer getImageData/putImageData round trips per capture
+  // (instead of 1) is a big chunk of why "Scan Sheet" could freeze the
+  // whole page for a noticeable stretch on every single attempt. Now this
+  // loop ALSO desaturates in place (R=G=B=luminance, same 0.299/0.587/
+  // 0.114 weights egDesaturateCanvas and egToGrayscale already used, so
+  // the output is numerically identical either way) and builds the
+  // Float32Array grayscale buffer the grading engine needs — both "for
+  // free" while every output pixel is already being touched. Returns
+  // { canvas, gray } instead of just a canvas; gray is null only on the
+  // rare degenerate-homography fallback below, in which case the caller
+  // falls back to computing it the old way.
+  function egWarpPerspective(sourceCanvas, videoQuad, templateQuad, dstSize) {
+    const sw = sourceCanvas.width, sh = sourceCanvas.height;
+    const sctx = sourceCanvas.getContext("2d", { willReadFrequently: true });
+    const srcData = sctx.getImageData(0, 0, sw, sh).data;
+
+    const H = egComputeHomography(templateQuad, videoQuad);
+    const out = document.createElement("canvas");
+    out.width = dstSize.width; out.height = dstSize.height;
+    const octx = out.getContext("2d");
+
+    if (!H) {
+      // Degenerate fallback: same simple rectangle scale as before, better
+      // than throwing the capture away entirely. Rare enough path (near-
+      // collinear markers) that it isn't worth fusing — just desaturate
+      // the old way and let the caller compute gray separately.
+      const left = (videoQuad[0].x + videoQuad[2].x) / 2, right = (videoQuad[1].x + videoQuad[3].x) / 2;
+      const top = (videoQuad[0].y + videoQuad[1].y) / 2, bottom = (videoQuad[2].y + videoQuad[3].y) / 2;
+      const scaleX = (right - left) / (templateQuad[1].x - templateQuad[0].x);
+      const scaleY = (bottom - top) / (templateQuad[2].y - templateQuad[0].y);
+      const sx0 = left - templateQuad[0].x * scaleX, sy0 = top - templateQuad[0].y * scaleY;
+      octx.drawImage(sourceCanvas, sx0, sy0, dstSize.width * scaleX, dstSize.height * scaleY, 0, 0, dstSize.width, dstSize.height);
+      egDesaturateCanvas(out);
+      return { canvas: out, gray: null };
+    }
+
+    // Homography math inlined (not via egApplyHomography) and no
+    // per-pixel object allocation — this loop runs ~1.85M times for a
+    // full-resolution sheet, and avoiding GC churn here keeps a single
+    // capture's processing pause well under a second on a mid-range phone.
+    const [h0, h1, h2, h3, h4, h5, h6, h7, h8] = H;
+    const outImg = octx.createImageData(dstSize.width, dstSize.height);
+    const outData = outImg.data;
+    const gray = new Float32Array(dstSize.width * dstSize.height);
+    let di = 0, gi = 0;
+    for (let Y = 0; Y < dstSize.height; Y++) {
+      for (let X = 0; X < dstSize.width; X++, di += 4, gi++) {
+        const wDen = h6 * X + h7 * Y + h8;
+        const sx = (h0 * X + h1 * Y + h2) / wDen;
+        const sy = (h3 * X + h4 * Y + h5) / wDen;
+        if (sx < 0 || sy < 0 || sx >= sw - 1 || sy >= sh - 1) {
+          outData[di] = outData[di + 1] = outData[di + 2] = 255; outData[di + 3] = 255;
+          gray[gi] = 255;
+          continue;
+        }
+        const x0 = sx | 0, y0 = sy | 0;
+        const fx = sx - x0, fy = sy - y0;
+        const i00 = (y0 * sw + x0) * 4, i10 = i00 + 4;
+        const i01 = i00 + sw * 4, i11 = i01 + 4;
+        const ifx = 1 - fx, ify = 1 - fy;
+        const r = (srcData[i00]     * ifx + srcData[i10]     * fx) * ify + (srcData[i01]     * ifx + srcData[i11]     * fx) * fy;
+        const g = (srcData[i00 + 1] * ifx + srcData[i10 + 1] * fx) * ify + (srcData[i01 + 1] * ifx + srcData[i11 + 1] * fx) * fy;
+        const b = (srcData[i00 + 2] * ifx + srcData[i10 + 2] * fx) * ify + (srcData[i01 + 2] * ifx + srcData[i11 + 2] * fx) * fy;
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        outData[di] = outData[di + 1] = outData[di + 2] = lum;
+        outData[di + 3] = 255;
+        gray[gi] = lum;
+      }
+    }
+    octx.putImageData(outImg, 0, 0);
+    return { canvas: out, gray };
+  }
+
+  // Coarse grid of LOCAL white levels across the photo (handles a shadow
+  // or angled light making one side of the sheet darker than the other),
+  // bilinear-interpolated so any bubble can look up its own nearby
+  // paper-white value instead of one number for the whole sheet.
+  //
+  // excludePoints (optional): every registered bubble centre. WHY: the
+  // old version estimated "paper white" straight from raw pixels with no
+  // idea where bubbles are. A bin that happens to contain several bold or
+  // enlarged filled bubbles close together (e.g. Exam Set + Roll No +
+  // Q1-4, which all sit in the same top-left bin on this layout) feeds
+  // its own extra dark pixels into its OWN white estimate, pulling that
+  // bin's "white" down. Every bubble judged against that bin then reads
+  // less dark than it really is — and the biggest, boldest mark in the
+  // bin contributes the most extra dark pixels, so it's the one most
+  // likely to sabotage its own reference and get read as blank. Skipping
+  // a small disk around every known bubble centre while building the
+  // percentile keeps the estimate anchored to actual blank paper,
+  // independent of how big or dark any one mark is.
+  function egWhiteLevelField(gray, w, h, binsX, binsY, excludePoints, excludeRadius) {
+    binsX = binsX || 5; binsY = binsY || 7;
+    excludePoints = excludePoints || [];
+    excludeRadius = excludeRadius || 0;
+    const exR2 = excludeRadius * excludeRadius;
+    const field = [];
+    const binW = Math.ceil(w / binsX), binH = Math.ceil(h / binsY);
+    for (let by = 0; by < binsY; by++) {
+      const row = [];
+      for (let bx = 0; bx < binsX; bx++) {
+        const x0 = bx * binW, x1 = Math.min(w, x0 + binW);
+        const y0 = by * binH, y1 = Math.min(h, y0 + binH);
+        // Only the bubbles that could possibly fall in (or near) THIS bin
+        // need checking per sample — keeps this from being an O(samples ×
+        // all bubbles) scan on a sheet with hundreds of bubbles.
+        const localExcludes = excludePoints.length ? excludePoints.filter(p =>
+          p.x >= x0 - excludeRadius && p.x <= x1 + excludeRadius &&
+          p.y >= y0 - excludeRadius && p.y <= y1 + excludeRadius
+        ) : [];
+        const samples = [];
+        for (let y = y0; y < y1; y += 3) {
+          for (let x = x0; x < x1; x += 3) {
+            if (localExcludes.length) {
+              let skip = false;
+              for (let i = 0; i < localExcludes.length; i++) {
+                const dx = x - localExcludes[i].x, dy = y - localExcludes[i].y;
+                if (dx * dx + dy * dy <= exR2) { skip = true; break; }
+              }
+              if (skip) continue;
+            }
+            samples.push(gray[y * w + x]);
+          }
+        }
+        samples.sort((a, b) => a - b);
+        row.push(samples.length ? samples[Math.floor(samples.length * 0.85)] : 200);
+      }
+      field.push(row);
+    }
+    // Single scalar summary of this capture's overall paper-white level
+    // (median across every bin) — see EG_REFERENCE_WHITE below for why
+    // this matters: it's what the mark-detection thresholds get scaled
+    // against so a brighter/dimmer photo of the exact same physical sheet
+    // still reads the exact same marks.
+    const flatWhites = field.flat().slice().sort((a, b) => a - b);
+    const median = flatWhites.length ? flatWhites[Math.floor(flatWhites.length / 2)] : 200;
+    return {
+      median,
+      at(x, y) {
+        const fx = Math.min(binsX - 1, Math.max(0, x / binW - 0.5));
+        const fy = Math.min(binsY - 1, Math.max(0, y / binH - 0.5));
+        const x0 = Math.floor(fx), y0 = Math.floor(fy);
+        const x1 = Math.min(binsX - 1, x0 + 1), y1 = Math.min(binsY - 1, y0 + 1);
+        const tx = fx - x0, ty = fy - y0;
+        const top = egLerp(field[y0][x0], field[y0][x1], tx);
+        const bot = egLerp(field[y1][x0], field[y1][x1], tx);
+        return egLerp(top, bot, ty);
+      }
+    };
+  }
+
+  // Robust "how dark is this bubble" measure — takes a PERCENTILE of the
+  // sampled disk's pixel values, not the mean. WHY: a plain mean gets
+  // diluted the moment the sample circle isn't perfectly centred on the
+  // ink (a few pixels of drift is normal even after perspective
+  // correction) or when the mark is bigger/bolder than the printed circle
+  // and only partially overlaps a small fixed sample disk — exactly the
+  // pattern behind bold, clearly-filled bubbles intermittently reading as
+  // blank. The 40th percentile is forgiving: as long as roughly 40% of
+  // the sampled disk sits on ink, the score reads fully dark, regardless
+  // of where the "extra" ink from a bold/oversized mark spills over to.
+  // A genuinely blank bubble has ~0% ink in the disk either way, so this
+  // doesn't introduce false positives.
+  function egSampleFillScore(gray, w, h, cx, cy, radius) {
+    const r2 = radius * radius;
+    const vals = [];
+    for (let dy = -radius; dy <= radius; dy++) {
+      const yy = Math.round(cy + dy);
+      if (yy < 0 || yy >= h) continue;
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx + dy * dy > r2) continue;
+        const xx = Math.round(cx + dx);
+        if (xx < 0 || xx >= w) continue;
+        vals.push(gray[yy * w + xx]);
+      }
+    }
+    if (!vals.length) return 255;
+    vals.sort((a, b) => a - b);
+    return vals[Math.floor(vals.length * 0.40)];
+  }
+
+  // Every bubble this sheet layout can have, in the SAME 1203×1536 pixel
+  // space the printable sheet is drawn in — single source of truth so
+  // printing and reading can never drift apart.
+  function examgrBubbleMap(ex) {
+    const total = Math.max(1, Math.min(MAX_QUESTIONS, Number(ex.questions) || MAX_QUESTIONS));
+    const rollDigits = Math.max(1, Math.min(5, Number(ex.rollDigits) || 2));
+    const rollCenters = [190, 220, 250, 280, 310].slice(0, rollDigits);
+
+    const setBubbles = SET_LETTERS.map((letter, i) => ({ letter, x: EXAM_SET_CENTERS[i], y: EXAM_SET_Y.bubble }));
+
+    const rollColumns = rollCenters.map(cx => {
+      const digits = [];
+      for (let d = 0; d <= 9; d++) digits.push({ digit: d, x: cx, y: 265 + d * 30 });
+      return digits;
+    });
+
+    const questionBubbles = {}; // qNum -> [{opt:0..3, x, y}]
+    let itemIndex = 0;
+    OMR_COLUMN_SPECS.forEach(col => {
+      col.groups.forEach(group => {
+        if (itemIndex >= total) return;
+        for (let r = 0; r < group.count && itemIndex < total; r++) {
+          const cy = group.rowStart + r * 30;
+          itemIndex++;
+          questionBubbles[itemIndex] = OPTION_LETTERS.map((_, i) => ({ opt: i, x: col.optionCenters[i], y: cy }));
+        }
+      });
+    });
+
+    return { setBubbles, rollColumns, questionBubbles, totalQuestions: total };
+  }
+
+  const EG_MARK_THRESHOLD = 42;   // "dark enough to count as marked", relative to local white
+  // ────────────────────────────────────────────────────────────────
+  // v13: EXPOSURE-ADAPTIVE THRESHOLDS
+  //
+  // Reported bug: scanning the exact same physical sheet twice in a row
+  // (no pen touched it between attempts) produced wildly different marks
+  // /roll numbers each time. Root cause: EG_MARK_THRESHOLD and the
+  // EG_CORE_* constants below are ABSOLUTE pixel-brightness deltas
+  // (whiteField.at(x,y) - inkSample). whiteField already adapts to
+  // lighting that varies ACROSS one photo (a shadow on one side), but a
+  // phone's auto-exposure/auto-ISO also varies the OVERALL brightness
+  // BETWEEN separate captures of the same sheet — one attempt a little
+  // brighter, the next a little dimmer/flatter. Ink doesn't get darker
+  // in a linear 1:1 way with the paper around it as exposure shifts (the
+  // camera's tone curve and sensor black-level offset aren't perfectly
+  // proportional), so a fixed 42-pixel gap that comfortably cleared the
+  // threshold in a bright capture can quietly fall just under it in a
+  // dimmer one of the SAME mark — flipping filled bubbles to "blank" (or
+  // vice-versa for near-threshold faint marks) purely because of that
+  // capture's exposure, not anything the student did.
+  //
+  // Fix: scale every one of these absolute thresholds by how this
+  // capture's own measured paper-white (whiteField.median, computed once
+  // per capture) compares to a fixed calibration baseline. A dimmer
+  // capture (lower median white) gets proportionally LOWER thresholds —
+  // it takes less of an absolute pixel gap to count as "ink" when the
+  // whole photo is darker to begin with — so the same physical mark
+  // keeps reading the same way regardless of which capture's exposure
+  // happened to land closer to daylight or closer to a dim room.
+  // ────────────────────────────────────────────────────────────────
+  const EG_REFERENCE_WHITE = 210; // typical paper-white reading calibrated against, in decent light
+  const EG_MIN_EXPOSURE_SCALE = 0.45; // never scale thresholds down more than this (guards against a near-black misread photo making EVERYTHING look "marked")
+  const EG_MAX_EXPOSURE_SCALE = 1.15; // ...or up more than this, for an unusually bright/overexposed capture
+  // Printed bubbles are ~22px wide (radius 11 — see the `doc.circle(...,
+  // mmPos(11))` in the PDF export above) with a 1.7px ring stroke, so the
+  // ring's own ink starts at radius ~10.15. Sample radius kept at 9 (not
+  // pushed back up to 11) so the sample disk always stays a little inside
+  // that ring, leaving a bit more headroom than radius-10 did against a
+  // few px of residual scan misalignment, while still comfortably
+  // covering genuine ink (nearly always well inside the ring, not hugging
+  // its edge) and staying under the 15px half-spacing so it can never
+  // bleed into a neighbour bubble.
+  const EG_BUBBLE_RADIUS = 9;
+  // Small inner-only radius used for two things below: (a) a genuinely
+  // filled bubble must ALSO show real ink dead-centre, not just broad
+  // coverage — a review of a captured scan showed the gold "detected"
+  // dot lighting up a completely BLANK bubble, most likely because
+  // something OTHER than a real fill (the printed ring's own edge, a
+  // nearby label letter, a shadow) happened to cover enough of the wider
+  // sample disk to look dark on average, while the bubble's true centre
+  // was untouched paper. A genuine pencil/pen fill darkens the centre
+  // every time; a boundary/text/shadow artefact usually doesn't. (b) a
+  // fallback "faint mark" read (see pickBest) for a light dot/tick that
+  // never covers enough of the full bubble to pass the broad check at all.
+  const EG_CORE_RADIUS = 4;
+  const EG_CORE_MIN_FOR_CONFIDENT = 20; // even a normal full mark must clear this at the centre
+  const EG_CORE_THRESHOLD = 55;   // faint-mark fallback: require genuinely solid ink in that core
+  const EG_CORE_MARGIN = 15;      // ...and clearly darker than this question's other options
+  // How far out to blank a bubble from the white-level reference — a
+  // little larger than the sample radius so ink that overflows the
+  // printed circle can't leak into its own "paper white" baseline either.
+  const EG_WHITE_EXCLUDE_RADIUS = 13;
+
+  // Reads every registered bubble off the captured canvas and returns the
+  // raw detection (no right/wrong judgement yet — that's examgrGradeSheet).
+  // precomputedGray (optional): the Float32Array grayscale buffer
+  // egWarpPerspective already built while warping this exact capture —
+  // when present, skips ANOTHER full-canvas getImageData pass over the
+  // same pixels (see the perf note on egWarpPerspective). Falls back to
+  // reading it from the canvas itself (the old behaviour) when absent —
+  // e.g. the rare degenerate-homography path, or any future caller that
+  // doesn't have a warp-time buffer handy.
+  // v16: LOCAL PAPER-REGISTRATION correction, on top of the existing
+  // 4-corner perspective warp.
+  //
+  // The printed sheet actually carries a full 5x9 = 45-point grid of
+  // small black squares (OMR_MARKER_XS x OMR_MARKER_YS — the 4 extreme
+  // corners of that grid ARE the same 4 corners the live scanner already
+  // homographs against). Until now, detection only ever looked at those
+  // 4 outer corners; the other 41 were printed but never read back.
+  //
+  // A single 4-point perspective transform is only exact if the sheet is
+  // perfectly FLAT. A real paper sheet handled by a student (folded to
+  // fit a bag, creased down the middle, slightly curled) is not flat —
+  // it's gently bent in 3-D — so the same 4-corner math that lines up
+  // the corners correctly can still drift a few pixels off target
+  // further from those corners, worst right at a crease. That drift is
+  // exactly the "circle sometimes lands above/below the real bubble"
+  // symptom, and it gets worse toward the middle of the sheet, not
+  // better — matching a folded/creased sheet precisely.
+  //
+  // Fix: after the global warp, re-detect each of the 41 INTERNAL marker
+  // squares near where the template says it should be, measure how far
+  // off each one actually landed, and use that scattered set of local
+  // "here's exactly how far the paper drifted AT THIS POINT" measurements
+  // to nudge every bubble's sampling position — inverse-distance-weighted
+  // from the nearest few real measurements, so the correction tracks
+  // local paper warp instead of one rigid whole-sheet number. If too few
+  // markers are found (heavy crop, very poor photo) this backs off to
+  // zero correction rather than risk a wild guess.
+  function findLocalMarkerOffset(ctx, expectedX, expectedY, w, h) {
+    // v19: widened from 26/18 — a marker near a crease or the far edge of
+    // an angled photo can drift further than 18px off its template spot
+    // even after the global warp; markers are still 150-240px apart, so a
+    // 24px cap (search window comfortably larger than that) is still far
+    // from confusable with a neighbouring marker.
+    const winHalf = 32;
+    const region = { x: expectedX - winHalf, y: expectedY - winHalf, width: winHalf * 2, height: winHalf * 2 };
+    const found = findBlackSquare(ctx, region, w, h);
+    if (!found) return null;
+    const dx = found.x - expectedX, dy = found.y - expectedY;
+    const maxOffset = 24;
+    if (Math.abs(dx) > maxOffset || Math.abs(dy) > maxOffset) return null;
+    return { ax: found.x, ay: found.y, ex: expectedX, ey: expectedY, dx, dy };
+  }
+
+  function egBuildLocalRegistrationField(ctx, w, h) {
+    const found = [];
+    const missed = []; // expected-but-not-found markers, kept purely so the
+    // overlay can show exactly which squares scanning could NOT use (see
+    // examgrPaintOverlay) — helps spot a glare/shadow/crop patch at a glance.
+    OMR_MARKER_YS.forEach(y => OMR_MARKER_XS.forEach(x => {
+      const ex = x + 10, ey = y + 10;
+      const off = findLocalMarkerOffset(ctx, ex, ey, w, h);
+      if (off) found.push(off); else missed.push({ ex, ey });
+    }));
+    const MIN_POINTS = 8; // need a real spread before trusting local correction — otherwise zero correction (old behaviour) is safer than extrapolating from a handful of points
+    if (found.length < MIN_POINTS) {
+      return { active: false, points: found, missed, at: () => ({ dx: 0, dy: 0 }) };
+    }
+    return {
+      active: true,
+      points: found,
+      missed,
+      at(x, y) {
+        let wSum = 0, dxSum = 0, dySum = 0;
+        for (let i = 0; i < found.length; i++) {
+          const p = found[i];
+          const ddx = x - p.ex, ddy = y - p.ey;
+          const d2 = ddx * ddx + ddy * ddy;
+          if (d2 < 1) return { dx: p.dx, dy: p.dy };
+          const wgt = 1 / d2; // nearer markers dominate — keeps the correction local, not a global average
+          wSum += wgt; dxSum += p.dx * wgt; dySum += p.dy * wgt;
+        }
+        return wSum ? { dx: dxSum / wSum, dy: dySum / wSum } : { dx: 0, dy: 0 };
+      }
+    };
+
+  }
+
+  function examgrDetectFromCanvas(canvas, ex, precomputedGray) {
+    const w = canvas.width, h = canvas.height;
+    const gray = precomputedGray || egToGrayscale(canvas.getContext("2d", { willReadFrequently: true }), w, h);
+    const map = examgrBubbleMap(ex);
+
+    const regField = egBuildLocalRegistrationField(canvas.getContext("2d", { willReadFrequently: true }), w, h);
+    if (regField.active) {
+      const applyOffset = b => { const o = regField.at(b.x, b.y); b.x += o.dx; b.y += o.dy; };
+      map.setBubbles.forEach(applyOffset);
+      map.rollColumns.forEach(col => col.forEach(applyOffset));
+      Object.keys(map.questionBubbles).forEach(qStr => map.questionBubbles[qStr].forEach(applyOffset));
+    }
+    // Kept on the map (which flows through to painting) purely so the
+    // result overlay can show exactly which internal markers were found
+    // and used — a visible way to sanity-check alignment, not just trust it.
+    map.regFieldPoints = regField.points;
+    map.regFieldMissed = regField.missed;
+    map.regFieldActive = regField.active;
+
+    // Flatten every registered bubble centre so the white-level field can
+    // avoid sampling "paper white" from inside a mark (see
+    // egWhiteLevelField's comment for why that matters).
+    const excludePoints = [];
+    map.setBubbles.forEach(b => excludePoints.push({ x: b.x, y: b.y }));
+    map.rollColumns.forEach(col => col.forEach(b => excludePoints.push({ x: b.x, y: b.y })));
+    Object.keys(map.questionBubbles).forEach(qStr => {
+      map.questionBubbles[qStr].forEach(b => excludePoints.push({ x: b.x, y: b.y }));
+    });
+    // v16: finer local-exposure grid (8x11 instead of 5x7). egWhiteLevelField's
+    // .at() already bilinearly interpolates between bins, so this doesn't add
+    // any sharp seams — it just lets the correction track a tighter flash
+    // hotspot / lighting gradient (a close phone flash lights a much smaller
+    // patch of the sheet unevenly than a 5x7 grid's ~240x220px bins can
+    // resolve, especially right where Roll No / Exam Set sit near the top of
+    // the sheet, closest to the lens). Cost is negligible: still the same
+    // single full-image sweep, just tallied into more (smaller) bins.
+    const whiteField = egWhiteLevelField(gray, w, h, 8, 11, excludePoints, EG_WHITE_EXCLUDE_RADIUS);
+
+    // v14: LOCAL (per-bubble) exposure scaling, not one number for the
+    // WHOLE photo.
+    //
+    // v13 fixed capture-TO-capture inconsistency (same sheet, two
+    // different photos, two different OVERALL exposures) by scaling every
+    // threshold by one number derived from whiteField.median (a single
+    // summary of the WHOLE image's paper-white level). That's correct
+    // when a capture is uniformly brighter/dimmer end to end — but a
+    // hand-held phone scanning with its OWN flash held close to the paper
+    // does not light the sheet evenly: the half of the sheet nearer the
+    // flash/lens reads brighter (and lower-contrast — a close flash also
+    // partly washes out ink) than the far half, WITHIN the exact same
+    // photo. Reported symptom matched this precisely even after v13: the
+    // same single capture grades the first several rows cleanly, then a
+    // contiguous block further down the sheet turns into "multi mark"
+    // clusters (several options per question all crossing the same
+    // GLOBAL threshold at once) — or, in a flatter/dimmer capture, real
+    // marks failing to clear it anywhere (Roll No/Set/Marks all coming
+    // back empty). A single whole-image scale number can only correct a
+    // whole-photo shift; it can't correct a gradient WITHIN one photo.
+    //
+    // Fix: whiteField already computes a LOCAL paper-white value per bin
+    // (egWhiteLevelField — originally added for this exact reason, a
+    // shadow/angled light across the photo). Deriving the exposure scale
+    // from THAT local value at each bubble's own (x, y), instead of from
+    // the one whole-image median, means a bubble sitting in a
+    // brighter/washed-out region of THIS SAME capture gets its own
+    // correspondingly higher threshold, and a bubble sitting in a
+    // dimmer region gets its own lower one — tracking real ink-vs-paper
+    // contrast wherever that particular bubble happens to sit, instead of
+    // what the sheet averaged to overall.
+    function exposureScaleAt(x, y) {
+      return Math.min(EG_MAX_EXPOSURE_SCALE, Math.max(EG_MIN_EXPOSURE_SCALE, whiteField.at(x, y) / EG_REFERENCE_WHITE));
+    }
+
+    function darkAt(x, y, radius) {
+      return whiteField.at(x, y) - egSampleFillScore(gray, w, h, x, y, radius);
+    }
+
+    // pickBest now returns THREE possible outcomes instead of two:
+    //  - flag: null    -> normal confident pick (or nothing marked at all)
+    //  - flag: "multi" -> two or more options both look SOLIDLY, genuinely
+    //                     filled (a stricter bar than the normal single
+    //                     -mark check — see genuineForMulti below, v18);
+    //                     we can't safely guess which one the student
+    //                     meant, so every one of them is reported back
+    //                     (via multiOptions) instead of silently picking one.
+    //  - flag: "faint" -> nothing covered enough of the full bubble to
+    //                     pass the normal check, but one option has a
+    //                     small, solid, clearly-the-darkest core — a
+    //                     light pencil dot/tick instead of full shading.
+    //                     Used as the answer, but flagged for a quick
+    //                     human glance rather than trusted silently.
+    function pickBest(rawCandidates) {
+      const candidates = rawCandidates.map(c => {
+        const scale = exposureScaleAt(c.x, c.y);
+        return {
+          ...c,
+          broad: darkAt(c.x, c.y, EG_BUBBLE_RADIUS),
+          core: darkAt(c.x, c.y, EG_CORE_RADIUS),
+          markThreshold: EG_MARK_THRESHOLD * scale,
+          coreMinForConfident: EG_CORE_MIN_FOR_CONFIDENT * scale,
+          coreThreshold: EG_CORE_THRESHOLD * scale,
+          coreMarginThreshold: EG_CORE_MARGIN * scale
+        };
+      });
+      // "Genuinely filled" = broad coverage passes AND the centre itself
+      // is actually inked — see EG_CORE_MIN_FOR_CONFIDENT above for why
+      // the second half matters. Both sides of this check use THIS
+      // candidate's own LOCAL exposure-scaled thresholds (see v14 note
+      // above), not one number for the whole photo, so the same physical
+      // mark reads the same way regardless of where on the sheet — and
+      // under however uneven THIS capture's own lighting happened to be.
+      const genuine = c => c.broad > c.markThreshold && c.core > c.coreMinForConfident;
+
+      // v18 fix — reported bug: a completely BLANK bubble sitting right
+      // next to a student's real, solidly-filled mark was getting pulled
+      // into `multiOptions` too, and painted with its own "please
+      // double-check" blue ring in the review overlay, even though
+      // nothing was actually shaded there. Root cause: `genuine()`'s core
+      // bar (`coreMinForConfident`, 20) is DELIBERATELY lenient, because
+      // exposure scaling already has to squeeze a real full mark down
+      // close to it in a dim capture — that's fine for deciding the ONE
+      // single best pick, but it's too forgiving to also decide "yes, a
+      // SECOND competing option is genuinely filled too". A little dust,
+      // a hair-thin shadow, or plain JPEG block noise sitting right at a
+      // blank bubble's exact centre can nudge just past 20 without any
+      // real ink ever having touched that bubble.
+      //
+      // A real second mark (student genuinely bubbled two options) reads
+      // with core darkness on the same order as any normal confident
+      // mark — comfortably past `coreThreshold` (55, the same "genuinely
+      // solid ink" bar already used a few lines down for the faint-mark
+      // fallback) — while a stray-artifact false positive typically only
+      // barely nudges past 20. So membership in the MULTI set specifically
+      // requires this stricter bar; the original lenient `genuine()` is
+      // still exactly what decides a normal single confident pick below,
+      // completely unchanged.
+      const genuineForMulti = c => c.broad > c.markThreshold && c.core > c.coreThreshold;
+
+      let best = null, second = -Infinity;
+      const aboveThreshold = [];
+      candidates.forEach(c => {
+        if (genuineForMulti(c)) aboveThreshold.push(c);
+        if (!best || c.broad > best.broad) { second = best ? best.broad : second; best = c; }
+        else if (c.broad > second) { second = c.broad; }
+      });
+
+      if (aboveThreshold.length >= 2) {
+        return { value: best, margin: best.broad - second, flag: "multi", multiOptions: aboveThreshold };
+      }
+      if (best && genuine(best)) {
+        return { value: best, margin: best.broad - (second === -Infinity ? 0 : second), flag: null };
+      }
+
+      let coreBest = null, coreSecond = -Infinity;
+      candidates.forEach(c => {
+        if (!coreBest || c.core > coreBest.core) { coreSecond = coreBest ? coreBest.core : coreSecond; coreBest = c; }
+        else if (c.core > coreSecond) { coreSecond = c.core; }
+      });
+      const coreMargin = coreBest ? coreBest.core - (coreSecond === -Infinity ? 0 : coreSecond) : 0;
+      if (coreBest && coreBest.core > coreBest.coreThreshold && coreMargin > coreBest.coreMarginThreshold) {
+        return { value: coreBest, margin: coreMargin, flag: "faint" };
+      }
+
+      return { value: null, margin: best ? best.broad - (second === -Infinity ? 0 : second) : 0, flag: null };
+    }
+
+    const setPick = pickBest(map.setBubbles.map(b => ({ x: b.x, y: b.y, letter: b.letter })));
+    const setLetter = setPick.value ? setPick.value.letter : null;
+    const setFlag = setPick.flag || null;
+    const setMultiOptions = setPick.flag === "multi" ? setPick.multiOptions : null;
+
+    const rollFlags = [];
+    const rollMultiOptions = [];
+    const rollDigitsDetected = map.rollColumns.map(col => {
+      const pick = pickBest(col.map(b => ({ x: b.x, y: b.y, digit: b.digit })));
+      rollFlags.push(pick.flag || null);
+      rollMultiOptions.push(pick.flag === "multi" ? pick.multiOptions : null);
+      return pick.value ? pick.value.digit : null;
+    });
+    const rollKnown = rollDigitsDetected.every(d => d !== null);
+    const roll = rollKnown ? rollDigitsDetected.join("") : rollDigitsDetected.map(d => d === null ? "?" : d).join("");
+
+    const answers = {};
+    const answerFlags = {};
+    const answerMultiOptions = {};
+    Object.keys(map.questionBubbles).forEach(qStr => {
+      const q = Number(qStr);
+      const pick = pickBest(map.questionBubbles[q]);
+      answers[q] = pick.value ? pick.value.opt : null; // 0..3 or null (blank)
+      answerFlags[q] = pick.flag || null;
+      if (pick.flag === "multi") answerMultiOptions[q] = pick.multiOptions;
+    });
+
+    return {
+      setLetter, setFlag, setMultiOptions,
+      roll, rollDigitsDetected, rollFlags, rollMultiOptions,
+      answers, answerFlags, answerMultiOptions,
+      totalQuestions: map.totalQuestions, map,
+      // Exposed so the capture/review step can warn on a too-dark photo
+      // (see EG_REFERENCE_WHITE) instead of silently grading a shaky-
+      // exposure capture with no feedback to the person scanning.
+      whiteMedian: whiteField.median
+    };
+  }
+
+  // Ek roll number do students ka nahi ho sakta — jab wahi roll number
+  // dobara scan ho (galti se dobara scan, ya kisi doosre student ne wahi
+  // roll bhar diya), ye purane save-hue attempt(s) aur naye scan ke marks
+  // compare karke batata hai kaunsa "valid" rahega: hamesha jisme SABSE
+  // ZYADA marks hain wahi — baaki discard. Pure function (koi DOM/Firestore
+  // yahan nahi) taaki standalone test ho sake — see
+  // test_registration_min_markers_and_duplicate_roll.js.
+  function egResolveDuplicateRoll(dupExisting, newMarks) {
+    const prevBestMarks = Math.max(...dupExisting.map(d => Number(d.marks || 0)));
+    if (newMarks <= prevBestMarks) return { action: "discard", prevBestMarks, newMarks };
+    return { action: "replace", prevBestMarks, newMarks };
+  }
+
+  // Scores a detection against the exam's Answer Key (the key for the
+  // detected Set, falling back to Set A / the legacy single key).
+  //
+  // BUG FIX: a "multi" flag (two-or-more options genuinely filled — see
+  // pickBest) was only ever painted as a blue review ring; the actual
+  // right/wrong grading below still compared detectedLetter (pickBest's
+  // "best"/darkest guess among the several filled options) straight
+  // against the Answer Key. So whenever that darkest guess happened to
+  // MATCH the key, a multi-marked question silently scored "correct" and
+  // added a mark — exactly backwards, since a student who filled more
+  // than one bubble gave an invalid/ambiguous response and should never
+  // get credit for it, regardless of which one of their marks happens to
+  // line up with the key. A genuinely double-filled bubble on a real
+  // OMR sheet is void, full stop — not "credit if you're lucky". Fixed by
+  // checking the multi flag BEFORE the correct/wrong comparison and
+  // forcing it to "wrong" unconditionally.
+  function examgrGradeSheet(ex, detected) {
+    const keyArr = examgrResolveAnswerKeyForGrading(ex, detected.setLetter);
+    let correct = 0, wrong = 0, blank = 0, ungraded = 0, flagged = 0;
+    const perQuestion = [];
+    for (let q = 1; q <= detected.totalQuestions; q++) {
+      const detectedOpt = detected.answers[q]; // 0..3 or null
+      const detectedLetter = detectedOpt === null || detectedOpt === undefined ? null : OPTION_LETTERS[detectedOpt];
+      const correctLetter = keyArr[q - 1] || null;
+      const flag = detected.answerFlags ? (detected.answerFlags[q] || null) : null;
+      const multiOptions = detected.answerMultiOptions ? (detected.answerMultiOptions[q] || null) : null;
+      let status;
+      if (!correctLetter) { status = "ungraded"; ungraded++; }
+      else if (flag === "multi") { status = "wrong"; wrong++; } // multiple options marked = void response, never counted correct
+      else if (detectedLetter === null) { status = "blank"; blank++; }
+      else if (detectedLetter === correctLetter) { status = "correct"; correct++; }
+      else { status = "wrong"; wrong++; }
+      if (flag) flagged++;
+      perQuestion.push({ q, detectedOpt, detectedLetter, correctLetter, status, flag, multiOptions });
+    }
+    const marks = correct; // 1 mark per correct answer, no negative marking (matches printed sheet)
+    return { marks, correct, wrong, blank, ungraded, flagged, perQuestion, setLetter: detected.setLetter, roll: detected.roll };
+  }
+
+  // Paints the grading result straight onto the captured canvas — bold
+  // green/red dot on the bubble the student actually marked (matches the
+  // key or not), a small pale-gold dot on the CORRECT bubble whenever the
+  // student left it blank or got it wrong (so a teacher sees both what
+  // was marked and what should have been marked at a glance), a
+  // neutral gold dot (with a dark centre, since it IS a real detected
+  // mark) on Roll No / Exam Set bubbles, which have no right/wrong, and a
+  // blue outline ring on anything pickBest flagged "faint" (a light
+  // dot/tick, not a fully-shaded bubble) or "multi" (two-plus options
+  // both look genuinely filled) — signals "double check this one by eye"
+  // without silently guessing either way.
+  function examgrPaintOverlay(canvas, ex, detected, graded) {
+    const ctx = canvas.getContext("2d");
+    const map = detected.map;
+
+    function dot(x, y, r, fill, withCore) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = fill;
+      ctx.globalAlpha = 1;
+      ctx.fill();
+      if (withCore) {
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(1.5, r * 0.32), 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(30,20,0,.55)";
+        ctx.fill();
+      }
+    }
+    function paleDot(x, y, r, fill) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    // Thin outline ring, drawn ON TOP of (never instead of) the normal
+    // grading dot — a distinct colour reserved only for "please double
+    // check this one", so it's never confused with correct/wrong/blank.
+    function ringOutline(x, y, r, color) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.lineWidth = 2.4;
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 1;
+      ctx.stroke();
+    }
+
+    const GREEN = "#18d631", RED = "#e11d1d", GOLD = "#f5b400", REVIEW_BLUE = "#2f7bff";
+
+    graded.perQuestion.forEach(pq => {
+      const optsPx = map.questionBubbles[pq.q];
+      if (!optsPx) return;
+      if (pq.status === "correct") {
+        const px = optsPx[pq.detectedOpt];
+        dot(px.x, px.y, 9, GREEN, true);
+      } else if (pq.status === "wrong") {
+        // v18 fix — reported bug: a multi-marked question (forced "wrong"
+        // regardless of which letter it matches, see examgrGradeSheet) was
+        // only ever getting a RED dot on pickBest's single darkest pick;
+        // every OTHER option the student also filled in got nothing but a
+        // blue "double-check" ring — no red, no colour at all — which read
+        // as "this bubble is fine" at a glance even though the whole
+        // response is void. Every option the student actually marked for a
+        // multi-marked question is equally wrong, so every one of them
+        // (via multiOptions) now gets its own red dot, not just the
+        // darkest one. A normal (non-multi) wrong answer is unaffected —
+        // still exactly one red dot on the single option that was marked.
+        const redIdxs = (pq.flag === "multi" && Array.isArray(pq.multiOptions) && pq.multiOptions.length)
+          ? pq.multiOptions.map(o => o.opt)
+          : [pq.detectedOpt];
+        redIdxs.forEach(idx => {
+          const px = optsPx[idx];
+          if (px) dot(px.x, px.y, 9, RED, true);
+        });
+        // Skip the usual pale "this was the right answer" gold dot when it
+        // would land on a bubble already painted red above — this happens
+        // whenever the correct letter is either the plain wrong pick, or
+        // (for a multi-marked question) one of the several bubbles the
+        // student filled in. That bubble is already unambiguous (red dot,
+        // plus a blue multi-ring from the flag loop below for a multi
+        // question); a gold dot stacked on the identical spot only adds
+        // visual clutter, not information.
+        const correctIdx = pq.correctLetter ? OPTION_LETTERS.indexOf(pq.correctLetter) : -1;
+        if (pq.correctLetter && !redIdxs.includes(correctIdx)) {
+          const cpx = optsPx[correctIdx];
+          if (cpx) paleDot(cpx.x, cpx.y, 6, GOLD);
+        }
+      } else if (pq.status === "blank" && pq.correctLetter) {
+        const correctIdx = OPTION_LETTERS.indexOf(pq.correctLetter);
+        const cpx = optsPx[correctIdx];
+        if (cpx) paleDot(cpx.x, cpx.y, 6, GOLD);
+      } else if (pq.status === "ungraded" && pq.detectedOpt !== null && pq.detectedOpt !== undefined) {
+        const px = optsPx[pq.detectedOpt];
+        dot(px.x, px.y, 9, GOLD, true);
+      }
+
+      // Low-confidence flags — a blue ring around the picked bubble for a
+      // faint/partial mark, or around EVERY option that looked genuinely
+      // filled when two or more competed (multiple marks). Independent of
+      // the correct/wrong colouring above, so it always stands out the
+      // same way regardless of grading outcome.
+      if (pq.flag === "faint" && pq.detectedOpt !== null && pq.detectedOpt !== undefined) {
+        const px = optsPx[pq.detectedOpt];
+        if (px) ringOutline(px.x, px.y, 13, REVIEW_BLUE);
+      } else if (pq.flag === "multi" && Array.isArray(pq.multiOptions)) {
+        pq.multiOptions.forEach(o => ringOutline(o.x, o.y, 13, REVIEW_BLUE));
+      }
+    });
+
+    if (detected.setLetter) {
+      const b = map.setBubbles.find(s => s.letter === detected.setLetter);
+      if (b) dot(b.x, b.y, 9, GOLD, true);
+    }
+    if (detected.setFlag === "faint" && detected.setLetter) {
+      const b = map.setBubbles.find(s => s.letter === detected.setLetter);
+      if (b) ringOutline(b.x, b.y, 13, REVIEW_BLUE);
+    } else if (detected.setFlag === "multi" && Array.isArray(detected.setMultiOptions)) {
+      detected.setMultiOptions.forEach(o => ringOutline(o.x, o.y, 13, REVIEW_BLUE));
+    }
+
+    detected.rollDigitsDetected.forEach((digit, colIdx) => {
+      if (digit !== null) {
+        const b = map.rollColumns[colIdx].find(d => d.digit === digit);
+        if (b) dot(b.x, b.y, 9, GOLD, true);
+      }
+      const flag = detected.rollFlags ? detected.rollFlags[colIdx] : null;
+      if (flag === "faint" && digit !== null) {
+        const b = map.rollColumns[colIdx].find(d => d.digit === digit);
+        if (b) ringOutline(b.x, b.y, 13, REVIEW_BLUE);
+      } else if (flag === "multi" && detected.rollMultiOptions && Array.isArray(detected.rollMultiOptions[colIdx])) {
+        detected.rollMultiOptions[colIdx].forEach(o => ringOutline(o.x, o.y, 13, REVIEW_BLUE));
+      }
+    });
+
+    // v16: mark every internal registration square that was actually
+    // found and used for local paper-warp correction (see
+    // egBuildLocalRegistrationField) — small solid blue dots, drawn right
+    // on top of the real marker in the photo. This is a visible way to
+    // check alignment quality at a glance: if these blue dots sit right
+    // on the printed black squares, registration was solid across the
+    // whole sheet; if a patch of them is missing (photo crop/glare/crease
+    // covering that area) or off, you can see exactly WHERE the sheet
+    // wasn't read reliably instead of only guessing from a wrong mark.
+    // v16/v17: colour every registration square by whether scanning could
+    // actually USE it — solid blue dot right on the printed square = found
+    // and used for local paper-warp correction there. A thin red ring at
+    // the square's EXPECTED spot = looked for it and could NOT find it
+    // (glare, shadow, crease shadow, cropped edge, ink smudge, etc) — that
+    // patch of the sheet had to rely on nearby markers instead. Together
+    // these make it obvious at a glance which regions of THIS capture were
+    // reliably read vs which weren't, instead of only ever seeing the
+    // downstream effect (a wrong/missing answer) with no way to tell why.
+    if (Array.isArray(map.regFieldPoints)) {
+      map.regFieldPoints.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.ax, p.ay, 4.5, 0, Math.PI * 2);
+        ctx.globalAlpha = 0.95;
+        ctx.fillStyle = REVIEW_BLUE;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      });
+    }
+    if (Array.isArray(map.regFieldMissed)) {
+      map.regFieldMissed.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.ex, p.ey, 7, 0, Math.PI * 2);
+        ctx.lineWidth = 2;
+        // Deliberately NOT red — red is already "wrong answer" everywhere
+        // else on this same photo, and a student glancing at their sheet
+        // would read a red mark near their answers as "something here is
+        // wrong with MY answer", which isn't what this is. Neutral grey
+        // instead: purely an admin/teacher diagnostic (which squares
+        // scanning couldn't use), unrelated to grading.
+        ctx.strokeStyle = "#8a8a8a";
+        ctx.globalAlpha = 0.9;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      });
+    }
+  }
+
+  // Tiny (~90px-wide) low-quality thumbnail embedded directly in the exam
+  // doc's `results` array — used ONLY for the fast-loading Reports LIST
+  // (grid of small photos). Firestore caps a document at 1MB and a class
+  // can have 100+ results saved on the SAME exam doc, so this has to
+  // stay deliberately small — that budget is shared across every result.
+  // ────────────────────────────────────────────────────────────────
+  // Per-option bubble crops — small zoomed-in squares cut straight out
+  // of the scanned sheet, one per A/B/C/D, meant to sit ABOVE the
+  // option buttons on an Edit screen so a teacher can see exactly what
+  // the camera captured (a stray pencil dot vs a solid fill vs blank
+  // paper) instead of trusting the auto-detected letter blindly.
+  // Bubble positions come from examgrBubbleMap(ex) — the same fixed
+  // 1203×1536 template layout every scan gets warped to before
+  // grading — so this works off ANY image at ANY resolution as long as
+  // it's that same aligned/warped sheet (scannerRawCanvas during a
+  // live scan, or the saved photo later from Report Detail).
+  const EG_CROP_OUT_SIZE = 64;  // exported thumbnail px (CSS displays it smaller; kept 2x+ for sharpness)
+  const EG_CROP_RADIUS = 15;    // half-width of the cropped square, in canonical 1203×1536 px
+
+  function examgrBuildOptionCrops(sourceEl, ex) {
+    if (!sourceEl) return null;
+    const srcW = sourceEl.naturalWidth || sourceEl.width || OMR_CANVAS_SIZE.width;
+    const srcH = sourceEl.naturalHeight || sourceEl.height || OMR_CANVAS_SIZE.height;
+    if (!srcW || !srcH) return null;
+    const scaleX = srcW / OMR_CANVAS_SIZE.width;
+    const scaleY = srcH / OMR_CANVAS_SIZE.height;
+    const map = examgrBubbleMap(ex);
+
+    const cropCanvas = document.createElement("canvas");
+    cropCanvas.width = EG_CROP_OUT_SIZE;
+    cropCanvas.height = EG_CROP_OUT_SIZE;
+    const cctx = cropCanvas.getContext("2d");
+
+    const out = {};
+    Object.keys(map.questionBubbles).forEach(qStr => {
+      const q = Number(qStr);
+      out[q] = map.questionBubbles[q].map(b => {
+        const cx = b.x * scaleX, cy = b.y * scaleY;
+        const rx = EG_CROP_RADIUS * scaleX, ry = EG_CROP_RADIUS * scaleY;
+        cctx.clearRect(0, 0, EG_CROP_OUT_SIZE, EG_CROP_OUT_SIZE);
+        try {
+          cctx.drawImage(sourceEl, cx - rx, cy - ry, rx * 2, ry * 2, 0, 0, EG_CROP_OUT_SIZE, EG_CROP_OUT_SIZE);
+          return cropCanvas.toDataURL("image/jpeg", 0.7);
+        } catch (err) {
+          return null; // e.g. tainted/cross-origin source — caller just skips this thumbnail
+        }
+      });
+    });
+    return out;
+  }
+
+  // Builds "<crop-imgs row><A/B/C/D buttons row>" markup for one question.
+  // `crops` may be null/undefined (not ready yet) — falls back to just the
+  // plain buttons row so callers can render instantly and swap in crops
+  // once the source photo has loaded, instead of blocking on it.
+  function examgrAkeyRowHtml(q, selectedLetter, dataAttr, crops) {
+    const opts = OPTION_LETTERS.map(letter =>
+      `<button type="button" class="examgr-akey-opt${selectedLetter === letter ? " selected" : ""}" data-${dataAttr}="${q}" data-letter="${letter}">${letter}</button>`
+    ).join("");
+    const cropRow = (crops && crops[q])
+      ? `<div class="examgr-akey-croprow"><span></span>${crops[q].map(url =>
+          url ? `<img class="examgr-akey-crop-img" src="${url}" alt="">` : `<span class="examgr-akey-crop-img examgr-akey-crop-blank"></span>`
+        ).join("")}</div>`
+      : "";
+    return `${cropRow}<div class="examgr-akey-row"><span class="examgr-akey-qnum">${q}</span>${opts}</div>`;
+  }
+
+  function examgrMakeThumb(canvas) {
+    const scale = 90 / canvas.width;
+    const t = document.createElement("canvas");
+    t.width = Math.round(canvas.width * scale);
+    t.height = Math.round(canvas.height * scale);
+    t.getContext("2d").drawImage(canvas, 0, 0, t.width, t.height);
+    return t.toDataURL("image/jpeg", 0.45);
+  }
+
+  // HD photo (full 1203×1536 detection-resolution canvas, 100% se koi
+  // artificial downscale nahi) for the Report DETAIL screen aur student
+  // ke "My Result" mein dikhne wali sharp copy. 100% FREE — no Firebase
+  // Storage/Blaze plan needed. The trick: instead of embedding this in
+  // the shared exam doc (where the 1MB limit is split across every
+  // result), it's saved as its OWN Firestore document in a subcollection:
+  //   examManagerExams/{examId}/scanPhotos/{resultId}
+  // Each subcollection doc gets its own independent 1MB budget. Pehle
+  // yahan 900px tak downscale kiya jaata tha — ab full HD resolution
+  // rakhte hain, bas quality ko zaroorat padne par step-by-step ghata
+  // kar (kabhi bhi) us ~1MB limit ke andar hi rehte hain.
+  function examgrMakeFullQuality(canvas) {
+    let quality = 0.85;
+    let dataUrl = canvas.toDataURL("image/jpeg", quality);
+    const SAFE_LIMIT = 900000; // ~900KB base64 string — 1MB doc limit se safe margin
+    while (dataUrl.length > SAFE_LIMIT && quality > 0.4) {
+      quality -= 0.1;
+      dataUrl = canvas.toDataURL("image/jpeg", quality);
+    }
+    return dataUrl;
+  }
+
+  async function examgrSaveFullPhoto(examId, resultId, canvas) {
+    const database = db();
+    if (!database) return;
+    try {
+      await database.collection(COLLECTION).doc(examId)
+        .collection("scanPhotos").doc(resultId)
+        .set({ photo: examgrMakeFullQuality(canvas), savedAt: Date.now() });
+    } catch (err) {
+      // Non-fatal — Reports list thumbnail already saved fine; detail
+      // screen will just fall back to the small thumb if this failed.
+      console.warn("Full-quality photo save failed (non-fatal):", err);
+    }
+  }
+
+  // Fetches the sharp photo for one result from the scanPhotos
+  // subcollection. Returns null if not found/failed (caller falls back
+  // to the small embedded thumb).
+  async function examgrFetchFullPhoto(examId, resultId) {
+    const database = db();
+    if (!database) return null;
+    try {
+      const snap = await database.collection(COLLECTION).doc(examId)
+        .collection("scanPhotos").doc(resultId).get();
+      return snap.exists ? (snap.data().photo || null) : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // Short synthesized "shutter" beep at the exact auto-capture moment —
+  // no audio file needed, works offline. Two quick tones (like a camera
+  // click) via Web Audio.
+  function examgrPlayShutterSound() {
+    try {
+      if (!scannerAudioCtx) scannerAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const ctxA = scannerAudioCtx;
+      if (ctxA.state === "suspended") ctxA.resume();
+      const now = ctxA.currentTime;
+      [[1400, now, 0.05], [1000, now + 0.06, 0.07]].forEach(([freq, start, dur]) => {
+        const osc = ctxA.createOscillator();
+        const gain = ctxA.createGain();
+        osc.type = "square";
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.16, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+        osc.connect(gain).connect(ctxA.destination);
+        osc.start(start);
+        osc.stop(start + dur);
+      });
+    } catch (err) { /* Web Audio not available — silently skip the sound */ }
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // Scan Sheet — camera + 4-corner black-square detection, auto-capture
+  // (with a shutter beep), then pixel-darkness grading against the
+  // Answer Key with a green/red/gold overlay painted on the photo, a
+  // Cancel/Edit/Save review step, and a continuous scan loop (Save →
+  // "✅ Saved" toast → camera is immediately ready for the next sheet,
+  // same stream kept alive so there's no permission re-prompt flicker).
+  // ────────────────────────────────────────────────────────────────
+  const scannerStage = $id("examgr-scan-stage");
+  const scannerVideo = $id("examgr-scan-video");
+  const scannerCaptureEl = $id("examgr-scan-capture");
+  const scannerOverlayUi = $id("examgr-scan-overlay-ui");
+  const scannerStatusEl = $id("examgr-scan-status");
+  const scannerStatusTextEl = $id("examgr-scan-status-text");
+  const scannerMarkerCountEl = $id("examgr-scan-marker-count");
+  const scannerFooter = $id("examgr-scan-footer");
+  const scannerPermissionEl = $id("examgr-scan-permission");
+  const scannerPermissionMsgEl = $id("examgr-scan-permission-msg");
+  const scannerAnalysisCanvas = $id("examgr-scan-analysis-canvas");
+  const scannerCaptureCanvas = $id("examgr-scan-capture-canvas");
+  const scanCornerEls = scannerOverlayUi ? [...scannerOverlayUi.querySelectorAll(".examgr-scan-corner")] : [];
+  const scannerGradedHead = $id("examgr-scan-graded-head");
+  const scannerGRoll = $id("examgr-scan-g-roll");
+  const scannerGSet = $id("examgr-scan-g-set");
+  const scannerGMarks = $id("examgr-scan-g-marks");
+  const scannerReviewFooter = $id("examgr-scan-review-footer");
+  const scannerSavedToast = $id("examgr-scan-saved-toast");
+
+  function setScannerStatus(message, detectedCount, ready) {
+    if (scannerStatusTextEl) scannerStatusTextEl.textContent = message;
+    if (scannerMarkerCountEl) scannerMarkerCountEl.textContent = `${detectedCount} / 4 markers`;
+    if (scannerStatusEl) scannerStatusEl.classList.toggle("is-ready", !!ready);
+  }
+
+  function resetScannerCorners() {
+    scanCornerEls.forEach(corner => {
+      corner.classList.remove("is-detected");
+      const dot = corner.querySelector(".examgr-scan-dot");
+      if (dot) { dot.style.left = "50%"; dot.style.top = "50%"; }
+    });
+    // v20: clear stale grace state so a new scan session (new sheet)
+    // never inherits a "last known position" from the PREVIOUS sheet.
+    Object.keys(scannerCornerGrace).forEach(key => { delete scannerCornerGrace[key]; });
+  }
+
+  function stopScannerCamera() {
+    if (scannerAnimationFrame) { cancelAnimationFrame(scannerAnimationFrame); scannerAnimationFrame = null; }
+    if (scannerStream) { scannerStream.getTracks().forEach(track => track.stop()); scannerStream = null; }
+    if (scannerVideo) scannerVideo.srcObject = null;
+    scannerTorchSupported = false;
+    scannerTorchOn = false;
+    const torchBtn = $id("examgr-scan-torch-btn");
+    if (torchBtn) { torchBtn.hidden = true; torchBtn.classList.remove("is-on"); torchBtn.textContent = "🔦 Flash"; }
+  }
+
+  function resetScannerForLivePreview() {
+    scannerCapturing = false;
+    scannerStableFrames = 0;
+    scannerMarkerHistory = [];
+    scannerBestSharpness = -Infinity;
+    scannerLastDetectionAt = 0;
+    scannerDetected = null;
+    scannerGraded = null;
+    // v22: clear the previous sheet's OCR guess so it can't leak onto
+    // the next one (e.g. if OCR is still slow-resolving when a new scan
+    // starts, resetting the promise reference means its eventual result
+    // is simply ignored — examgrShowNameGuess for THIS scan already
+    // overwrote the display).
+    scannerOcrNamePromise = null;
+    scannerOcrNameGuess = "";
+    examgrShowNameGuess("");
+    if (scannerCaptureEl) { scannerCaptureEl.hidden = true; scannerCaptureEl.removeAttribute("src"); }
+    if (scannerOverlayUi) scannerOverlayUi.hidden = false;
+    if (scannerPermissionEl) scannerPermissionEl.hidden = true;
+    if (scannerFooter) scannerFooter.hidden = false;
+    if (scannerReviewFooter) scannerReviewFooter.hidden = true;
+    if (scannerGradedHead) scannerGradedHead.hidden = true;
+    if (scannerSavedToast) scannerSavedToast.hidden = true;
+    const qualityWarnEl = $id("examgr-scan-quality-warn");
+    if (qualityWarnEl) qualityWarnEl.hidden = true;
+    resetScannerCorners();
+    setScannerStatus("Kaale OMR squares dhoonde ja rahe hain...", 0, false);
+  }
+
+  // Only resumes the live DETECTION LOOP (used between consecutive scans
+  // in the same session) — does NOT touch getUserMedia/the camera stream,
+  // so the next sheet is ready instantly with no permission re-prompt.
+  function resumeScannerDetectionLoop() {
+    resetScannerForLivePreview();
+    if (scannerStream && !scannerAnimationFrame) {
+      scannerAnimationFrame = requestAnimationFrame(runScannerDetection);
+    }
+  }
+
+  function getVideoDisplayMapping() {
+    if (!scannerStage || !scannerVideo) return null;
+    const stageRect = scannerStage.getBoundingClientRect();
+    const videoWidth = scannerVideo.videoWidth;
+    const videoHeight = scannerVideo.videoHeight;
+    if (!videoWidth || !videoHeight || !stageRect.width || !stageRect.height) return null;
+    const scale = Math.max(stageRect.width / videoWidth, stageRect.height / videoHeight);
+    return {
+      stageRect, videoWidth, videoHeight, scale,
+      offsetX: (stageRect.width - videoWidth * scale) / 2,
+      offsetY: (stageRect.height - videoHeight * scale) / 2
+    };
+  }
+
+  function scanRegionForCorner(corner, mapping, analysisScale) {
+    const cornerRect = corner.getBoundingClientRect();
+    const frameX = cornerRect.left - mapping.stageRect.left;
+    const frameY = cornerRect.top - mapping.stageRect.top;
+    const videoX = (frameX - mapping.offsetX) / mapping.scale;
+    const videoY = (frameY - mapping.offsetY) / mapping.scale;
+    const videoW = cornerRect.width / mapping.scale;
+    const videoH = cornerRect.height / mapping.scale;
+    return {
+      corner, frameX, frameY, frameW: cornerRect.width, frameH: cornerRect.height,
+      x: Math.max(0, Math.round(videoX * analysisScale)),
+      y: Math.max(0, Math.round(videoY * analysisScale)),
+      width: Math.max(1, Math.round(videoW * analysisScale)),
+      height: Math.max(1, Math.round(videoH * analysisScale))
+    };
+  }
+
+  // A single FIXED brightness cutoff (68) for "is this pixel ink or
+  // paper" only works when every region findBlackSquare ever looks at
+  // happens to be lit/exposed the same way. In practice it isn't: a
+  // phone flash lights the near half of the sheet brighter than the far
+  // half, an internal marker can sit in a soft shadow cast by the
+  // student's own hand/the phone body, and overall exposure varies
+  // capture-to-capture. A marker whose actual ink pixels come out at,
+  // say, 78 (still visibly black to the eye, just not <68 in THIS
+  // capture's exposure) was silently invisible to the blob detector —
+  // exactly the failure mode behind internal registration squares
+  // reading well below the 45 that are actually printed.
+  //
+  // Fix: Otsu's method — a standard, cheap (single histogram pass +
+  // 256-step search) way to pick the brightness threshold that best
+  // splits THIS region's own pixels into two groups, by maximising the
+  // between-class variance. Since each findBlackSquare call already
+  // only looks at one small local window (a ~52×52 search box around
+  // one expected marker, or one corner's live-video search box), the
+  // window's own histogram is exactly the right thing to threshold
+  // against — it's self-calibrating to whatever this specific patch of
+  // the photo's lighting happens to be, the same "compare only against
+  // itself" philosophy already used for egQuickSharpness elsewhere.
+  // Clamped to [45, 100] so a degenerate window (all-paper with no real
+  // marker in view, or a heavy shadow with no clean white paper to
+  // contrast against) can't wander to a nonsensical extreme — 68 (the
+  // old fixed value) sits in the middle of that band as the safe
+  // fallback baseline.
+  function egOtsuThreshold(brightness, count) {
+    const hist = new Float64Array(256);
+    for (let i = 0; i < count; i++) hist[brightness[i] < 0 ? 0 : (brightness[i] > 255 ? 255 : brightness[i] | 0)]++;
+    let sumAll = 0;
+    for (let t = 0; t < 256; t++) sumAll += t * hist[t];
+    let wB = 0, sumB = 0, best = 68, bestVar = -1;
+    for (let t = 0; t < 256; t++) {
+      wB += hist[t];
+      if (wB === 0) continue;
+      const wF = count - wB;
+      if (wF === 0) break;
+      sumB += t * hist[t];
+      const mB = sumB / wB;
+      const mF = (sumAll - sumB) / wF;
+      const diff = mB - mF;
+      const varBetween = wB * wF * diff * diff;
+      if (varBetween > bestVar) { bestVar = varBetween; best = t; }
+    }
+    // Otsu's sweep treats the "dark" class as brightness <= t, but the
+    // caller classifies with strict "< threshold" — off by one at the
+    // boundary would silently drop every pixel that landed EXACTLY at
+    // the optimal cut (a real risk: a uniformly-inked square often has
+    // most of its pixels clustered at/near one value). +1 aligns the
+    // two conventions so that boundary pixels are correctly kept dark.
+    return Math.min(100, Math.max(45, best + 1));
+  }
+
+  function findBlackSquare(context, region, canvasWidth, canvasHeight) {
+    const x = Math.max(0, Math.min(canvasWidth - 1, region.x));
+    const y = Math.max(0, Math.min(canvasHeight - 1, region.y));
+    const width = Math.max(1, Math.min(canvasWidth - x, region.width));
+    const height = Math.max(1, Math.min(canvasHeight - y, region.height));
+    const pixels = context.getImageData(x, y, width, height).data;
+    const count = width * height;
+    const dark = new Uint8Array(count);
+    const visited = new Uint8Array(count);
+
+    const brightness = new Float64Array(count);
+    for (let i = 0; i < count; i++) {
+      const offset = i * 4;
+      brightness[i] = pixels[offset] * 0.2126 + pixels[offset + 1] * 0.7152 + pixels[offset + 2] * 0.0722;
+    }
+    const threshold = egOtsuThreshold(brightness, count);
+    for (let i = 0; i < count; i++) {
+      if (brightness[i] < threshold) dark[i] = 1;
+    }
+
+    // v19: SQUARE-vs-CIRCLE test, redone to be ROTATION INVARIANT.
+    //
+    // The old test compared each of the component's 4 bounding-box
+    // corners against a fixed darkness cutoff: a solid axis-aligned
+    // square fills its whole bbox (corners dark), a filled circle only
+    // covers ~79% of its bbox and leaves the corners bare (corners not
+    // dark). That works ONLY when the square is axis-aligned. The
+    // internal 45-marker grid exists specifically because a real,
+    // handled sheet is gently bent in 3-D (folds/creases) — a marker
+    // that lands even ~10-15° off-axis after the global 4-corner warp
+    // has ALL FOUR of its bounding-box corners fall outside the rotated
+    // ink (a rotated square's true corners sit near the MIDPOINTS of its
+    // bbox edges, not at the bbox's own corners), so the old test
+    // rejected it exactly like it would reject a circle — measured
+    // corner-darkness collapses to near 0 by just 15° of rotation. That
+    // was the actual reason genuine, well-printed squares were being
+    // thrown out and detection was stalling around 14-15/45 instead of
+    // reaching the 30/45 target, even after the earlier Otsu exposure
+    // fix.
+    //
+    // Fix: use a shape descriptor that doesn't care which way the square
+    // is turned — fill ratio against the component's own minimum
+    // enclosing circle (radius = farthest ink pixel from the component's
+    // centroid), instead of against its axis-aligned bounding box.
+    //   - A square (side s) inscribed in a circle of radius s·√2/2 fills
+    //     exactly 2/π ≈ 0.637 of that circle's area — a CONSTANT,
+    //     regardless of how the square is rotated, because "distance to
+    //     farthest corner" doesn't change when you spin a square around
+    //     its own centre.
+    //   - A filled circle fills ~1.0 of its own minimal enclosing circle
+    //     (itself), by definition — completely unaffected by rotation
+    //     too, but nowhere near the square's ~0.64.
+    // Verified against a discretised 20px square swept through 0-45°:
+    // ratio stays in a tight 0.66-0.75 band throughout, vs. 0.98-1.01 for
+    // an equivalent filled circle — a wide, rotation-proof margin.
+    let best = null;
+    const queue = new Int32Array(count);
+    for (let start = 0; start < count; start++) {
+      if (!dark[start] || visited[start]) continue;
+      let head = 0, tail = 0;
+      queue[tail++] = start;
+      visited[start] = 1;
+      let pixelCount = 0, minX = width, maxX = 0, minY = height, maxY = 0, sumX = 0, sumY = 0;
+
+      while (head < tail) {
+        const point = queue[head++];
+        const pointX = point % width, pointY = Math.floor(point / width);
+        pixelCount++;
+        sumX += pointX; sumY += pointY;
+        minX = Math.min(minX, pointX); maxX = Math.max(maxX, pointX);
+        minY = Math.min(minY, pointY); maxY = Math.max(maxY, pointY);
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            if (ox === 0 && oy === 0) continue;
+            const nx = pointX + ox, ny = pointY + oy;
+            if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+            const next = ny * width + nx;
+            if (dark[next] && !visited[next]) { visited[next] = 1; queue[tail++] = next; }
+          }
+        }
+      }
+
+      const componentWidth = maxX - minX + 1;
+      const componentHeight = maxY - minY + 1;
+      const largestSide = Math.max(componentWidth, componentHeight);
+      const smallestSide = Math.min(componentWidth, componentHeight);
+      // Coarse, still axis-aligned-ish sanity gates: big enough to be a
+      // real marker, not so big it's swallowed half the search window
+      // (several merged bubbles/text), and not a wildly elongated sliver
+      // (a thin line of text) — true for a square at ANY rotation, since
+      // rotating a square keeps its own bounding box square too.
+      const sizeOk = smallestSide >= 4 && largestSide <= Math.min(width, height) * 0.6 && smallestSide / largestSide >= 0.6;
+      if (!sizeOk) continue;
+
+      const cx = sumX / pixelCount, cy = sumY / pixelCount;
+      let maxR2 = 0;
+      for (let i = 0; i < tail; i++) {
+        const point = queue[i];
+        const px = point % width, py = Math.floor(point / width);
+        const ddx = px - cx, ddy = py - cy;
+        const d2 = ddx * ddx + ddy * ddy;
+        if (d2 > maxR2) maxR2 = d2;
+      }
+      const enclosingArea = Math.PI * maxR2;
+      const circleFillRatio = enclosingArea > 0 ? pixelCount / enclosingArea : 0;
+      // 0.637 ± a generous margin for pixelation at marker sizes as small
+      // as ~10-12px, comfortably clear of a filled circle's ~0.9-1.0.
+      const looksLikeFilledSquare = circleFillRatio >= 0.48 && circleFillRatio <= 0.85;
+      if (looksLikeFilledSquare) {
+        const score = pixelCount * circleFillRatio;
+        if (!best || score > best.score) {
+          best = { score, x: x + minX + componentWidth / 2, y: y + minY + componentHeight / 2 };
+        }
+      }
+    }
+    return best;
+  }
+
+  function updateScannerCorner(region, candidate, mapping, analysisScale) {
+    const corner = region.corner;
+    const dot = corner.querySelector(".examgr-scan-dot");
+    if (!candidate) { corner.classList.remove("is-detected"); return null; }
+    const videoX = candidate.x / analysisScale, videoY = candidate.y / analysisScale;
+    const frameX = videoX * mapping.scale + mapping.offsetX;
+    const frameY = videoY * mapping.scale + mapping.offsetY;
+    if (dot) {
+      dot.style.left = `${Math.max(4, Math.min(96, ((frameX - region.frameX) / region.frameW) * 100))}%`;
+      dot.style.top = `${Math.max(4, Math.min(96, ((frameY - region.frameY) / region.frameH) * 100))}%`;
+    }
+    corner.classList.add("is-detected");
+    return { x: videoX, y: videoY };
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // v8: TEMPORAL SMOOTHING OF CORNER POSITIONS
+  //
+  // v7 fixed the WARP MATH (true 4-point homography instead of an
+  // axis-aligned rectangle). But the homography is only as accurate as
+  // the 4 corner points fed into it, and the old capture logic fed it a
+  // single video frame's worth of corner detection — grabbed the instant
+  // scannerStableFrames first hit 6. A hand held "steady" still has a few
+  // pixels of tremor from frame to frame (confirmed in the review
+  // screenshots: the gold "detected" ring — drawn at the exact fixed
+  // template pixel every bubble is supposed to warp to — sits visibly
+  // off-centre from the real printed bubble even after the v7 fix, by an
+  // amount that's different on every attempt). A perfect homography built
+  // from one noisy frame still produces a noisy warp.
+  //
+  // Fix: keep a short rolling window of the last few consecutive
+  // "all-4-found" frames' corner positions and AVERAGE them at capture
+  // time instead of using just the last frame. Random per-frame tremor
+  // partly cancels out in the average; a genuinely mis-held sheet still
+  // reads as mis-held (averaging a few hundred ms of a steady hold does
+  // not meaningfully lag behind a real, deliberate movement).
+  // ────────────────────────────────────────────────────────────────
+  const EG_MARKER_KEYS = ["top-left", "top-right", "bottom-left", "bottom-right"];
+  const EG_MARKER_HISTORY_SIZE = 4; // ~4 × 130ms ≈ half a second of averaging
+
+  function egAverageMarkerFrames(history) {
+    const n = history.length || 1;
+    const avg = {};
+    EG_MARKER_KEYS.forEach(key => {
+      let sx = 0, sy = 0;
+      history.forEach(frame => { sx += frame[key].x; sy += frame[key].y; });
+      avg[key] = { x: sx / n, y: sy / n };
+    });
+    return avg;
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // v22: HANDWRITTEN-NAME OCR + fuzzy match against registered students
+  //
+  // Free/offline-friendly (Tesseract.js, client-side, no billing) — this
+  // is explicitly a SUGGESTION helper for the Link-to-Student step, not
+  // an auto-linker. Handwriting OCR (unlike printed text) is genuinely
+  // unreliable, so every result here is a "best guess" the admin still
+  // sees and confirms — never a silent decision.
+  // ────────────────────────────────────────────────────────────────
+  const OCR_UPSCALE = 3; // handwriting OCR reads noticeably better on a bigger crop than on the small printed box itself
+
+  function examgrCropNameBoxCanvas(sourceCanvas) {
+    const box = OMR_NAME_BOX;
+    const out = document.createElement("canvas");
+    out.width = box.width * OCR_UPSCALE;
+    out.height = box.height * OCR_UPSCALE;
+    const ctx = out.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(sourceCanvas, box.x, box.y, box.width, box.height, 0, 0, out.width, out.height);
+    return out;
+  }
+
+  // Loaded lazily (only once Scan Sheet is actually opened, not on every
+  // page load) and kept alive for the rest of the session — creating a
+  // fresh Tesseract worker downloads its language-data file, which would
+  // otherwise repeat on every single scan.
+  async function examgrGetOcrWorker() {
+    if (scannerOcrWorker) return scannerOcrWorker;
+    if (typeof Tesseract === "undefined") return null; // CDN blocked/offline — OCR quietly skipped, rest of scanning is unaffected
+    try {
+      scannerOcrWorker = await Tesseract.createWorker("eng");
+      return scannerOcrWorker;
+    } catch (err) {
+      console.warn("OCR worker start nahi ho paya:", err);
+      scannerOcrWorker = null;
+      return null;
+    }
+  }
+
+  async function examgrRunNameOcr(sourceCanvas) {
+    try {
+      const worker = await examgrGetOcrWorker();
+      if (!worker) return "";
+      const cropped = examgrCropNameBoxCanvas(sourceCanvas);
+      const { data } = await worker.recognize(cropped);
+      const raw = ((data && data.text) || "")
+        .replace(/[\r\n]+/g, " ")
+        .replace(/[^A-Za-z.\s]/g, " ") // names only — strips stray marks/noise Tesseract sometimes reads as digits/symbols
+        .replace(/\s+/g, " ")
+        .trim();
+      return raw;
+    } catch (err) {
+      console.warn("Naam OCR nahi ho paya:", err);
+      return "";
+    }
+  }
+
+  function examgrShowNameGuess(text) {
+    const el = $id("examgr-scan-name-guess");
+    if (!el) return;
+    if (!text) { el.hidden = true; el.textContent = ""; return; }
+    el.hidden = false;
+    el.textContent = `📝 Naam (OCR guess): ${text}`;
+  }
+
+  // Classic edit-distance — cheap enough for short name strings, used
+  // only to RANK the already-small registered-students list, not for
+  // anything performance-sensitive.
+  function examgrLevenshtein(a, b) {
+    const m = a.length, n = b.length;
+    if (!m) return n;
+    if (!n) return m;
+    let prev = new Array(n + 1), curr = new Array(n + 1);
+    for (let j = 0; j <= n; j++) prev[j] = j;
+    for (let i = 1; i <= m; i++) {
+      curr[0] = i;
+      for (let j = 1; j <= n; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+      }
+      const tmp = prev; prev = curr; curr = tmp;
+    }
+    return prev[n];
+  }
+
+  function examgrNormalizeNameForMatch(s) {
+    return (s || "").toLowerCase().replace(/[^a-z\s]/g, "").replace(/\s+/g, " ").trim();
+  }
+
+  // 1.0 = identical (after normalizing case/punctuation), 0 = nothing in
+  // common. OCR misreads a letter or two even on a decent capture, so
+  // this deliberately tolerates a few character-level errors rather than
+  // requiring an exact/substring match.
+  function examgrNameSimilarity(a, b) {
+    const na = examgrNormalizeNameForMatch(a), nb = examgrNormalizeNameForMatch(b);
+    if (!na || !nb) return 0;
+    const dist = examgrLevenshtein(na, nb);
+    return 1 - dist / Math.max(na.length, nb.length);
+  }
+
+  // Top matches from the registered-students directory for a raw OCR
+  // guess, best first. 0.35 floor keeps obviously-unrelated names out of
+  // the list; still deliberately lenient (see examgrNameSimilarity) since
+  // this is ranking suggestions for a human to confirm, not deciding.
+  function examgrBestNameMatches(guessText, limit) {
+    if (!guessText) return [];
+    const students = examgrSavedStudentsForNameSearch();
+    return students
+      .map(s => ({ name: s.name, mobile: s.mobile, score: examgrNameSimilarity(guessText, s.name) }))
+      .filter(s => s.score >= 0.35)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit || 3);
+  }
+
+  // [top-left, top-right, bottom-left, bottom-right] should form a
+  // reasonably large, correctly-ordered quad fully inside the video
+  // frame. Runs before the homography solve so a bad/garbled marker read
+  // (a corner just outside frame, two corners collapsed onto each other,
+  // slots swapped) gets caught with a clear message instead of silently
+  // producing a garbage warp.
+  // Relative-only sharpness score (variance of a simple Laplacian
+  // response) for picking the best frame out of a short recent window —
+  // see scannerBestSharpness above. Deliberately NOT compared against
+  // any fixed cutoff (unlike assessPhotoQuality's blur check elsewhere,
+  // which is calibrated for full-resolution still photos); this only
+  // ever ranks frames from the same device/session against each other,
+  // so it needs no per-device or per-lighting tuning.
+  function egQuickSharpness(canvas) {
+    const pw = 160;
+    const ph = Math.max(1, Math.round(pw * canvas.height / canvas.width));
+    if (!egSharpnessProbe) egSharpnessProbe = document.createElement("canvas");
+    egSharpnessProbe.width = pw; egSharpnessProbe.height = ph;
+    const pctx = egSharpnessProbe.getContext("2d", { willReadFrequently: true });
+    pctx.drawImage(canvas, 0, 0, pw, ph);
+    const data = pctx.getImageData(0, 0, pw, ph).data;
+    const gray = new Float64Array(pw * ph);
+    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+      gray[p] = data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722;
+    }
+    const step = 2;
+    let sum = 0, sumSq = 0, count = 0;
+    for (let y = step; y < ph - step; y += step) {
+      for (let x = step; x < pw - step; x += step) {
+        const c = gray[y * pw + x];
+        const l = 4 * c - gray[y * pw + (x - step)] - gray[y * pw + (x + step)]
+                         - gray[(y - step) * pw + x] - gray[(y + step) * pw + x];
+        sum += l; sumSq += l * l; count++;
+      }
+    }
+    const mean = count ? sum / count : 0;
+    return count ? (sumSq / count) - (mean * mean) : 0;
+  }
+  let egSharpnessProbe = null;
+
+  // ────────────────────────────────────────────────────────────────
+  // Post-capture quality safety net — deliberately does NOT use
+  // egQuickSharpness for an absolute cutoff (see the comment on that
+  // function: it's relative-only, varies per device/session, and a fixed
+  // threshold there would just mean nagging false "blurry" warnings on
+  // some phones and missing real ones on others). Instead each check
+  // below reuses a signal the grading pipeline already computes for its
+  // OWN purposes and is either already calibrated against an absolute
+  // reference (whiteMedian, against EG_REFERENCE_WHITE) or is a plain
+  // count the admin can sanity-check at a glance (unreadable roll
+  // digits, an unusually high blank rate) — just surfaced here instead
+  // of staying internal, so a bad capture gets caught before Save
+  // instead of silently producing a wrong/incomplete result.
+  const EG_DARK_WHITE_WARN = 120; // whiteMedian this low means exposureScaleAt() is already sitting at/near its clamped floor (EG_MIN_EXPOSURE_SCALE * EG_REFERENCE_WHITE ≈ 94) — genuinely too dark, not adaptive-threshold noise
+  const EG_HIGH_BLANK_RATE_WARN = 0.35; // ≥35% blank on one sheet is far more likely a bad capture (angle/glare/focus) than a genuinely under-attempted exam
+  // Total internal registration squares printed on the sheet (see
+  // egBuildLocalRegistrationField's v16 comment — OMR_MARKER_XS × OMR_MARKER_YS
+  // = 5×9 = 45). MIN_POINTS=8 there only gates whether local per-point warp
+  // correction is trusted at all; it says nothing about whether THIS capture
+  // is actually good enough to grade with confidence. A crop that's cutting
+  // off sheet edges, a heavy shadow across half the photo, or a bad angle
+  // can easily still clear 8 while missing most of the grid — the bubble
+  // positions in that missed region are then relying on distant markers
+  // extrapolating across a wide gap, which is exactly where a mis-warped
+  // bubble (and a wrong grade) is most likely. Below EG_MIN_REG_MARKERS_WARN
+  // found, warn and offer Retake instead of silently trusting a sparse read.
+  const EG_TOTAL_REG_MARKERS = OMR_MARKER_XS.length * OMR_MARKER_YS.length; // 45
+  const EG_MIN_REG_MARKERS_WARN = 30;
+
+  function examgrCaptureQualityIssues(detected, graded) {
+    const issues = [];
+    if (typeof detected.whiteMedian === "number" && detected.whiteMedian <= EG_DARK_WHITE_WARN) {
+      issues.push("Photo bahut dark lag rahi hai — 🔦 Flash ON karke dobara scan karein.");
+    }
+    const regFound = detected.map && Array.isArray(detected.map.regFieldPoints) ? detected.map.regFieldPoints.length : null;
+    if (regFound !== null && regFound < EG_MIN_REG_MARKERS_WARN) {
+      issues.push(`Sirf ${regFound}/${EG_TOTAL_REG_MARKERS} registration squares mil paaye (kam se kam ${EG_MIN_REG_MARKERS_WARN} chahiye) — sheet poori tarah frame mein, seedhi aur achhi light mein rakh kar dobara scan karein.`);
+    }
+    if (Array.isArray(detected.rollDigitsDetected) && detected.rollDigitsDetected.some(d => d === null)) {
+      issues.push("Roll No ke kuch digits saaf nahi padhe gaye — Edit se check kar lein ya Retake karein.");
+    }
+    const total = graded.perQuestion.length;
+    if (total && (graded.blank / total) >= EG_HIGH_BLANK_RATE_WARN) {
+      issues.push(`${graded.blank}/${total} answers blank/unclear aayi hain — sheet ka angle ya lighting check karke dobara try karein.`);
+    }
+    return issues;
+  }
+
+  function examgrShowCaptureQualityWarning(detected, graded) {
+    const el = $id("examgr-scan-quality-warn");
+    const textEl = $id("examgr-scan-quality-warn-text");
+    if (!el || !textEl) return;
+    const issues = examgrCaptureQualityIssues(detected, graded);
+    if (!issues.length) { el.hidden = true; textEl.textContent = ""; return; }
+    textEl.textContent = "⚠️ " + issues.join(" ");
+    el.hidden = false;
+  }
+  $id("examgr-scan-quality-retake-btn")?.addEventListener("click", () => {
+    resumeScannerDetectionLoop(); // already hides the warning banner too — see resetScannerForLivePreview
+  });
+
+  function egQuadIsSane(quad, videoWidth, videoHeight) {
+    const [tl, tr, bl, br] = quad;
+    for (const p of quad) {
+      if (!p || !isFinite(p.x) || !isFinite(p.y)) return false;
+      if (p.x < -2 || p.y < -2 || p.x > videoWidth + 2 || p.y > videoHeight + 2) return false;
+    }
+    // Each side should span a meaningful chunk of the frame in the
+    // expected direction — catches corners detected in the wrong slot.
+    if (tr.x - tl.x < videoWidth * 0.15) return false;
+    if (br.x - bl.x < videoWidth * 0.15) return false;
+    if (bl.y - tl.y < videoHeight * 0.15) return false;
+    if (br.y - tr.y < videoHeight * 0.15) return false;
+    // Shoelace area (perimeter order tl→tr→br→bl) — must be a real
+    // fraction of the frame, not a sliver from near-collinear points that
+    // would still pass the per-side checks above.
+    const area = Math.abs(
+      tl.x * tr.y - tr.x * tl.y +
+      tr.x * br.y - br.x * tr.y +
+      br.x * bl.y - bl.x * br.y +
+      bl.x * tl.y - tl.x * bl.y
+    ) / 2;
+    if (area < videoWidth * videoHeight * 0.05) return false;
+    return true;
+  }
+
+  function captureAlignedOmr(detectedMarkers) {
+    const id = examMgrSelectedId;
+    const ex = examMgrExams[id];
+    const videoWidth = scannerVideo.videoWidth, videoHeight = scannerVideo.videoHeight;
+    if (!id || !ex || !videoWidth || !videoHeight) return;
+
+    const videoQuad = [
+      detectedMarkers["top-left"], detectedMarkers["top-right"],
+      detectedMarkers["bottom-left"], detectedMarkers["bottom-right"]
+    ];
+    if (!egQuadIsSane(videoQuad, videoWidth, videoHeight)) {
+      scannerCapturing = false;
+      scannerStableFrames = 0;
+      scannerMarkerHistory = [];
+      scannerBestSharpness = -Infinity;
+      setScannerStatus("Sheet ko poori tarah camera frame ke andar rakhein aur dobara try karein.", 4, false);
+      return;
+    }
+
+    // Freeze the detection loop and fire the shutter sound right at the
+    // capture instant — matches the reference video's timing exactly.
+    if (scannerAnimationFrame) { cancelAnimationFrame(scannerAnimationFrame); scannerAnimationFrame = null; }
+    examgrPlayShutterSound();
+
+    // Grab the FULL raw frame at native video resolution first — the old
+    // code cropped straight out of <video> with a single rectangle, which
+    // is exactly what a true perspective warp can't do (it needs the
+    // whole frame to sample from, since the 4 markers are rarely an
+    // axis-aligned rectangle on a hand-held shot).
+    // v10: prefer the sharpest frame tracked during the steady streak
+    // (see scannerBestSharpness) over whatever frame happens to be live
+    // at this exact instant — a blurry instant can still slip through
+    // 6 consecutive "corners found" ticks, since square-detection alone
+    // doesn't measure focus/motion blur.
+    if (scannerBestRawVideoCanvas && scannerBestSharpness > -Infinity) {
+      scannerRawVideoCanvas = scannerBestRawVideoCanvas;
+    } else {
+      if (!scannerRawVideoCanvas) scannerRawVideoCanvas = document.createElement("canvas");
+      scannerRawVideoCanvas.width = videoWidth;
+      scannerRawVideoCanvas.height = videoHeight;
+      // willReadFrequently HERE (this canvas's first-ever getContext call
+      // in the common case) — see the identical note on
+      // scannerBestRawVideoCanvas below for why this matters a lot.
+      scannerRawVideoCanvas.getContext("2d", { willReadFrequently: true }).drawImage(scannerVideo, 0, 0, videoWidth, videoHeight);
+    }
+
+    // True 4-point perspective correction (see egWarpPerspective above)
+    // instead of the old single axis-aligned scale/crop — this is what
+    // keeps every bubble on the flattened sheet lined up with the print
+    // template regardless of how tilted the phone was held.
+    const templateQuad = [
+      OMR_SCAN_MARKERS["top-left"], OMR_SCAN_MARKERS["top-right"],
+      OMR_SCAN_MARKERS["bottom-left"], OMR_SCAN_MARKERS["bottom-right"]
+    ];
+    const { canvas: warped, gray: warpedGray } = egWarpPerspective(scannerRawVideoCanvas, videoQuad, templateQuad, OMR_CANVAS_SIZE);
+
+    scannerCaptureCanvas.width = OMR_CANVAS_SIZE.width;
+    scannerCaptureCanvas.height = OMR_CANVAS_SIZE.height;
+    // willReadFrequently HERE too — this is scannerCaptureCanvas's
+    // first-ever getContext call, and it gets getImageData'd again below
+    // in the deferred detect step (or used to also get it from the now-
+    // removed egDesaturateCanvas pass) — see the perf note above
+    // egWarpPerspective for why the ordering matters.
+    scannerCaptureCanvas.getContext("2d", { willReadFrequently: true }).drawImage(warped, 0, 0);
+    // No separate egDesaturateCanvas call needed any more — egWarpPerspective
+    // already desaturates (R=G=B=luminance) in the same pass that produces
+    // `warped`, so this canvas is already clean black/white/gray. Strips
+    // any camera/video colour cast (chroma-subsampling can smear a stray
+    // blue/purple tint onto small high-contrast features like the
+    // registration squares) exactly as before, just computed once instead
+    // of in a redundant extra full-canvas pass.
+    if (!scannerRawCanvas) scannerRawCanvas = document.createElement("canvas");
+    scannerRawCanvas.width = OMR_CANVAS_SIZE.width;
+    scannerRawCanvas.height = OMR_CANVAS_SIZE.height;
+    scannerRawCanvas.getContext("2d").drawImage(scannerCaptureCanvas, 0, 0);
+
+    // Show a placeholder header immediately (mirrors the brief "Roll No :
+    // 0 / Set : None" moment in the reference video) while the bubble
+    // grid is read — this runs synchronously and is fast, but the
+    // placeholder keeps the UI from looking frozen on a slower phone.
+    if (scannerGradedHead) scannerGradedHead.hidden = false;
+    if (scannerGRoll) scannerGRoll.textContent = "0";
+    if (scannerGSet) scannerGSet.textContent = "None";
+    if (scannerGMarks) scannerGMarks.textContent = "0.0";
+
+    // v22: kick off name OCR in the background right away, in PARALLEL
+    // with bubble grading below — it's slower than grading (Tesseract
+    // takes a second or two even on a small crop) so starting it here
+    // instead of after grading gives it the most possible head-start
+    // before the admin reaches the Link-to-Student step.
+    scannerOcrNameGuess = "";
+    examgrShowNameGuess("⏳ Naam padha ja raha hai...");
+    scannerOcrNamePromise = examgrRunNameOcr(scannerCaptureCanvas).then(text => {
+      scannerOcrNameGuess = text;
+      examgrShowNameGuess(text);
+      return text;
+    });
+
+    requestAnimationFrame(() => {
+      // Passes through the grayscale buffer egWarpPerspective already
+      // built (see its perf note) so this doesn't re-read the whole
+      // canvas a third time — null only on the rare degenerate-homography
+      // fallback, in which case examgrDetectFromCanvas computes it itself.
+      const detected = examgrDetectFromCanvas(scannerCaptureCanvas, ex, warpedGray);
+      const graded = examgrGradeSheet(ex, detected);
+      scannerDetected = detected;
+      scannerGraded = graded;
+      examgrRepaintCapture(ex, detected, graded);
+      examgrShowCaptureQualityWarning(detected, graded);
+
+      scannerOverlayUi.hidden = true;
+      scannerFooter.hidden = true;
+      if (scannerReviewFooter) scannerReviewFooter.hidden = false;
+    });
+  }
+
+  // Redraws the pristine captured photo, paints the current
+  // detected+graded overlay on top of it, and refreshes both the visible
+  // <img> and the Roll/Set/Marks header. Shared by the initial capture
+  // and by "Apply" in the Edit screen.
+  function examgrRepaintCapture(ex, detected, graded) {
+    const ctx = scannerCaptureCanvas.getContext("2d");
+    ctx.clearRect(0, 0, scannerCaptureCanvas.width, scannerCaptureCanvas.height);
+    ctx.drawImage(scannerRawCanvas, 0, 0);
+    examgrPaintOverlay(scannerCaptureCanvas, ex, detected, graded);
+    scannerCaptureEl.src = scannerCaptureCanvas.toDataURL("image/jpeg", 0.92);
+    scannerCaptureEl.hidden = false;
+    if (scannerGRoll) scannerGRoll.textContent = detected.roll || "0";
+    if (scannerGSet) scannerGSet.textContent = detected.setLetter || "None";
+    if (scannerGMarks) scannerGMarks.textContent = graded.marks.toFixed(1);
+  }
+
+  // Cancel: discard this capture, nothing saved, camera resumes instantly.
+  $id("examgr-scan-cancel-btn")?.addEventListener("click", () => {
+    resumeScannerDetectionLoop();
+  });
+
+  $id("examgr-scan-edit-btn")?.addEventListener("click", () => {
+    examgrOpenEdit();
+  });
+
+  $id("examgr-scan-save-btn")?.addEventListener("click", async () => {
+    const id = examMgrSelectedId;
+    const ex = examMgrExams[id];
+    if (!id || !ex || !scannerDetected || !scannerGraded) return;
+    const btn = $id("examgr-scan-save-btn");
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "⏳ Saving...";
+
+    // Pull in any results already sitting in the scanResults subcollection
+    // from an earlier session BEFORE pushing this new one, so ex.results
+    // stays complete even if the admin scans first and opens Reports/CSV
+    // later. Cheap after the first call (see ensureExamResultsLoaded).
+    await ensureExamResultsLoaded(id, ex);
+
+    // v22: give the background name-OCR a short grace window to finish
+    // if it hasn't already — by the time an admin reviews + taps Save it
+    // usually has, this is just a safety cap (3s) so a slow/failed OCR
+    // never blocks Save for long. Proceeds with whatever's available
+    // either way (scannerOcrNameGuess stays "" if nothing came back).
+    if (scannerOcrNamePromise) {
+      await Promise.race([scannerOcrNamePromise, new Promise(resolve => setTimeout(resolve, 3000))]);
+    }
+
+    // Duplicate Roll No check — ek roll number do alag students ka nahi ho
+    // sakta, isliye ab admin se har baar OK/Cancel poochne ke bajaye ye
+    // AUTOMATIC rule follow karte hain: jis attempt mein MAXIMUM marks hain
+    // wahi is roll number ke liye valid maana jaata hai. ex.results is this
+    // exam's authoritative local cache after ensureExamResultsLoaded above,
+    // so this is a plain in-memory check, no extra Firestore read needed.
+    const rollDetected = (scannerDetected.roll || "").trim();
+    const dupExisting = rollDetected && rollDetected.indexOf("?") === -1 && Array.isArray(ex.results)
+      ? ex.results.filter(existing => (existing.roll || "").trim() === rollDetected)
+      : [];
+    if (dupExisting.length) {
+      const decision = egResolveDuplicateRoll(dupExisting, Number(scannerGraded.marks || 0));
+      if (decision.action === "discard") {
+        // Existing attempt already scores equal or higher for this roll —
+        // it stays the valid one; this new (lower/equal) scan is discarded
+        // rather than creating a second entry for the same student.
+        btn.disabled = false;
+        btn.textContent = originalLabel;
+        alert(`⚠️ Roll No ${rollDetected} ka result pehle se hai (${decision.prevBestMarks.toFixed(1)} marks). Ye naya scan (${decision.newMarks.toFixed(1)} marks) usse zyada nahi hai, isliye save nahi hua — purana (zyada marks wala) hi valid rahega.`);
+        setScannerStatus(`Roll No ${rollDetected} pehle se ${decision.prevBestMarks.toFixed(1)} marks ke saath valid hai.`, 4, false);
+        return;
+      }
+      // This new scan scores higher — it becomes the valid result for this
+      // roll number, so every older duplicate gets removed (both locally
+      // and in Firestore) leaving exactly one entry behind.
+      for (const old of dupExisting) {
+        const pos = ex.results.findIndex(x => x.id === old.id);
+        if (pos !== -1) ex.results.splice(pos, 1);
+      }
+      await Promise.all(dupExisting.map(old => examgrDeleteResult(id, old.id, ex.results.length)));
+    }
+
+    const resultId = (Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+
+    const resultObj = {
+      id: resultId,
+      roll: scannerDetected.roll || "",
+      setLetter: scannerGraded.setLetter || null,
+      marks: scannerGraded.marks,
+      correct: scannerGraded.correct,
+      wrong: scannerGraded.wrong,
+      blank: scannerGraded.blank,
+      totalQuestions: scannerGraded.perQuestion.length,
+      answers: scannerGraded.perQuestion.map(pq => pq.detectedLetter || null),
+      // flag/multiOptions per question (see pickBest) — kept so the Report
+      // Detail screen can show "A, C" for a double-marked question instead
+      // of silently collapsing it to whichever option pickBest guessed.
+      // Stored as a comma-joined STRING (not a nested array) — Firestore
+      // rejects an array whose elements are themselves arrays, even
+      // inside arrayUnion(), so ["A","C"] per question would break every
+      // save the moment any question had a genuine double-mark.
+      flags: scannerGraded.perQuestion.map(pq => pq.flag || null),
+      multiOptions: scannerGraded.perQuestion.map(pq =>
+        pq.multiOptions && pq.multiOptions.length ? pq.multiOptions.map(o => OPTION_LETTERS[o.opt]).join(",") : null),
+      scannedAt: Date.now(),
+      // v22: raw handwriting-OCR guess of the name box, if any (used to
+      // suggest a Link-to-Student match; never trusted blindly — see
+      // examgrOpenLinkStudentForScan below).
+      ocrNameGuess: scannerOcrNameGuess || null,
+      // Small embedded thumbnail for the Reports LIST (fast grid load).
+      // The sharp version for Report DETAIL is saved separately below —
+      // see examgrSaveFullPhoto — so this stays tiny on purpose.
+      thumb: examgrMakeThumb(scannerCaptureCanvas)
+    };
+
+    const database = db();
+    let ok = false;
+    let pendingSync = false;
+    if (database) {
+      try {
+        // SCAN-SESSION PERF FIX: this used to send the WHOLE `results`
+        // array via arrayUnion() on the parent exam doc on every single
+        // scan. That array only grows during a session, so each new scan
+        // had to locally re-serialize/merge a bigger and bigger payload —
+        // scan #80 did far more client-side work than scan #5. That's
+        // exactly what was behind "the longer I keep scanning, the more
+        // it slows down / hangs", separate from the per-frame camera
+        // capture fix (see the PERF FIX comments in runScannerDetection
+        // above, which fixed the OTHER hang — the one on every capture
+        // regardless of session length). Now each result is its own tiny
+        // doc in a scanResults subcollection (same pattern already used
+        // for scanPhotos below), so every scan's write is the same small
+        // size no matter how long the session has been running.
+        const examRef = database.collection(COLLECTION).doc(id);
+        const batch = database.batch();
+        batch.set(examRef.collection("scanResults").doc(resultId), resultObj);
+        batch.update(examRef, {
+          scanned: firebase.firestore.FieldValue.increment(1),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        // Firestore ka commit() Promise sirf tabhi resolve hota hai jab
+        // SERVER confirm kar de — offline ya bahut weak internet mein ye
+        // kabhi resolve/reject hi nahi hota (kyunki offline persistence
+        // write ko local cache mein queue kar deta hai aur silently connection
+        // wapas aane ka wait karta hai), isliye button hamesha ke liye
+        // "⏳ Saving..." par atka reh jaata tha. 10s timeout race lagakar ab
+        // hum user ko fasne nahi dete — local write already ho chuki hoti
+        // hai (nीचे dekhein), bas server-confirmation background mein hoti
+        // rahegi aur internet aate hi apne aap sync ho jaayegi.
+        const commitPromise = batch.commit();
+        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve("TIMEOUT"), 10000));
+        const raceResult = await Promise.race([commitPromise, timeoutPromise]);
+
+        if (!Array.isArray(ex.results)) ex.results = [];
+        ex.results.push(resultObj);
+        ex._resultsLoaded = true; // this session's copy is authoritative now — no re-fetch needed
+        ex.scanned = (Number(ex.scanned) || 0) + 1;
+        ok = true;
+
+        if (raceResult === "TIMEOUT") {
+          pendingSync = true;
+          // Commit abhi bhi background mein chal raha hai (Firestore ise
+          // apne aap retry karta rahega) — agar wo baad mein fail ho jaaye
+          // to sirf console mein warn karo, user ko dobara disturb mat karo.
+          commitPromise.catch((err) => console.warn("Background save (post-timeout) fail hui:", err));
+        }
+
+        examgrSaveFullPhoto(id, resultId, scannerCaptureCanvas); // fire-and-forget, non-fatal if it fails
+      } catch (err) {
+        alert("Save nahi ho paya: " + (err.message || err));
+      }
+    } else {
+      alert("Firebase se connect nahi ho paya — internet check karein.");
+    }
+
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+    if (!ok) return;
+
+    if (pendingSync) {
+      alert("⚠️ Internet slow/weak lag raha hai. Result aapke device mein save ho gaya hai — connection theek hote hi apne aap Firebase par sync ho jaayega. Agla student scan karne se pehle ek baar strong network (WiFi ya achhi signal) check kar lein.");
+    }
+
+    renderExamMgrDetails();
+    if (scannerReviewFooter) scannerReviewFooter.hidden = true;
+    if (scannerSavedToast) { scannerSavedToast.hidden = false; }
+    setTimeout(() => {
+      if (scannerSavedToast) scannerSavedToast.hidden = true;
+      // Save ke turant baad registered student search/link overlay
+      // kholte hain (naam se search karke number apne aap bhar jaata
+      // hai) — camera ab "Link Karein" ya "Skip" dabane par hi agli
+      // sheet ke liye resume hoga, bina permission dobara maange.
+      examgrOpenLinkStudentForScan(resultObj);
+    }, 650);
+  });
+
+  function runScannerDetection() {
+    const overlay = $id("examgr-scan-overlay");
+    if (!overlay || overlay.classList.contains("hidden") || scannerCapturing) return;
+    scannerAnimationFrame = requestAnimationFrame(runScannerDetection);
+    if (scannerVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+    const now = performance.now();
+    if (now - scannerLastDetectionAt < 130) return;
+    scannerLastDetectionAt = now;
+
+    const mapping = getVideoDisplayMapping();
+    if (!mapping) return;
+    const analysisWidth = Math.min(720, mapping.videoWidth);
+    const analysisScale = analysisWidth / mapping.videoWidth;
+    const analysisHeight = Math.max(1, Math.round(mapping.videoHeight * analysisScale));
+    if (scannerAnalysisCanvas.width !== analysisWidth || scannerAnalysisCanvas.height !== analysisHeight) {
+      scannerAnalysisCanvas.width = analysisWidth;
+      scannerAnalysisCanvas.height = analysisHeight;
+    }
+    const analysisContext = scannerAnalysisCanvas.getContext("2d", { willReadFrequently: true });
+    analysisContext.drawImage(scannerVideo, 0, 0, analysisWidth, analysisHeight);
+
+    const detectedMarkers = {};
+    let detectedCount = 0;
+    scanCornerEls.forEach(corner => {
+      const key = corner.dataset.marker;
+      const region = scanRegionForCorner(corner, mapping, analysisScale);
+      const candidate = findBlackSquare(analysisContext, region, analysisWidth, analysisHeight);
+      let position = updateScannerCorner(region, candidate, mapping, analysisScale);
+      if (position) {
+        // Fresh, real detection this tick — reset this corner's grace clock.
+        scannerCornerGrace[key] = { position, missTicks: 0 };
+      } else {
+        // v20: this tick's real detection failed — before giving up on
+        // this corner (and turning it red / breaking the streak), check
+        // whether it was seen recently enough to still trust its last
+        // known spot for a couple more ticks.
+        const grace = scannerCornerGrace[key];
+        if (grace && grace.missTicks < GRACE_MAX_MISS_TICKS) {
+          grace.missTicks++;
+          position = grace.position;
+          corner.classList.add("is-detected"); // keep it showing green, not red
+        } else {
+          delete scannerCornerGrace[key];
+        }
+      }
+      if (position) { detectedMarkers[key] = position; detectedCount++; }
+    });
+
+    const ready = detectedCount === 4;
+    scannerStableFrames = ready ? scannerStableFrames + 1 : 0;
+    if (ready) {
+      scannerMarkerHistory.push(detectedMarkers);
+      if (scannerMarkerHistory.length > EG_MARKER_HISTORY_SIZE) scannerMarkerHistory.shift();
+
+      // Track the sharpest frame of this steady streak (see v10 note
+      // above scannerBestSharpness) — cheap relative-only check on the
+      // small analysis canvas we already drew this tick, only draws the
+      // full-res video frame when it actually improves on the current
+      // best, so this stays lightweight even at ~7-8 ticks/sec.
+      const sharpness = egQuickSharpness(scannerAnalysisCanvas);
+      if (sharpness > scannerBestSharpness) {
+        // v20: trigger is now SCANNER_CAPTURE_TRIGGER_FRAMES (4, was 6) —
+        // "near capture" means the tick right before that fires, so the
+        // true best/final frame is always saved right when it matters.
+        const nearCapture = scannerStableFrames >= SCANNER_CAPTURE_TRIGGER_FRAMES - 1;
+        if (nearCapture || now - scannerLastBestDrawAt >= EG_BEST_FRAME_MIN_GAP_MS) {
+          scannerBestSharpness = sharpness;
+          scannerLastBestDrawAt = now;
+          const vw = scannerVideo.videoWidth, vh = scannerVideo.videoHeight;
+          if (vw && vh) {
+            if (!scannerBestRawVideoCanvas) scannerBestRawVideoCanvas = document.createElement("canvas");
+            scannerBestRawVideoCanvas.width = vw;
+            scannerBestRawVideoCanvas.height = vh;
+            // PERF FIX: willReadFrequently must be set on a canvas's VERY
+            // FIRST getContext('2d', ...) call to have any effect — later
+            // calls (like the one inside egWarpPerspective, which reads
+            // this exact canvas back at capture time via getImageData) are
+            // silently ignored once the context already exists. Without
+            // it here, this becomes the FIRST context for
+            // scannerBestRawVideoCanvas (this is almost always the frame
+            // captureAlignedOmr ends up warping from — see v10's
+            // "sharpest frame" note above), so every capture's biggest
+            // single getImageData call — the FULL native-resolution video
+            // frame, up to ~5MP — was forced through a slow GPU→CPU
+            // framebuffer readback instead of a fast CPU-backed read. That
+            // stall is the main thing behind "Scan Sheet freezes/hangs the
+            // whole phone" on mid/low-end Android devices: it blocks the
+            // single JS main thread with no chance to repaint the camera
+            // preview or respond to touches until it's done.
+            scannerBestRawVideoCanvas.getContext("2d", { willReadFrequently: true }).drawImage(scannerVideo, 0, 0, vw, vh);
+          }
+        }
+      }
+    } else {
+      scannerMarkerHistory = [];
+      scannerBestSharpness = -Infinity;
+      scannerLastBestDrawAt = 0;
+    }
+    setScannerStatus(ready ? "Sab 4 markers mil gaye. Steady rakhein, auto-scan ho raha hai..." : "Kaale OMR squares ko blue corner box ke andar align karein.", detectedCount, ready);
+    if (ready && scannerStableFrames >= SCANNER_CAPTURE_TRIGGER_FRAMES) {
+      scannerCapturing = true;
+      // Average of the last EG_MARKER_HISTORY_SIZE ready frames, not just
+      // this single frame — see the v8 comment above egQuadIsSane.
+      captureAlignedOmr(egAverageMarkerFrames(scannerMarkerHistory));
+    }
+  }
+
+  async function startScannerCamera() {
+    if (scannerCameraRequestInProgress) return;
+    scannerCameraRequestInProgress = true;
+    stopScannerCamera();
+    if (scannerPermissionEl) scannerPermissionEl.hidden = true;
+    try {
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+        const msg = window.isSecureContext
+          ? "Ye browser camera access support nahi karta. Chrome ya kisi doosre modern browser mein kholein."
+          : "Is window mein camera access block hai. App ko HTTPS ya localhost par kholein.";
+        const err = new Error(msg);
+        err.name = "NotSupportedError";
+        throw err;
+      }
+      try {
+        scannerStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          // v15: dialled back from ideal 1920×2560 to 1440×1920.
+          //
+          // 1920×2560 (~4.9 MP) sounded like a pure quality win — more
+          // detail before the warp/crop, crisper bubble edges — but it's
+          // a CONTINUOUS video stream, not a one-off photo: the phone's
+          // camera ISP has to keep producing ~4.9 MP frames the entire
+          // time the Scan Sheet screen stays open, not just at the
+          // capture instant. On a mid/low-end Android phone that sustained
+          // load is what was reported as "camera scanning slow ho jaati
+          // hai, teen-chaar scan ke baad poora hang" — it gets WORSE the
+          // longer the session runs because it's a running cost (heat +
+          // sustained CPU/ISP load), not a one-time one. Every full-res
+          // capture downstream (egWarpPerspective's getImageData +
+          // 1.85M-iteration warp loop, see its perf note) also scales
+          // directly with however many pixels this constraint actually
+          // negotiates, so the bigger request made every single scan's
+          // processing pause heavier too, compounding the same symptom.
+          //
+          // 1440×1920 (~2.76 MP, same 3:4 ratio so the aspect-ratio match
+          // to OMR_CANVAS_SIZE — 1203×1536 — that motivated the original
+          // bump is unchanged) is still a comfortable ~20-25% MORE detail
+          // than the 1203×1536 output actually needs, so bubble-edge
+          // sharpness after the warp is unaffected — it just stops asking
+          // the camera for roughly double the pixels it needs to sustain
+          // for no visible benefit. "ideal" hai, "exact" nahi, isliye jis
+          // phone mein itna bhi nahi milta wahan bhi camera fail nahi
+          // hoga, bas jo max mil sake wo milega.
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1440 }, height: { ideal: 1920 } }
+        });
+      } catch (error) {
+        if (!["NotFoundError", "OverconstrainedError"].includes(error && error.name)) throw error;
+        scannerStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+      }
+      // Kai Android phones par getUserMedia video stream ke time humne
+      // torch kabhi maanga hi nahi (torch:true kahin bhi set nahi hai),
+      // phir bhi kam light dekh kar phone ka camera driver khud-ba-khud
+      // flash/torch ON kar deta hai (still-photo "auto-flash" default,
+      // jo video-capture ke liye bhi apply ho jaata hai kuch hardware
+      // par). Default state hamesha OFF force karte hain — agar admin
+      // khud dark room mein flash chalu rakhna chahe to neeche ka 🔦
+      // button (sirf un devices par dikhta hai jo torch support karte
+      // hain) manually ON karne deta hai.
+      const torchBtn = $id("examgr-scan-torch-btn");
+      scannerTorchSupported = false;
+      scannerTorchOn = false;
+      try {
+        const [videoTrack] = scannerStream.getVideoTracks();
+        const caps = videoTrack && typeof videoTrack.getCapabilities === "function"
+          ? videoTrack.getCapabilities() : null;
+        scannerTorchSupported = !!(videoTrack && caps && "torch" in caps);
+        if (scannerTorchSupported) {
+          await videoTrack.applyConstraints({ advanced: [{ torch: false }] });
+        }
+      } catch (torchErr) {
+        scannerTorchSupported = false;
+        console.warn("Torch off constraint apply nahi ho paya:", torchErr);
+      }
+      if (torchBtn) {
+        torchBtn.hidden = !scannerTorchSupported;
+        torchBtn.classList.remove("is-on");
+        torchBtn.textContent = "🔦 Flash";
+      }
+      scannerVideo.srcObject = scannerStream;
+      await scannerVideo.play();
+      scannerAnimationFrame = requestAnimationFrame(runScannerDetection);
+    } catch (error) {
+      stopScannerCamera();
+      const isBlocked = error && ["NotAllowedError", "SecurityError"].includes(error.name);
+      const isSecureIssue = !window.isSecureContext || (error && ["NotSupportedError", "TypeError"].includes(error.name));
+      if (scannerPermissionMsgEl) {
+        scannerPermissionMsgEl.textContent = isBlocked
+          ? "Browser ke permission popup mein Camera ko Allow karein. Pehle block kiya ho to address-bar ke lock menu se Camera ko Allow karke dobara try karein."
+          : isSecureIssue
+            ? "Camera ke liye secure browser window chahiye — app ko HTTPS ya localhost par kholein, phir dobara try karein."
+            : "Camera start nahi ho paya. Camera use kar rahi doosri app band karke dobara try karein.";
+      }
+      if (scannerPermissionEl) scannerPermissionEl.hidden = false;
+      setScannerStatus("Camera permission chahiye.", 0, false);
+    } finally {
+      scannerCameraRequestInProgress = false;
+    }
+  }
+
+  function examgrOpenScanner() {
+    const ex = examMgrExams[examMgrSelectedId];
+    if (!ex || !scannerStage) return;
+    $id("examgr-details-overlay")?.classList.add("hidden");
+    $id("examgr-scan-overlay")?.classList.remove("hidden");
+    resetScannerForLivePreview();
+    startScannerCamera();
+  }
+
+  function examgrCloseScanner() {
+    stopScannerCamera();
+    // v22: free the Tesseract worker's WASM memory once the admin
+    // actually leaves the Scan Sheet screen (not between consecutive
+    // scans in the same session — see resumeScannerDetectionLoop, which
+    // never calls this). Re-created lazily via examgrGetOcrWorker() the
+    // next time Scan Sheet is opened.
+    if (scannerOcrWorker) {
+      try { scannerOcrWorker.terminate(); } catch (err) { /* already gone, nothing to clean up */ }
+      scannerOcrWorker = null;
+    }
+    scannerOcrNamePromise = null;
+    scannerOcrNameGuess = "";
+    $id("examgr-scan-overlay")?.classList.add("hidden");
+    $id("examgr-details-overlay")?.classList.remove("hidden");
+    renderExamMgrDetails();
+  }
+  window.examgrCloseScanner = examgrCloseScanner;
+
+  $id("examgr-scan-done-btn")?.addEventListener("click", examgrCloseScanner);
+  $id("examgr-scan-enable-btn")?.addEventListener("click", startScannerCamera);
+
+  $id("examgr-scan-torch-btn")?.addEventListener("click", async () => {
+    if (!scannerStream || !scannerTorchSupported) return;
+    const [videoTrack] = scannerStream.getVideoTracks();
+    if (!videoTrack) return;
+    const torchBtn = $id("examgr-scan-torch-btn");
+    const next = !scannerTorchOn;
+    try {
+      await videoTrack.applyConstraints({ advanced: [{ torch: next }] });
+      scannerTorchOn = next;
+      if (torchBtn) {
+        torchBtn.classList.toggle("is-on", scannerTorchOn);
+        torchBtn.textContent = scannerTorchOn ? "🔦 Flash ON" : "🔦 Flash";
+      }
+    } catch (err) {
+      alert("Flash on/off nahi ho paya: " + (err.message || err));
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // Edit — hand-correct a capture's Roll No / Set / individual answers
+  // before saving (in case a bubble was misread).
+  // ────────────────────────────────────────────────────────────────
+  let editDraftAnswers = {}; // q -> letter|null
+  let editDraftRollDigits = [];
+  let editDraftSet = null;
+
+  function examgrOpenEdit() {
+    const ex = examMgrExams[examMgrSelectedId];
+    if (!ex || !scannerDetected || !scannerGraded) return;
+
+    editDraftSet = scannerDetected.setLetter;
+    editDraftRollDigits = scannerDetected.rollDigitsDetected.slice();
+    editDraftAnswers = {};
+    scannerGraded.perQuestion.forEach(pq => { editDraftAnswers[pq.q] = pq.detectedLetter; });
+
+    const rollWrap = $id("examgr-edit-rollset");
+    if (rollWrap) {
+      const rollSelects = editDraftRollDigits.map((d, i) =>
+        `<select class="examgr-edit-roll-digit" data-col="${i}"><option value="">?</option>${
+          Array.from({ length: 10 }, (_, n) => `<option value="${n}"${d === n ? " selected" : ""}>${n}</option>`).join("")
+        }</select>`
+      ).join("");
+      const setOpts = SET_LETTERS.map(letter =>
+        `<button type="button" class="examgr-akey-opt${editDraftSet === letter ? " selected" : ""}" data-set-letter="${letter}">${letter}</button>`
+      ).join("");
+      rollWrap.innerHTML = `
+        <div class="examgr-edit-block"><label>Roll No</label><div class="examgr-edit-roll-row">${rollSelects}</div></div>
+        <div class="examgr-edit-block"><label>Exam Set</label><div class="examgr-edit-set-row">${setOpts}</div></div>`;
+    }
+
+    const qlist = $id("examgr-edit-qlist");
+    if (qlist) {
+      const total = scannerGraded.perQuestion.length;
+      // scannerRawCanvas is the pristine warped scan BEFORE the
+      // green/red/gold grading overlay gets painted on top of
+      // scannerCaptureCanvas — cropping from it means each little
+      // per-option square shows exactly what the camera saw, not a
+      // dot the app added afterwards.
+      const crops = examgrBuildOptionCrops(scannerRawCanvas, ex);
+      qlist.innerHTML = Array.from({ length: total }, (_, i) => {
+        const q = i + 1;
+        return examgrAkeyRowHtml(q, editDraftAnswers[q], "eq", crops);
+      }).join("");
+    }
+
+    $id("examgr-scan-overlay")?.classList.add("hidden");
+    $id("examgr-scan-edit-overlay")?.classList.remove("hidden");
+  }
+
+  function examgrCloseEdit() {
+    $id("examgr-scan-edit-overlay")?.classList.add("hidden");
+    $id("examgr-scan-overlay")?.classList.remove("hidden");
+  }
+  window.examgrCloseEdit = examgrCloseEdit;
+
+  $id("examgr-edit-rollset")?.addEventListener("click", (e) => {
+    const setBtn = e.target.closest("[data-set-letter]");
+    if (setBtn) {
+      editDraftSet = editDraftSet === setBtn.dataset.setLetter ? null : setBtn.dataset.setLetter;
+      setBtn.parentElement.querySelectorAll(".examgr-akey-opt").forEach(b =>
+        b.classList.toggle("selected", b.dataset.setLetter === editDraftSet));
+    }
+  });
+  $id("examgr-edit-rollset")?.addEventListener("change", (e) => {
+    const sel = e.target.closest(".examgr-edit-roll-digit");
+    if (!sel) return;
+    const col = Number(sel.dataset.col);
+    editDraftRollDigits[col] = sel.value === "" ? null : Number(sel.value);
+  });
+  $id("examgr-edit-qlist")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-eq]");
+    if (!btn) return;
+    const q = Number(btn.dataset.eq);
+    const letter = btn.dataset.letter;
+    editDraftAnswers[q] = editDraftAnswers[q] === letter ? null : letter;
+    const row = btn.closest(".examgr-akey-row");
+    row.querySelectorAll(".examgr-akey-opt").forEach(b =>
+      b.classList.toggle("selected", b.dataset.letter === editDraftAnswers[q]));
+  });
+
+  $id("examgr-edit-apply-btn")?.addEventListener("click", () => {
+    const ex = examMgrExams[examMgrSelectedId];
+    if (!ex || !scannerDetected) return;
+
+    const rollKnown = editDraftRollDigits.every(d => d !== null);
+    const roll = rollKnown ? editDraftRollDigits.join("") : editDraftRollDigits.map(d => d === null ? "?" : d).join("");
+    const answers = {};
+    Object.keys(scannerDetected.answers).forEach(qStr => {
+      const q = Number(qStr);
+      const letter = editDraftAnswers[q];
+      answers[q] = letter ? OPTION_LETTERS.indexOf(letter) : null;
+    });
+
+    const editedDetected = {
+      setLetter: editDraftSet,
+      roll,
+      rollDigitsDetected: editDraftRollDigits.slice(),
+      answers,
+      totalQuestions: scannerDetected.totalQuestions,
+      map: scannerDetected.map,
+      whiteMedian: scannerDetected.whiteMedian // carried over — same photo, just hand-corrected readings
+    };
+    const graded = examgrGradeSheet(ex, editedDetected);
+    scannerDetected = editedDetected;
+    scannerGraded = graded;
+    examgrRepaintCapture(ex, editedDetected, graded);
+    examgrShowCaptureQualityWarning(editedDetected, graded); // re-check — a hand-fixed roll/blank rate can clear the earlier warning
+    examgrCloseEdit();
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // Reports — per-student list of everything scanned for this exam.
+  // ────────────────────────────────────────────────────────────────
+  async function examgrOpenReports() {
+    const ex = examMgrExams[examMgrSelectedId];
+    if (!ex) return;
+    await ensureExamResultsLoaded(examMgrSelectedId, ex);
+    const results = Array.isArray(ex.results) ? ex.results.slice() : [];
+    results.sort((a, b) => (Number(b.marks) || 0) - (Number(a.marks) || 0));
+
+    $id("examgr-reports-title").textContent = "📊 Reports";
+    $id("examgr-reports-label-1").textContent = "Σ Marks";
+    $id("examgr-reports-label-2").textContent = "Reports";
+    $id("examgr-reports-maxmarks").textContent = (Number(ex.questions) || 0).toFixed(1);
+    $id("examgr-reports-count").textContent = String(results.length);
+
+    const listEl = $id("examgr-reports-list");
+    if (listEl) {
+      listEl.innerHTML = results.length ? results.map((r, i) => `
+        <div class="examgr-report-row" data-idx="${i}">
+          <div class="examgr-report-avatar">👤</div>
+          <div class="examgr-report-body">
+            <div class="examgr-report-top">
+              <span class="examgr-report-roll">Roll: ${escHtml(r.roll || "—")}${r.setLetter ? " · Set " + escHtml(r.setLetter) : ""}</span>
+              <span class="examgr-report-rank">🏅${i + 1}</span>
+            </div>
+            <div class="examgr-report-stats">
+              <span class="examgr-report-sum">Σ ${(Number(r.marks) || 0).toFixed(1)}</span>
+              <span class="examgr-report-ok">✅ ${r.correct || 0}</span>
+              <span class="examgr-report-bad">❌ ${r.wrong || 0}</span>
+              <span class="examgr-report-blank">⭕ ${r.blank || 0}</span>
+            </div>
+          </div>
+          ${r.thumb ? `<img class="examgr-report-thumb" src="${r.thumb}" data-full="${r.thumb}" alt="Scanned sheet">` : ""}
+        </div>`).join("")
+        : '<div class="examgr-empty">📷 Abhi tak koi sheet scan nahi hui — "Scan Sheet" se shuru karein.</div>';
+    }
+
+    // Sorted list + which student to jump to are shared with Report Detail
+    // (tapping a row opens the same order, so rank/prev/next line up).
+    examgrReportList = results;
+
+    $id("examgr-details-overlay")?.classList.add("hidden");
+    $id("examgr-reports-overlay")?.classList.remove("hidden");
+  }
+
+  function examgrCloseReports() {
+    $id("examgr-reports-overlay")?.classList.add("hidden");
+    $id("examgr-details-overlay")?.classList.remove("hidden");
+  }
+  window.examgrCloseReports = examgrCloseReports;
+
+  $id("examgr-reports-list")?.addEventListener("click", (e) => {
+    const thumb = e.target.closest(".examgr-report-thumb");
+    if (thumb) {
+      const img = $id("examgr-report-photo-img");
+      if (img) img.src = thumb.dataset.full;
+      $id("examgr-report-photo-overlay")?.classList.remove("hidden");
+      return;
+    }
+    const row = e.target.closest(".examgr-report-row");
+    if (!row) return;
+    examgrOpenReportDetail(Number(row.dataset.idx));
+  });
+
+  function examgrCloseReportPhoto() {
+    $id("examgr-report-photo-overlay")?.classList.add("hidden");
+  }
+  window.examgrCloseReportPhoto = examgrCloseReportPhoto;
+
+  // ────────────────────────────────────────────────────────────────
+  // Report Detail — single-student drill-down from the Reports list:
+  // full Subject/Marks/Percentage/Correct-Answers summary, the scanned
+  // sheet photo, a per-question Attempted/Correct/Marks table, and
+  // Delete / Edit / Share actions with Prev/Next to flip through every
+  // scanned student without going back to the list each time.
+  // ────────────────────────────────────────────────────────────────
+  let examgrReportList = [];   // same sorted array examgrOpenReports built
+  let examgrReportIndex = 0;
+
+  // This app doesn't have a real multi-subject/section configuration (an
+  // exam is just N questions against one Answer Key) — the summary table
+  // below always shows a single generic "Subject 1" / "Section1" row
+  // mirroring the exam's one true total, plus the "Total Marks" row.
+  function examgrReportSummaryRows(ex, r) {
+    const total = Number(r.totalQuestions) || Number(ex.questions) || 0;
+    const marks = Number(r.marks) || 0;
+    const pct = total ? (marks / total * 100) : 0;
+    const correct = Number(r.correct) || 0;
+    const row = { marks: marks.toFixed(1), pct: pct.toFixed(1) + "%", correct };
+    return [
+      { label: "Subject 1", ...row },
+      { label: "Section1", ...row },
+      { label: "Total Marks", ...row, total: true }
+    ];
+  }
+
+  function examgrReportQuestionRows(ex, r) {
+    const total = Number(r.totalQuestions) || Number(ex.questions) || 0;
+    const keyArr = examgrResolveAnswerKeyForGrading(ex, r.setLetter);
+    const answers = Array.isArray(r.answers) ? r.answers : [];
+    const flags = Array.isArray(r.flags) ? r.flags : [];
+    const multi = Array.isArray(r.multiOptions) ? r.multiOptions : [];
+    const rows = [];
+    for (let i = 0; i < total; i++) {
+      const correctLetter = keyArr[i] || null;
+      const detected = answers[i] || null;
+      const flag = flags[i] || null;
+      const attemptedText = flag === "multi" && multi[i]
+        ? multi[i].split(",").join(", ")
+        : (detected || "");
+      let status = "blank";
+      if (!correctLetter) status = "ungraded";
+      else if (!detected) status = "blank";
+      else if (detected === correctLetter) status = "correct";
+      else status = "wrong";
+      const marks = status === "correct" ? 1 : 0;
+      rows.push({ q: i + 1, attemptedText, correctLetter: correctLetter || "—", marks, status, flag });
+    }
+    return rows;
+  }
+
+  function examgrRenderReportDetail() {
+    const ex = examMgrExams[examMgrSelectedId];
+    const r = examgrReportList[examgrReportIndex];
+    if (!ex || !r) return;
+
+    $id("examgr-rd-title").textContent = `Roll No : ${r.roll || "—"}`;
+    $id("examgr-rd-page-text").textContent = `Report ${examgrReportIndex + 1}/${examgrReportList.length}`;
+    $id("examgr-rd-prev-btn").disabled = examgrReportIndex <= 0;
+    $id("examgr-rd-next-btn").disabled = examgrReportIndex >= examgrReportList.length - 1;
+
+    const summaryRows = examgrReportSummaryRows(ex, r);
+    const qRows = examgrReportQuestionRows(ex, r);
+
+    const body = $id("examgr-rd-body");
+    if (!body) return;
+    body.innerHTML = `
+      <div class="examgr-rd-info-row"><span>Class</span><span>${escHtml(ex.className || "—")}</span></div>
+      <div class="examgr-rd-info-row"><span>Exam</span><span>${escHtml(ex.examName || "—")}</span></div>
+      <div class="examgr-rd-info-row"><span>Exam Set</span><span>${escHtml(r.setLetter || "—")}</span></div>
+      <div class="examgr-rd-info-row"><span>Rank</span><span>${examgrReportIndex + 1}</span></div>
+
+      <table class="examgr-rd-table">
+        <thead><tr><th>Subject</th><th>Marks</th><th>Percentage</th><th>Correct Answers</th></tr></thead>
+        <tbody>
+          ${summaryRows.map(row => `
+            <tr${row.total ? ' class="examgr-rd-total-row"' : ""}>
+              <td>${escHtml(row.label)}</td>
+              <td class="examgr-rd-num">${row.marks}</td>
+              <td class="examgr-rd-num">${row.pct}</td>
+              <td class="examgr-rd-num">${row.correct}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+
+      ${r.thumb ? `
+        <div class="examgr-rd-sheet-img-wrap">
+          <img class="examgr-rd-sheet-img" id="examgr-rd-sheet-img" src="${r.thumb}" alt="Scanned sheet">
+        </div>
+        <div style="text-align:center;margin:6px 0 4px;">
+          <a id="examgr-rd-download-link" class="btn-secondary" style="display:none;font-size:.8rem;padding:6px 14px;text-decoration:none;" download="roll-${escHtml(r.roll || 'na')}-report.jpg">⬇️ Photo Download Karein</a>
+        </div>
+      ` : ""}
+
+      <table class="examgr-rd-table examgr-rd-qtable">
+        <thead><tr><th>Q No</th><th>Attempted</th><th>Correct</th><th>Marks</th></tr></thead>
+        <tbody>
+          ${qRows.map(row => `
+            <tr class="examgr-rd-row-${row.status}">
+              <td>${row.q}</td>
+              <td class="examgr-rd-attempted${row.flag === "multi" ? " examgr-rd-flag-multi" : row.flag === "faint" ? " examgr-rd-flag-faint" : ""}">${escHtml(row.attemptedText)}</td>
+              <td>${escHtml(row.correctLetter)}</td>
+              <td class="examgr-rd-num">${row.marks.toFixed(1)}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    `;
+
+    // Lazy-swap in the sharp HD photo once it loads — the small
+    // embedded thumb shows instantly above so there's no blank gap.
+    if (r.thumb) {
+      const myIndex = examgrReportIndex;
+      examgrFetchFullPhoto(examMgrSelectedId, r.id).then(fullPhoto => {
+        if (examgrReportIndex !== myIndex || !fullPhoto) return; // user navigated away, or none saved
+        const img = $id("examgr-rd-sheet-img");
+        const dl = $id("examgr-rd-download-link");
+        if (img) img.src = fullPhoto;
+        if (dl) { dl.href = fullPhoto; dl.style.display = "inline-block"; }
+      });
+    }
+  }
+
+  function examgrOpenReportDetail(idx) {
+    if (!examgrReportList.length) return;
+    examgrReportIndex = Math.max(0, Math.min(examgrReportList.length - 1, idx || 0));
+    examgrRenderReportDetail();
+    $id("examgr-reports-overlay")?.classList.add("hidden");
+    $id("examgr-report-detail-overlay")?.classList.remove("hidden");
+  }
+
+  function examgrCloseReportDetail() {
+    $id("examgr-report-detail-overlay")?.classList.add("hidden");
+    $id("examgr-reports-overlay")?.classList.remove("hidden");
+  }
+  window.examgrCloseReportDetail = examgrCloseReportDetail;
+
+  $id("examgr-rd-back-btn")?.addEventListener("click", examgrCloseReportDetail);
+  $id("examgr-rd-prev-btn")?.addEventListener("click", () => {
+    if (examgrReportIndex > 0) { examgrReportIndex--; examgrRenderReportDetail(); }
+  });
+  $id("examgr-rd-next-btn")?.addEventListener("click", () => {
+    if (examgrReportIndex < examgrReportList.length - 1) { examgrReportIndex++; examgrRenderReportDetail(); }
+  });
+  $id("examgr-rd-body")?.addEventListener("click", (e) => {
+    const img = e.target.closest("#examgr-rd-sheet-img");
+    if (!img) return;
+    const photoImg = $id("examgr-report-photo-img");
+    if (photoImg) photoImg.src = img.src;
+    $id("examgr-report-photo-overlay")?.classList.remove("hidden");
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // Link a scanned result to a student's login (studentScanReports)
+  // so it shows up in that student's own "My Result" screen — see
+  // student-features.js loadMyPaperExamReports(). Writing/reading uses
+  // the student's mobile number as the identity key, same as the rest
+  // of the app (students/{mobile}, studentRecords).
+  // ────────────────────────────────────────────────────────────────
+  // true jab ye overlay Scan → Save ke turant baad khula ho (batch-scan
+  // flow) — us case mein Link ya Skip, dono par camera turant agli sheet
+  // ke liye resume hona chahiye. Report Detail se "🔗" button dabakar
+  // khola ho to ye false rehta hai aur band karne par bas overlay hata
+  // jaata hai (koi scanner active hi nahi hota us waqt).
+  let examgrLinkPostScan = false;
+
+  function examgrOpenLinkStudent() {
+    const r = examgrReportList[examgrReportIndex];
+    if (!r) return;
+    const nameInput = $id("examgr-link-name-input");
+    const input = $id("examgr-link-mobile-input");
+    const status = $id("examgr-link-status");
+    const skipBtn = $id("examgr-link-skip-btn");
+    const unlinkBtn = $id("examgr-link-unlink-btn");
+    if (nameInput) nameInput.value = "";
+    if (input) input.value = r.linkedMobile || "";
+    if (status) status.textContent = r.linkedMobile
+      ? `Abhi link hai: ${r.linkedMobile}`
+      : "";
+    if (skipBtn) skipBtn.hidden = !examgrLinkPostScan;
+    if (unlinkBtn) unlinkBtn.hidden = !r.linkedMobile;
+    // Students Directory abhi tak load nahi hui (agar admin ne kabhi
+    // "Records → Students Directory" tab nahi khola) to yahin se load
+    // kara lete hain, taaki naam-search pehli baar mein bhi kaam kare.
+    if (typeof ensureAllStudentsCache === "function") ensureAllStudentsCache().catch(() => {});
+    $id("examgr-link-student-overlay")?.classList.remove("hidden");
+  }
+
+  // Scan Sheet ke "Save" ke turant baad is result ke liye link-overlay
+  // kholta hai — examgrReportList/examgrReportIndex ko is akele result
+  // par point karke, taaki wahi confirm/skip/unlink handlers (jo neeche
+  // examgrReportList[examgrReportIndex] use karte hain) bina badlaav ke
+  // yahan bhi kaam karein.
+  function examgrOpenLinkStudentForScan(resultObj) {
+    examgrReportList = [resultObj];
+    examgrReportIndex = 0;
+    examgrLinkPostScan = true;
+    examgrOpenLinkStudent();
+
+    // Speed: if this exact roll was already linked to a student earlier
+    // in THIS exam's batch (a rescanned sheet, or same roll appearing
+    // again), prefill that mobile instead of making the admin search by
+    // name again for a roll already linked once this session. Only
+    // prefills the field — still requires an explicit "Link Karein" tap,
+    // never links without confirmation.
+    const ex = examMgrExams[examMgrSelectedId];
+    const roll = (resultObj.roll || "").trim();
+    if (ex && Array.isArray(ex.results) && roll && roll.indexOf("?") === -1) {
+      const priorLinked = ex.results
+        .filter(r => r.id !== resultObj.id && (r.roll || "").trim() === roll && r.linkedMobile)
+        .pop();
+      if (priorLinked) {
+        const mobileInput = $id("examgr-link-mobile-input");
+        const status = $id("examgr-link-status");
+        if (mobileInput && !mobileInput.value) mobileInput.value = priorLinked.linkedMobile;
+        if (status) status.textContent = `Is roll ko pehle isi exam mein ${priorLinked.linkedMobile} se link kiya gaya tha — confirm karke "Link Karein" dabayen.`;
+      }
+    }
+
+    // v22: if the roll-based prefill above didn't already fill the
+    // mobile field, try the OCR name guess as a second, lower-confidence
+    // shortcut — fuzzy-matched against the registered students list.
+    // ALWAYS shown as a suggestion to confirm, never auto-linked: even
+    // a strong-looking match just prefills the fields, "Link Karein"
+    // still has to be tapped explicitly.
+    const mobileInput = $id("examgr-link-mobile-input");
+    const nameInput = $id("examgr-link-name-input");
+    const status = $id("examgr-link-status");
+    if (mobileInput && !mobileInput.value && resultObj.ocrNameGuess) {
+      const matches = examgrBestNameMatches(resultObj.ocrNameGuess, 3);
+      const top = matches[0], second = matches[1];
+      // Only auto-fill the actual student fields when the top match is
+      // both reasonably confident AND clearly ahead of the runner-up —
+      // an ambiguous top-two (e.g. two similar names) is exactly the
+      // case where guessing wrong would be worse than not guessing.
+      if (top && top.score >= 0.6 && (!second || top.score - second.score >= 0.15)) {
+        if (nameInput) nameInput.value = top.name;
+        mobileInput.value = top.mobile;
+        if (status) status.textContent = `📝 OCR se padha: "${resultObj.ocrNameGuess}" → sabse mila-julta registered student: ${top.name}. Sheet se milaan karke "Link Karein" dabayen, ya neeche naam badal kar dobara dhoondein.`;
+      } else if (nameInput) {
+        // No confident single match — hand the raw guess to the normal
+        // name-search box instead, so its existing suggestion list still
+        // gives the admin a starting point without picking for them.
+        nameInput.value = resultObj.ocrNameGuess;
+        nameInput.dispatchEvent(new Event("input"));
+        if (status) status.textContent = `📝 OCR se padha: "${resultObj.ocrNameGuess}" — neeche list se sahi student chunein, ya naam type karke dhoondein.`;
+      }
+    }
+  }
+
+  function examgrCloseLinkStudent() {
+    $id("examgr-link-student-overlay")?.classList.add("hidden");
+    if (examgrLinkPostScan) {
+      examgrLinkPostScan = false;
+      resumeScannerDetectionLoop();
+    }
+  }
+  window.examgrCloseLinkStudent = examgrCloseLinkStudent;
+  $id("examgr-rd-link-btn")?.addEventListener("click", () => { examgrLinkPostScan = false; examgrOpenLinkStudent(); });
+  $id("examgr-link-skip-btn")?.addEventListener("click", examgrCloseLinkStudent);
+
+  // ── Naam se Student Search (Students Directory se, allStudentsCache) ──
+  // Admin yahan student ka NAAM type karta hai; suggestion par click
+  // karte hi neeche wale Mobile Number field mein uska EXACT registered
+  // number apne aap bhar jaata hai — bilkul omr.js ke
+  // enhanceStudentAutocomplete jaisa pattern, taaki OMR sheet hamesha
+  // sahi registered mobile se hi link ho, haath se galat number type
+  // hone ka chance na rahe. Registered na ho to number seedha type bhi
+  // kiya ja sakta hai — ye sirf ek shortcut hai, zaroori nahi.
+  function examgrSavedStudentsForNameSearch() {
+    if (typeof allStudentsCache === "undefined" || !Array.isArray(allStudentsCache)) return [];
+    return allStudentsCache
+      .map(s => ({ name: (s.name || "").trim(), mobile: (s.mobile || "").trim() }))
+      .filter(s => s.name && s.mobile);
+  }
+
+  function examgrSetupLinkNameSearch() {
+    const nameInput = $id("examgr-link-name-input");
+    const mobileInput = $id("examgr-link-mobile-input");
+    const status = $id("examgr-link-status");
+    if (!nameInput || nameInput.dataset.examgrBound) return;
+    nameInput.dataset.examgrBound = "1";
+
+    const wrap = document.createElement("div");
+    wrap.className = "searchable-select-wrap";
+    nameInput.parentNode.insertBefore(wrap, nameInput);
+    wrap.appendChild(nameInput);
+
+    const list = document.createElement("div");
+    list.className = "searchable-select-list hidden";
+    wrap.appendChild(list);
+
+    let activeIndex = -1;
+
+    function renderList() {
+      const q = nameInput.value.trim().toLowerCase();
+      if (!q) { list.classList.add("hidden"); return; }
+      const students = examgrSavedStudentsForNameSearch().filter(s => s.name.toLowerCase().includes(q));
+      list.innerHTML = "";
+      activeIndex = -1;
+      if (!students.length) {
+        const empty = document.createElement("div");
+        empty.className = "searchable-select-empty";
+        empty.textContent = "Koi registered student nahi mila — number seedha type kar sakte hain.";
+        list.appendChild(empty);
+        list.classList.remove("hidden");
+        return;
+      }
+      students.slice(0, 8).forEach(s => {
+        const item = document.createElement("div");
+        item.className = "searchable-select-option";
+        item.textContent = `${s.name} — ${s.mobile}`;
+        item.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          nameInput.value = s.name;
+          if (mobileInput) mobileInput.value = s.mobile;
+          if (status) status.textContent = `✓ ${s.name} chuna gaya — ab "Link Karein" dabayein.`;
+          closeList();
+        });
+        list.appendChild(item);
+      });
+      list.classList.remove("hidden");
+    }
+
+    function closeList() { list.classList.add("hidden"); activeIndex = -1; }
+
+    nameInput.addEventListener("input", renderList);
+    nameInput.addEventListener("focus", () => { if (nameInput.value.trim()) renderList(); });
+    document.addEventListener("click", (e) => { if (!wrap.contains(e.target)) closeList(); });
+    nameInput.addEventListener("keydown", (e) => {
+      const items = Array.from(list.querySelectorAll(".searchable-select-option"));
+      if (!items.length) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        activeIndex = Math.min(activeIndex + 1, items.length - 1);
+        items.forEach((it, i) => it.classList.toggle("highlight", i === activeIndex));
+        items[activeIndex]?.scrollIntoView({ block: "nearest" });
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        activeIndex = Math.max(activeIndex - 1, 0);
+        items.forEach((it, i) => it.classList.toggle("highlight", i === activeIndex));
+        items[activeIndex]?.scrollIntoView({ block: "nearest" });
+      } else if (e.key === "Enter") {
+        if (activeIndex >= 0 && items[activeIndex]) {
+          e.preventDefault();
+          items[activeIndex].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        }
+      } else if (e.key === "Escape") {
+        closeList();
+      }
+    });
+  }
+  examgrSetupLinkNameSearch();
+
+  // Writes/updates the per-student copy of this scanned report. Kept as
+  // its own small doc (not embedded in examManagerExams) so a student's
+  // security rules only ever need to read their own linked reports, not
+  // the whole admin exam doc (which also holds the answer key etc).
+  async function examgrWriteScanReportDoc(mobile, ex, r) {
+    const database = db();
+    if (!database) return false;
+    // Pull the sharp HD photo saved at scan-time, if present, so the
+    // student sees the same quality as the admin Report Detail screen —
+    // falls back to the small embedded thumb if it wasn't saved/found.
+    const sharpPhoto = await examgrFetchFullPhoto(examMgrSelectedId, r.id);
+    try {
+      await database.collection("studentScanReports").doc(r.id).set({
+        mobile,
+        examId: examMgrSelectedId,
+        examName: ex.examName || "",
+        className: ex.className || "",
+        date: ex.date || "",
+        roll: r.roll || "",
+        setLetter: r.setLetter || null,
+        marks: r.marks,
+        correct: r.correct,
+        wrong: r.wrong,
+        blank: r.blank,
+        totalQuestions: r.totalQuestions,
+        thumb: sharpPhoto || r.thumb || null,
+        scannedAt: r.scannedAt || Date.now(),
+        linkedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      return true;
+    } catch (err) {
+      alert("Link save nahi ho paya: " + (err.message || err));
+      return false;
+    }
+  }
+
+  $id("examgr-link-confirm-btn")?.addEventListener("click", async () => {
+    const id = examMgrSelectedId;
+    const ex = examMgrExams[id];
+    const r = examgrReportList[examgrReportIndex];
+    if (!ex || !r) return;
+    const input = $id("examgr-link-mobile-input");
+    const status = $id("examgr-link-status");
+    const mobile = (input?.value || "").trim();
+    if (!/^\d{10}$/.test(mobile)) {
+      if (status) status.textContent = "⚠️ Sahi 10-digit mobile number daalein.";
+      return;
+    }
+
+    const btn = $id("examgr-link-confirm-btn");
+    btn.disabled = true;
+    if (status) status.textContent = "Student dhoondh rahe hain...";
+
+    const database = db();
+    let studentName = null;
+    try {
+      if (database) {
+        const snap = await database.collection("students").doc(mobile).get();
+        if (snap.exists) studentName = snap.data().name || null;
+      }
+    } catch (err) { /* lookup optional — proceed even if it fails */ }
+
+    if (!studentName) {
+      const proceed = confirm(
+        `Is mobile number (${mobile}) se koi registered student nahi mila. Phir bhi link karein? ` +
+        `(Jab wo student is number se register/login karega, tab ye report use dikhne lagega.)`
+      );
+      if (!proceed) { btn.disabled = false; if (status) status.textContent = ""; return; }
+    }
+
+    if (status) status.textContent = "⏳ Link kar rahe hain...";
+    const ok = await examgrWriteScanReportDoc(mobile, ex, r);
+    if (ok) {
+      r.linkedMobile = mobile;
+      await examgrPersistResult(id, r);
+      if (status) status.textContent = studentName
+        ? `✅ ${studentName} se link ho gaya.`
+        : "✅ Link ho gaya.";
+      setTimeout(examgrCloseLinkStudent, 900);
+    }
+    btn.disabled = false;
+  });
+
+  $id("examgr-link-unlink-btn")?.addEventListener("click", async () => {
+    const id = examMgrSelectedId;
+    const ex = examMgrExams[id];
+    const r = examgrReportList[examgrReportIndex];
+    if (!ex || !r || !r.linkedMobile) { examgrCloseLinkStudent(); return; }
+    if (!confirm("Is result ko student ke login se unlink kar dein?")) return;
+
+    const database = db();
+    try {
+      if (database) await database.collection("studentScanReports").doc(r.id).delete();
+    } catch (err) {
+      alert("Unlink nahi ho paya: " + (err.message || err));
+      return;
+    }
+    delete r.linkedMobile;
+    await examgrPersistResult(id, r);
+    examgrCloseLinkStudent();
+  });
+
+  // Persists ONE edited/relinked result back to its own doc in the
+  // scanResults subcollection (see ensureExamResultsLoaded and the save
+  // handler above — each result is its own small doc now, not an entry
+  // in a single growing array field on the parent exam doc). An edit or
+  // unlink only ever touches the one result that changed, so this stays
+  // just as cheap on scan #200 of a session as it was on scan #2.
+  async function examgrPersistResult(id, r) {
+    const database = db();
+    if (!database) { alert("Firebase se connect nahi ho paya — internet check karein."); return false; }
+    try {
+      await database.collection(COLLECTION).doc(id).collection("scanResults").doc(r.id).set(r);
+      return true;
+    } catch (err) {
+      alert("Save nahi ho paya: " + (err.message || err));
+      return false;
+    }
+  }
+
+  // Permanently deletes one scanned result: its scanResults doc, its
+  // full-quality photo doc (scanPhotos subcollection), and updates the
+  // exam's `scanned` counter — batched into one round trip. Also covers
+  // a result that was re-scanned ("naya sheet" / rescan) and is being
+  // discarded — same cleanup applies either way.
+  async function examgrDeleteResult(examId, resultId, newScannedCount) {
+    const database = db();
+    if (!database) return false;
+    try {
+      const examRef = database.collection(COLLECTION).doc(examId);
+      const batch = database.batch();
+      batch.delete(examRef.collection("scanResults").doc(resultId));
+      batch.delete(examRef.collection("scanPhotos").doc(resultId));
+      batch.update(examRef, { scanned: newScannedCount, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      await batch.commit();
+      return true;
+    } catch (err) {
+      alert("Delete nahi ho paya: " + (err.message || err));
+      return false;
+    }
+  }
+
+  $id("examgr-rd-delete-btn")?.addEventListener("click", async () => {
+    const id = examMgrSelectedId;
+    const ex = examMgrExams[id];
+    const r = examgrReportList[examgrReportIndex];
+    if (!ex || !r) return;
+    if (!confirm(`Roll No ${r.roll || "—"} ka result permanently delete karein? Ye wapas nahi hoga.`)) return;
+
+    const results = Array.isArray(ex.results) ? ex.results : [];
+    const pos = results.findIndex(x => x.id === r.id);
+    if (pos === -1) return;
+    results.splice(pos, 1);
+    ex.results = results;
+    ex.scanned = results.length;
+
+    const ok = await examgrDeleteResult(id, r.id, results.length);
+    if (!ok) return;
+
+    const nextIndex = Math.min(examgrReportIndex, results.length - 1);
+    await examgrOpenReports(); // rebuilds + re-sorts the list (and examgrReportList) from ex.results
+    if (results.length) examgrOpenReportDetail(nextIndex);
+    else examgrCloseReportDetail();
+  });
+
+  $id("examgr-rd-share-btn")?.addEventListener("click", async () => {
+    const ex = examMgrExams[examMgrSelectedId];
+    const r = examgrReportList[examgrReportIndex];
+    if (!ex || !r) return;
+    const total = Number(r.totalQuestions) || Number(ex.questions) || 0;
+    const text = `${ex.examName || "Exam"} — Roll No ${r.roll || "—"}\n` +
+      `Class: ${ex.className || "—"} · Set: ${r.setLetter || "—"}\n` +
+      `Marks: ${(Number(r.marks) || 0).toFixed(1)} / ${total} (${total ? ((Number(r.marks) || 0) / total * 100).toFixed(1) : "0.0"}%)\n` +
+      `Correct: ${r.correct || 0} · Wrong: ${r.wrong || 0} · Blank: ${r.blank || 0}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: `Roll No ${r.roll} Report`, text }); }
+      catch (err) { /* user cancelled share — nothing to do */ }
+    } else if (navigator.clipboard) {
+      try { await navigator.clipboard.writeText(text); examgrShowNotice("📋 Report clipboard mein copy ho gaya."); }
+      catch (err) { alert(text); }
+    } else {
+      alert(text);
+    }
+  });
+
+  // ── Report Detail → Edit (Roll No / Set / individual answers) ──
+  let editRdDraftSet = null;
+  let editRdDraftRollDigits = [];
+  let editRdDraftAnswers = {};
+
+  function examgrOpenReportEdit() {
+    const ex = examMgrExams[examMgrSelectedId];
+    const r = examgrReportList[examgrReportIndex];
+    if (!ex || !r) return;
+
+    const rollDigits = Math.max(1, Math.min(5, Number(ex.rollDigits) || 5));
+    editRdDraftRollDigits = String(r.roll || "").padStart(rollDigits, "?").slice(-rollDigits)
+      .split("").map(c => (c >= "0" && c <= "9") ? Number(c) : null);
+    editRdDraftSet = r.setLetter || null;
+    const total = Number(r.totalQuestions) || Number(ex.questions) || 0;
+    const answers = Array.isArray(r.answers) ? r.answers : [];
+    editRdDraftAnswers = {};
+    for (let i = 0; i < total; i++) editRdDraftAnswers[i + 1] = answers[i] || null;
+
+    const rollsetEl = $id("examgr-rd-edit-rollset");
+    if (rollsetEl) {
+      rollsetEl.innerHTML = `
+        <div class="examgr-edit-block">
+          <label>Roll No</label>
+          <div style="display:flex;gap:6px;">
+            ${editRdDraftRollDigits.map((d, i) => `
+              <select class="examgr-edit-roll-digit" data-col="${i}" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid rgba(30,27,75,.15);text-align:center;font-weight:700;color:var(--navy);background:#fff;">
+                <option value="">?</option>
+                ${Array.from({ length: 10 }, (_, n) => `<option value="${n}"${d === n ? " selected" : ""}>${n}</option>`).join("")}
+              </select>`).join("")}
+          </div>
+        </div>
+        <div class="examgr-edit-block" style="margin-top:12px;">
+          <label>Exam Set</label>
+          <select id="examgr-rd-edit-set" style="width:100%;padding:9px;border-radius:8px;border:1.5px solid rgba(30,27,75,.15);font-weight:700;color:var(--navy);background:#fff;">
+            ${SET_LETTERS.map(l => `<option value="${l}"${editRdDraftSet === l ? " selected" : ""}>${l}</option>`).join("")}
+          </select>
+        </div>`;
+      rollsetEl.querySelectorAll(".examgr-edit-roll-digit").forEach(sel => {
+        sel.addEventListener("change", (e) => {
+          const col = Number(e.target.dataset.col);
+          editRdDraftRollDigits[col] = e.target.value === "" ? null : Number(e.target.value);
+        });
+      });
+      $id("examgr-rd-edit-set")?.addEventListener("change", (e) => { editRdDraftSet = e.target.value; });
+    }
+
+    const qlistEl = $id("examgr-rd-edit-qlist");
+    if (qlistEl) {
+      qlistEl.innerHTML = Array.from({ length: total }, (_, i) => examgrAkeyRowHtml(i + 1, editRdDraftAnswers[i + 1], "rq", null)).join("");
+
+      // Two-stage crop render. Earlier this only tried the full-quality
+      // saved photo, with NO onerror handler on the Image — if that
+      // fetch/decode ever failed (full photo never saved, corrupted
+      // data URL, still-syncing offline write, etc.) the crop row just
+      // silently never appeared, with nothing in the console to say why.
+      // Fix: (1) always try the tiny embedded thumb FIRST — it's already
+      // in memory, decodes near-instantly, and guarantees a crop row
+      // shows up even if the sharp photo never arrives; (2) then try to
+      // upgrade to the sharp full-quality photo once it's fetched; (3)
+      // log failures instead of swallowing them.
+      const myIndex = examgrReportIndex;
+      const stillOpen = () =>
+        examgrReportIndex === myIndex &&
+        !$id("examgr-report-edit-overlay")?.classList.contains("hidden");
+
+      const renderCropsFrom = (photoSrc, label) => {
+        if (!photoSrc) return;
+        const img = new Image();
+        img.onload = () => {
+          if (!stillOpen()) return;
+          try {
+            const crops = examgrBuildOptionCrops(img, ex);
+            qlistEl.innerHTML = Array.from({ length: total }, (_, i) =>
+              examgrAkeyRowHtml(i + 1, editRdDraftAnswers[i + 1], "rq", crops)).join("");
+          } catch (err) {
+            console.warn(`Option crop build failed (${label}):`, err);
+          }
+        };
+        img.onerror = () => console.warn(`Option crop source image failed to load (${label})`);
+        img.src = photoSrc;
+      };
+
+      renderCropsFrom(r.thumb || null, "thumb");
+      examgrFetchFullPhoto(examMgrSelectedId, r.id).then(fullPhoto => {
+        if (!fullPhoto || !stillOpen()) return;
+        renderCropsFrom(fullPhoto, "full photo");
+      });
+    }
+
+    $id("examgr-report-detail-overlay")?.classList.add("hidden");
+    $id("examgr-report-edit-overlay")?.classList.remove("hidden");
+  }
+
+  function examgrCloseReportEdit() {
+    $id("examgr-report-edit-overlay")?.classList.add("hidden");
+    $id("examgr-report-detail-overlay")?.classList.remove("hidden");
+  }
+  window.examgrCloseReportEdit = examgrCloseReportEdit;
+
+  $id("examgr-rd-edit-btn")?.addEventListener("click", examgrOpenReportEdit);
+
+  $id("examgr-rd-edit-qlist")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-rq]");
+    if (!btn) return;
+    const q = Number(btn.dataset.rq);
+    const letter = btn.dataset.letter;
+    editRdDraftAnswers[q] = editRdDraftAnswers[q] === letter ? null : letter;
+    const row = btn.closest(".examgr-akey-row");
+    row.querySelectorAll(".examgr-akey-opt").forEach(b =>
+      b.classList.toggle("selected", b.dataset.letter === editRdDraftAnswers[q]));
+  });
+
+  $id("examgr-rd-edit-save-btn")?.addEventListener("click", async () => {
+    const id = examMgrSelectedId;
+    const ex = examMgrExams[id];
+    const r = examgrReportList[examgrReportIndex];
+    if (!ex || !r) return;
+
+    const rollKnown = editRdDraftRollDigits.every(d => d !== null);
+    const roll = rollKnown ? editRdDraftRollDigits.join("") : editRdDraftRollDigits.map(d => d === null ? "?" : d).join("");
+    const total = Number(r.totalQuestions) || Number(ex.questions) || 0;
+    const keyArr = examgrResolveAnswerKeyForGrading(ex, editRdDraftSet);
+
+    let correct = 0, wrong = 0, blank = 0;
+    const answers = [];
+    for (let i = 0; i < total; i++) {
+      const letter = editRdDraftAnswers[i + 1] || null;
+      answers.push(letter);
+      const correctLetter = keyArr[i] || null;
+      if (!letter) blank++;
+      else if (correctLetter && letter === correctLetter) correct++;
+      else wrong++;
+    }
+
+    r.roll = roll;
+    r.setLetter = editRdDraftSet;
+    r.answers = answers;
+    r.flags = new Array(total).fill(null);   // manual edit resolves any multi/faint flag
+    r.multiOptions = new Array(total).fill(null);
+    r.correct = correct;
+    r.wrong = wrong;
+    r.blank = blank;
+    r.marks = correct;
+
+    const results = Array.isArray(ex.results) ? ex.results : [];
+    const pos = results.findIndex(x => x.id === r.id);
+    if (pos !== -1) results[pos] = r;
+    ex.results = results;
+
+    const btn = $id("examgr-rd-edit-save-btn");
+    const originalLabel = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ Saving..."; }
+    const ok = await examgrPersistResult(id, r);
+    if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+    if (!ok) return;
+
+    examgrReportList[examgrReportIndex] = r;
+    examgrRenderReportDetail();
+    examgrCloseReportEdit();
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // Analysis — per-question difficulty across every scanned sheet, so a
+  // teacher can spot which questions the whole class struggled with.
+  // ────────────────────────────────────────────────────────────────
+  async function examgrOpenAnalysis() {
+    const ex = examMgrExams[examMgrSelectedId];
+    if (!ex) return;
+    await ensureExamResultsLoaded(examMgrSelectedId, ex);
+    const results = Array.isArray(ex.results) ? ex.results : [];
+    const n = results.length;
+    const total = Math.max(1, Math.min(MAX_QUESTIONS, Number(ex.questions) || 0));
+
+    if (!n) {
+      examgrShowNotice("📈 Analysis: abhi is exam ki koi sheet scan nahi hui.");
+      return;
+    }
+
+    const marksList = results.map(r => Number(r.marks) || 0);
+    const avg = marksList.reduce((a, b) => a + b, 0) / n;
+    const highest = Math.max(...marksList);
+    const lowest = Math.min(...marksList);
+
+    const perQCorrect = new Array(total).fill(0);
+    const perQAttempted = new Array(total).fill(0);
+    results.forEach(r => {
+      const ans = Array.isArray(r.answers) ? r.answers : [];
+      const keyArr = examgrResolveAnswerKeyForGrading(ex, r.setLetter);
+      for (let i = 0; i < total; i++) {
+        if (ans[i]) perQAttempted[i]++;
+        if (ans[i] && keyArr[i] && ans[i] === keyArr[i]) perQCorrect[i]++;
+      }
+    });
+    const hardest = perQCorrect
+      .map((c, i) => ({ q: i + 1, pct: n ? Math.round((c / n) * 100) : 0 }))
+      .sort((a, b) => a.pct - b.pct)
+      .slice(0, 10);
+
+    const rows = hardest.map(h => `<div class="examgr-report-row" style="padding:8px 10px;">
+        <div class="examgr-report-body">
+          <div class="examgr-report-top"><span class="examgr-report-roll">Q${h.q}</span><span>${h.pct}% sahi</span></div>
+          <div class="examgr-progress-track" style="margin-top:4px;"><div class="examgr-progress-fill" style="width:${h.pct}%;"></div></div>
+        </div>
+      </div>`).join("");
+
+    $id("examgr-reports-title").textContent = "📈 Analysis";
+    $id("examgr-reports-label-1").textContent = "Average";
+    $id("examgr-reports-label-2").textContent = "Sheets";
+    $id("examgr-reports-maxmarks").textContent = avg.toFixed(1);
+    $id("examgr-reports-count").textContent = String(n);
+    const listEl = $id("examgr-reports-list");
+    if (listEl) {
+      listEl.innerHTML = `
+        <div class="examgr-stats-row" style="margin-bottom:12px;">
+          <span>🏆 Highest: <strong>${highest.toFixed(1)}</strong></span>
+          <span>🔻 Lowest: <strong>${lowest.toFixed(1)}</strong></span>
+          <span>📊 Average: <strong>${avg.toFixed(1)}</strong></span>
+        </div>
+        <div class="examgr-section-label">Sabse mushkil questions (kam % sahi)</div>
+        ${rows}`;
+    }
+    $id("examgr-details-overlay")?.classList.add("hidden");
+    $id("examgr-reports-overlay")?.classList.remove("hidden");
+  }
+})();
