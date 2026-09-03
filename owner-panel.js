@@ -34,6 +34,24 @@
 const OWNER_LOGIN_KEY = "snaptestpro_owner_logged_in";
 const OWNER_EMAIL_LOCAL_KEY = "snaptestpro_owner_email";
 
+// ── v113 FIX: Owner Panel login ab galat-but-valid account ko chupke se andar nahi aane deta ──
+// ROOT CAUSE jo mila: `institutes` collection ka READ kisi bhi signed-in
+// user ko mil jaata hai (isSignedIn() — student registration dropdown ke
+// liye jaan-boojh kar khula rakha gaya hai, FIREBASE_SECURITY_SETUP.md
+// dekhein), lekin WRITE sirf isOwner() ko. Isliye agar Owner Panel mein
+// GALTI se kisi doosre valid Firebase account (jaise legacy admin) se
+// login ho jaaye, to panel bilkul normal dikhta hai (list load ho jaati
+// hai, kuch galat nahi lagta) — sirf jab "Owner Naam"/Rename/Deactivate
+// jaisa koi WRITE try karo, tabhi "Missing or insufficient permissions"
+// aata hai, ek confusing generic error ke saath.
+// FIX: login hote hi turant check karo ki signed-in email WAHI hai jo
+// firestore.rules ke isOwner() mein hardcoded hai — nahi to turant
+// sign-out karke ek saaf, samajh aane wala error dikhao, Owner Panel
+// UI kholne se PEHLE hi.
+// ⚠️ Ye email yahan aur firestore.rules ke isOwner() dono jagah EK JAISA
+// hona chahiye — agar kabhi Owner ka email badlein, dono jagah badlein.
+const OWNER_TRUE_EMAIL = "vishnu1234stm@gmail.com";
+
 // ── Class Eligibility (v25) — Multi-Institute Shared Question Bank ────
 // Har Institute ke liye Owner ye tay karta hai ki wo kaun-si Classes ke
 // liye eligible hai — Master Question Bank/Exam data khud kabhi
@@ -124,9 +142,22 @@ function ownerIsEmailLike(v) {
 function openOwnerOverlay() {
   document.getElementById("owner-overlay-bg")?.classList.remove("hidden");
   const auth = ownerGetAuth();
-  if (ownerIsLoggedInFlag() && auth && auth.currentUser && auth.currentUser.email === ownerGetRememberedEmail()) {
+  const resumedEmail = auth && auth.currentUser && auth.currentUser.email;
+  if (
+    ownerIsLoggedInFlag() &&
+    resumedEmail &&
+    resumedEmail === ownerGetRememberedEmail() &&
+    resumedEmail.toLowerCase() === OWNER_TRUE_EMAIL.toLowerCase()
+  ) {
     ownerShowPanel();
   } else {
+    // Purana/stale session ho (ya kisi wajah se galat email remembered
+    // ho gayi ho) to use silently resume mat karo — saaf login screen
+    // dikhao taaki sahi Owner email se hi dobara login ho.
+    if (resumedEmail && resumedEmail.toLowerCase() !== OWNER_TRUE_EMAIL.toLowerCase()) {
+      try { auth.signOut(); } catch (e) {}
+      ownerClearLoggedInFlag();
+    }
     ownerShowLogin();
   }
 }
@@ -148,6 +179,14 @@ function ownerShowLogin() {
 function ownerShowPanel() {
   document.getElementById("owner-login-box")?.classList.add("hidden");
   document.getElementById("owner-panel-box")?.classList.remove("hidden");
+  // v113: hamesha visible rakho ki abhi kis email se signed-in hain —
+  // taaki agar kabhi (kisi purane cached version se) galat account se
+  // login ho bhi jaaye, ek nazar mein pata chal jaaye, kisi write ka
+  // fail hone ka intezaar na karna pade.
+  const auth = ownerGetAuth();
+  const who = auth && auth.currentUser && auth.currentUser.email;
+  const badge = document.getElementById("owner-logged-in-as");
+  if (badge) badge.textContent = who ? ("👤 " + who) : "";
   ownerRenderNewInstituteClassCheckboxes();
   ownerStartListeners();
 }
@@ -183,6 +222,23 @@ async function ownerLogin(e) {
   if (!ownerIsEmailLike(email)) { alert("Sahi email address likhein."); return; }
   try {
     await auth.signInWithEmailAndPassword(email, pass);
+    // v113 FIX: sirf Firebase Auth login successful hona kaafi nahi —
+    // ye check karna zaroori hai ki jis email se login hua wo WAHI hai
+    // jo Owner ke roop mein authorize hai (firestore.rules isOwner()).
+    // Warna (jaise pehle hota tha) koi bhi doosra valid account
+    // (jaise legacy admin) se login ho kar poora panel dikh jaata tha,
+    // aur galti sirf baad mein kisi write par confusing error se pata
+    // chalti thi.
+    if (email.trim().toLowerCase() !== OWNER_TRUE_EMAIL.toLowerCase()) {
+      await auth.signOut();
+      alert(
+        "⚠️ Ye email Owner ke roop mein authorize NAHI hai.\n\n" +
+        "Aapne sign-in kiya: " + email + "\n" +
+        "Owner Panel sirf iss email se khulta hai: " + OWNER_TRUE_EMAIL + "\n\n" +
+        "(Agar ye kisi Admin/institute ka email hai, to use Admin login se try karein, Owner Panel se nahi.)"
+      );
+      return;
+    }
     ownerRememberEmail(email);
     ownerSetLoggedInFlag();
     ownerShowPanel();
