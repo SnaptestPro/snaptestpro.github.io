@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>SnapTest Pro — Owner Panel</title>
+<meta name="description" content="SnapTest Pro Owner Panel — saare institutes aur unke admins manage karein." />
+
+<!-- ══════════════════════════════════════════════════════════════════
+     OWNER APP — poori tarah ALAG, self-contained PWA
+     ----------------------------------------------------------------
+     v24: Pehle ye sirf ek "install landing" page tha jo install/skip
+     ke baad index.html?owner=1 par le jaata tha — matlab Owner install
+     bhi asal mein Admin/Student wala hi poora app (index.html,
+     script.js, exam-manager.js, omr.js, wagera) load karta tha, sirf
+     ek overlay upar dikhta tha. Isi wajah se dono installs "ek jaisa"
+     dikhte the.
+
+     Ab ye page khud hi poora Owner app hai — apna Firebase init, apna
+     owner-panel.js, apna chhota sa login/panel markup. Admin/Student
+     ki koi bhi file (script.js, exam-manager.js, omr.js, question
+     banks, wagera) yahan load hi nahi hoti. Manifest ka start_url ab
+     seedha isi file par point karta hai, isliye installed icon tap
+     karte hi (Android/Chrome) ya "Add to Home Screen" ke baad
+     (iOS) — dono jagah — seedha yahi page khulta hai. iOS ke liye ab
+     koi alag redirect-trick ki zaroorat nahi (pehle thi), kyunki ye
+     page khud hi apna destination hai.
+
+     Student/Admin install abhi bhi index.html se hi hota hai (wahi
+     manifest.webmanifest) — is file se uska koi lena-dena nahi.
+     ══════════════════════════════════════════════════════════════════ -->
+
+<link rel="manifest" href="/manifest-owner.webmanifest" />
+<link rel="icon" href="icon-192-owner.png" type="image/png" />
+
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="SnapTest Pro Owner" />
+<link rel="apple-touch-icon" sizes="192x192" href="icon-192-owner.png" />
+<link rel="apple-touch-icon" sizes="512x512" href="icon-512-owner.png" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#78550a" />
+
+<!-- Sirf shared design-system classes (.card, .field-row, .btn-primary,
+     .section-title, .muted-text, .hidden, colors/fonts) ke liye —
+     Admin/Student ke tabs/panels wali koi bhi CSS (theme-picker,
+     creative-dashboard, exam-manager) yahan jaan-boojh kar NAHI
+     load ki gayi. -->
+<link rel="stylesheet" href="styles.css?v=8">
+
+<style>
+  body { padding: 22px 12px 60px; }
+
+  .owner-shell { max-width: 640px; margin: 0 auto; }
+
+  .owner-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .owner-header-logo { width: 46px; height: 46px; border-radius: 12px; flex-shrink: 0; }
+  .owner-header h1 { font-size: 1.2rem; color: var(--navy); margin: 0 0 2px; line-height: 1.25; }
+  .owner-header-badge { display: inline-block; background: linear-gradient(135deg, #b48214, #78550a); color: #fff; font-weight: 700; font-size: .62rem; letter-spacing: .05em; border-radius: 999px; padding: 2px 9px; margin-left: 6px; vertical-align: middle; }
+  .owner-header p { margin: 0; font-size: .82rem; color: #64748b; }
+
+  .owner-install-banner { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; background: linear-gradient(135deg, #fef3c7, #fde68a); border: 1px solid #fbbf24; border-radius: 12px; padding: 10px 14px; margin-bottom: 16px; font-size: .82rem; color: #78350f; line-height: 1.4; }
+  .owner-install-banner button { background: linear-gradient(135deg, #b48214, #78550a); color: #fff; border: none; border-radius: 9px; padding: 8px 14px; font-size: .82rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+  .owner-install-banner button:disabled { opacity: .6; cursor: default; }
+
+  .owner-card-shell { background: #fff; border-radius: 16px; padding: 22px 20px; box-shadow: 0 10px 36px rgba(15,15,30,.12); }
+
+  .owner-footer-link { display: block; text-align: center; margin-top: 18px; font-size: .8rem; color: #94a3b8; text-decoration: none; }
+
+  /* ── Owner panel component classes (moved here from index.html) ── */
+  .owner-inst-card{background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:12px;padding:12px 14px;margin-bottom:12px;}
+  .owner-inst-card-orphan{background:#fffbeb;border-color:#fcd34d;}
+  .owner-inst-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;}
+  .owner-inst-actions,.owner-admin-actions{display:flex;gap:6px;flex-wrap:wrap;}
+  .owner-admin-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;margin-bottom:6px;}
+  .owner-admin-email{font-size:.88rem;font-weight:600;color:#1e293b;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .owner-badge{font-size:.7rem;font-weight:700;border-radius:999px;padding:2px 9px;}
+  .owner-badge-on{background:#dcfce7;color:#15803d;}
+  .owner-badge-off{background:#fee2e2;color:#b91c1c;}
+  .owner-mini-btn{background:#eef2ff;color:#3730a3;border:none;border-radius:8px;padding:6px 10px;font-size:.78rem;font-weight:600;cursor:pointer;}
+  .owner-mini-primary{background:#4f46e5;color:#fff;}
+  .owner-mini-danger{background:#fee2e2;color:#b91c1c;}
+  .owner-add-admin-form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+  .owner-add-admin-form input{flex:1;min-width:160px;padding:7px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;}
+  .owner-inst-classes{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;margin-bottom:10px;}
+  .owner-classes-label{font-size:.78rem;font-weight:700;color:#334155;margin-right:2px;}
+  .owner-class-chip{display:inline-flex;align-items:center;gap:5px;font-size:.76rem;font-weight:600;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;padding:4px 10px 4px 8px;cursor:pointer;}
+  .owner-class-chip input{margin:0;}
+  .owner-class-chip-on{background:#eef2ff;color:#3730a3;border-color:#c7d2fe;}
+  #owner-new-institute-classes{display:flex;flex-wrap:wrap;gap:6px;width:100%;margin-top:2px;}
+</style>
+</head>
+<body>
+
+<div class="owner-shell">
+
+  <div class="owner-header">
+    <img src="icon-192-owner.png" alt="" class="owner-header-logo" />
+    <div>
+      <h1>SnapTest Pro Owner<span class="owner-header-badge">OWNER ONLY</span></h1>
+      <p>Har institute ka admin yahan se dekhein aur control karein.</p>
+    </div>
+  </div>
+
+  <div id="install-banner" class="owner-install-banner hidden">
+    <span id="install-status-text"></span>
+    <button id="install-btn" type="button">⬇️ Install Karein</button>
+  </div>
+
+  <div class="owner-card-shell">
+
+    <!-- Owner Login -->
+    <form id="owner-login-box" class="hidden" onsubmit="return ownerLogin(event)">
+      <h2 class="section-title">🔐 Owner Login</h2>
+      <p class="muted-text" style="margin-bottom:14px;">Sirf product owner ke liye — har institute ka admin yahan se manage hota hai.</p>
+      <div class="field-row">
+        <label>Owner Email</label>
+        <input id="owner-email" type="email" placeholder="Owner ka email" autocomplete="off" />
+      </div>
+      <div class="field-row">
+        <label>Password</label>
+        <input id="owner-password" type="password" placeholder="Password" autocomplete="off" />
+      </div>
+      <button type="submit" class="btn-primary">Login</button>
+      <button type="button" id="owner-forgot-password-link" style="background:none;border:none;color:#2563eb;text-decoration:underline;cursor:pointer;margin-top:10px;font-size:.85rem;display:block;" onclick="ownerForgotPassword()">🔑 Password bhool gaye?</button>
+    </form>
+
+    <!-- Owner Panel -->
+    <div id="owner-panel-box" class="hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+        <h2 class="section-title" style="margin:0;">🏢 Owner Panel</h2>
+        <button type="button" class="owner-mini-btn" onclick="ownerLogout()">🚪 Logout</button>
+      </div>
+      <p class="muted-text" style="margin-bottom:14px;">Har institute ka admin yahan se dekhein aur control karein.</p>
+
+      <div class="card" style="margin-bottom:16px;padding:14px;">
+        <strong style="display:block;margin-bottom:8px;">+ Naya Institute</strong>
+        <form onsubmit="return ownerAddInstituteSubmit(event)" style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input id="owner-new-institute-name" type="text" placeholder="Institute ka naam" required style="flex:1;min-width:160px;" />
+          <div style="width:100%;font-size:.76rem;color:#64748b;margin-top:2px;">🎓 Ye Institute kin Classes ke liye eligible hai:</div>
+          <div id="owner-new-institute-classes"></div>
+          <button type="submit" class="btn-primary" style="white-space:nowrap;">+ Add Karein</button>
+        </form>
+      </div>
+
+      <div id="owner-institutes-list"></div>
+    </div>
+
+  </div>
+
+  <a class="owner-footer-link" href="/">← SnapTest Pro (Admin/Student) site par jaayein</a>
+</div>
+
+<!-- Firebase SDKs (sirf jo Owner Panel ko chahiye — Storage nahi) -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="owner-panel.js"></script>
+
+<script>
+  function isStandaloneMode() {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+      || window.navigator.standalone === true;
+  }
+
+  // ── Install-to-home-screen banner (sirf tab mein khula ho, already
+  //    installed/standalone na ho tab hi dikhta hai) ──────────────────
+  if (!isStandaloneMode()) {
+    let deferredPrompt = null;
+    const banner = document.getElementById('install-banner');
+    const installBtn = document.getElementById('install-btn');
+    const statusEl = document.getElementById('install-status-text');
+
+    function detectPlatformInstructions() {
+      const ua = window.navigator.userAgent || '';
+      const isIos = /iphone|ipad|ipod/i.test(ua);
+      const isAndroid = /android/i.test(ua);
+      const isFirefox = /firefox|fxios/i.test(ua);
+      const isSafari = /safari/i.test(ua) && !/crios|fxios|chrome|android|edg/i.test(ua);
+
+      if (isIos) return 'Neeche Share button ⬆️ par tap karein, phir "Add to Home Screen" chunein.';
+      if (isAndroid && isFirefox) return 'Upar-daayein 3-dot menu kholein aur "Install" ya "Add to Home screen" chunein.';
+      if (!isAndroid && !isIos && isFirefox) return 'Firefox is page ko app ki tarah install support nahi karta. Chrome ya Edge mein kholein.';
+      if (!isAndroid && !isIos && isSafari) return 'Menu bar mein File → "Add to Dock" chunein (Safari 17+), ya Chrome/Edge mein kholein.';
+      return 'Address bar ke daayein taraf install icon ⊕ par click karein, ya browser ke 3-dot menu mein "Install App" dhoondein.';
+    }
+
+    function couldGetNativePrompt() {
+      const ua = window.navigator.userAgent || '';
+      const isIos = /iphone|ipad|ipod/i.test(ua);
+      const isFirefox = /firefox|fxios/i.test(ua);
+      const isSafari = /safari/i.test(ua) && !/crios|fxios|chrome|android|edg/i.test(ua);
+      return !isIos && !isFirefox && !isSafari;
+    }
+
+    function showBanner(text, showButton) {
+      statusEl.textContent = text;
+      installBtn.style.display = showButton ? '' : 'none';
+      banner.classList.remove('hidden');
+    }
+
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      deferredPrompt = e;
+      showBanner('SnapTest Pro Owner ko home screen par install karein — Admin/Student se bilkul alag icon.', true);
+      installBtn.onclick = function () {
+        installBtn.disabled = true;
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.finally(function () { deferredPrompt = null; });
+      };
+    });
+
+    window.addEventListener('appinstalled', function () {
+      banner.classList.add('hidden');
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
+      if (couldGetNativePrompt()) {
+        setTimeout(function () {
+          if (deferredPrompt) return; // beforeinstallprompt ne pehle hi handle kar diya
+          showBanner(detectPlatformInstructions(), false);
+        }, 3000);
+      } else {
+        showBanner(detectPlatformInstructions(), false);
+      }
+    });
+  }
+
+  // Same service worker/scope — installability + offline ke liye.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(function () {});
+  }
+
+  // ── Seedha Owner login/panel dikhao (persistent-login aware) ───────
+  // openOwnerOverlay() (owner-panel.js mein) khud check karta hai ki
+  // pehle se logged-in hai ya nahi (localStorage flag + Firebase Auth
+  // session) — agar haan, seedha Panel dikhata hai, warna Login form.
+  // Yahi wajah hai ki ye Admin Panel jaisa "ek baar login, phir login
+  // hi rehta hai" waala behaviour deta hai.
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.vishnuFirebase && window.vishnuFirebase.authReady) {
+      window.vishnuFirebase.authReady.then(function () { openOwnerOverlay(); });
+    } else {
+      openOwnerOverlay();
+    }
+  });
+</script>
+</body>
+</html>
