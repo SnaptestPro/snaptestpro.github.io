@@ -115,11 +115,12 @@
        isko dekhte hain — manifest.webmanifest ke saath extra safety -->
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Cinzel:wght@700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css?v=8">
   <link rel="stylesheet" href="theme-picker.css">
   <link rel="stylesheet" href="creative-dashboard.css?v=1">
   <link rel="stylesheet" href="exam-manager.css?v=1">
+  <link rel="stylesheet" href="id-card.css?v=2">
   
   <!-- CDNs for Mega Update Features — defer kiya kyunki ye sab (chart,
        excel/pdf/word export, confetti) sirf user ke button-click par
@@ -430,24 +431,72 @@
       <div class="card hidden" id="student-settings-card">
         <h3 class="section-title">⚙️ Settings</h3>
 
-        <!-- ── Student Profile: Photo (DP) + Naam + Mobile ──────────────
-             Student yahan se apni photo khud upload/badal sakta hai — turant
+        <!-- ── Student ID Card (v111) ────────────────────────────────
+             Ek asli institute ID card jaisa dikhta hai — Naam, ID
+             Number (Institute-code+Serial No), Class, Academic Session
+             (live-calculated), Issue Date, aur "Owner of Institute"
+             signature — dono corner-logo Admin ke uploaded institute
+             logo se aate hain (id-card.js → renderStudentIdCard).
+             Beech ki photo student khud upload/badal sakta hai — turant
              online (Firestore) save ho jaati hai, aur Admin ke Students
              Directory ke "🪪 Profile" mein bhi wahi photo turant dikhne
-             lagti hai (dono ek hi field — students/{mobile}.photoDataUrl —
-             use karte hain). -->
-        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap;">
-          <div style="position:relative;flex:0 0 auto;">
-            <img id="student-dp-preview" src="" alt="Profile Photo" style="width:84px;height:84px;border-radius:50%;object-fit:cover;border:3px solid #c7d2fe;display:none;" />
-            <div id="student-dp-placeholder" style="width:84px;height:84px;border-radius:50%;background:#eef2ff;align-items:center;justify-content:center;font-size:2rem;color:#6366f1;border:3px solid #c7d2fe;display:flex;">🧑‍🎓</div>
+             lagti hai (dono ek hi field — students/{mobile}.photoDataUrl
+             — use karte hain). Default mein ye photo khaali (blank)
+             rehti hai jab tak student khud na lagaye. -->
+        <div class="idcard-outer" id="student-idcard-outer">
+          <div class="idcard">
+            <div class="idcard-header">
+              <div class="idcard-header-left">
+                <div class="idcard-logo-circle">
+                  <img id="idcard-inst-logo-left-img" src="" alt="" style="display:none;" />
+                  <span id="idcard-inst-logo-left-fallback" class="idcard-logo-fallback">🏫</span>
+                </div>
+                <div class="idcard-header-text">
+                  <div class="idcard-inst-name" id="idcard-inst-name">Loading...</div>
+                  <div class="idcard-subtitle">Student ID Card</div>
+                </div>
+              </div>
+              <div class="idcard-logo-badge">
+                <img id="idcard-inst-logo-right-img" src="" alt="" style="display:none;" />
+                <span id="idcard-inst-logo-right-fallback" class="idcard-logo-fallback">🏫</span>
+              </div>
+            </div>
+
+            <div class="idcard-body">
+              <div class="idcard-photo-col">
+                <label for="student-dp-photo-input" class="idcard-photo-frame" title="Photo lagayein/badlein">
+                  <img id="student-dp-preview" src="" alt="Student Photo" style="display:none;" />
+                  <div id="student-dp-placeholder" class="idcard-photo-placeholder">
+                    <span class="idcard-photo-icon">📷</span>
+                    <span class="idcard-photo-text">Photo Lagayein</span>
+                  </div>
+                </label>
+                <input type="file" id="student-dp-photo-input" accept="image/*" style="display:none;" onchange="handleStudentDpPhotoChange(event)" />
+                <p id="student-dp-photo-status" class="idcard-photo-status"></p>
+              </div>
+              <div class="idcard-fields">
+                <div class="idcard-field"><span class="idcard-label">Name:</span> <span class="idcard-value" id="student-dp-name">-</span></div>
+                <div class="idcard-field"><span class="idcard-label">ID Number:</span> <span class="idcard-value" id="idcard-id-number">-</span></div>
+                <div class="idcard-field"><span class="idcard-label">Class:</span> <span class="idcard-value" id="idcard-class">-</span></div>
+                <div class="idcard-field"><span class="idcard-label">Academic Session:</span> <span class="idcard-value" id="idcard-session">-</span></div>
+              </div>
+            </div>
+
+            <div class="idcard-footer">
+              <div class="idcard-issue">
+                <div class="idcard-footer-label">Issue Date</div>
+                <div class="idcard-footer-value" id="idcard-issue-date">-</div>
+              </div>
+              <div class="idcard-signature">
+                <div class="idcard-sign-script" id="idcard-sign-name">-</div>
+                <div class="idcard-sign-label">Owner of Institute</div>
+              </div>
+            </div>
           </div>
-          <div style="flex:1 1 180px;min-width:180px;">
-            <div id="student-dp-name" style="font-weight:700;font-size:1.05rem;color:#1e1b4b;">-</div>
-            <div id="student-dp-mobile" style="color:#64748b;font-size:.85rem;">-</div>
-            <label for="student-dp-photo-input" class="btn-secondary" style="display:inline-block;margin-top:8px;cursor:pointer;font-size:.8rem;padding:6px 12px;">📷 Photo Lagayein/Badlein</label>
-            <input type="file" id="student-dp-photo-input" accept="image/*" style="display:none;" onchange="handleStudentDpPhotoChange(event)" />
-            <p id="student-dp-photo-status" class="muted-text" style="margin:6px 0 0;font-size:.78rem;"></p>
-          </div>
+          <!-- Mobile number ab card par nahi dikhta (ID card design mein
+               jagah/zaroorat nahi thi), lekin internal JS (populateStudentFormFromSession)
+               ise abhi bhi set karta hai — isliye field hidden rakha hai, hataya nahi. -->
+          <div id="student-dp-mobile" style="display:none;">-</div>
         </div>
 
         <div id="student-welcome-bar" style="display:flex;align-items:center;justify-content:space-between;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:10px 14px;margin-bottom:14px;">
@@ -1695,6 +1744,74 @@ B"></textarea>
             <p id="admin-settings-email" style="font-size:.9rem;color:#14532d;margin-top:3px;font-weight:600;">—</p>
           </div>
         </div>
+        <!-- ── Admin ID Card (v111) ───────────────────────────────────
+             Student ID Card jaisa hi design — bas ID Number/Class/
+             Academic Session ke bina (wo sirf students ke liye
+             relevant hain). Corner-logo par click karke Admin apne
+             institute ka logo upload karta hai — ye logo turant Admin
+             ke is card par AUR sabhi students ke ID Card par bhi
+             dikhne lagta hai (dono ek hi field —
+             institutes/{id}.logoDataUrl — use karte hain). Beech ki
+             photo aur "Name" Admin apne liye alag se set karta hai
+             (id-card.js → renderAdminIdCard). -->
+        <div class="card" style="margin-bottom:12px;">
+          <h3 class="section-title" style="margin-top:0;">🪪 Aapka ID Card</h3>
+          <p class="muted-text" style="margin-top:-6px;">Logo par click karke apne institute ka logo lagayein — turant sabhi students ke ID Card par bhi dikhega. Photo aur Naam par click/✏️ se apni details set karein.</p>
+          <div class="idcard-outer" id="admin-idcard-outer">
+            <div class="idcard">
+              <div class="idcard-header">
+                <div class="idcard-header-left">
+                  <label for="admin-institute-logo-input" class="idcard-logo-circle idcard-logo-clickable" title="Institute logo lagayein/badlein">
+                    <img id="admin-idcard-logo-left-img" src="" alt="" style="display:none;" />
+                    <span id="admin-idcard-logo-left-fallback" class="idcard-logo-fallback">🏫</span>
+                  </label>
+                  <div class="idcard-header-text">
+                    <div class="idcard-inst-name" id="admin-idcard-inst-name">Loading...</div>
+                    <div class="idcard-subtitle">Admin ID Card</div>
+                  </div>
+                </div>
+                <label for="admin-institute-logo-input" class="idcard-logo-badge idcard-logo-clickable" title="Institute logo lagayein/badlein">
+                  <img id="admin-idcard-logo-right-img" src="" alt="" style="display:none;" />
+                  <span id="admin-idcard-logo-right-fallback" class="idcard-logo-fallback">🏫</span>
+                </label>
+                <input type="file" id="admin-institute-logo-input" accept="image/*" style="display:none;" onchange="handleInstituteLogoChange(event)" />
+              </div>
+
+              <div class="idcard-body">
+                <div class="idcard-photo-col">
+                  <label for="admin-dp-photo-input" class="idcard-photo-frame" title="Apni photo lagayein/badlein">
+                    <img id="admin-dp-preview" src="" alt="Admin Photo" style="display:none;" />
+                    <div id="admin-dp-placeholder" class="idcard-photo-placeholder">
+                      <span class="idcard-photo-icon">📷</span>
+                      <span class="idcard-photo-text">Photo Lagayein</span>
+                    </div>
+                  </label>
+                  <input type="file" id="admin-dp-photo-input" accept="image/*" style="display:none;" onchange="handleAdminDpPhotoChange(event)" />
+                  <p id="admin-dp-photo-status" class="idcard-photo-status"></p>
+                </div>
+                <div class="idcard-fields">
+                  <div class="idcard-field">
+                    <span class="idcard-label">Name:</span>
+                    <span class="idcard-value" id="admin-idcard-name">Loading...</span>
+                    <button type="button" class="idcard-edit-btn" onclick="handleAdminNameEdit()" title="Naam badlein">✏️</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="idcard-footer">
+                <div class="idcard-issue">
+                  <div class="idcard-footer-label">Issue Date</div>
+                  <div class="idcard-footer-value" id="admin-idcard-issue-date">-</div>
+                </div>
+                <div class="idcard-signature">
+                  <div class="idcard-sign-script" id="admin-idcard-sign-name">-</div>
+                  <div class="idcard-sign-label">Owner of Institute</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p id="admin-institute-logo-status" class="muted-text" style="margin-top:8px;font-size:.8rem;"></p>
+        </div>
         <div class="card" style="background:linear-gradient(135deg,#faf5ff,#f3e8ff);border:1.5px solid #d8b4fe;margin-bottom:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
           <div>
             <strong style="color:#6b21a8;">🎨 App Theme</strong>
@@ -2055,6 +2172,7 @@ B"></textarea>
         <strong style="display:block;margin-bottom:8px;">+ Naya Institute</strong>
         <form onsubmit="return ownerAddInstituteSubmit(event)" style="display:flex;gap:8px;flex-wrap:wrap;">
           <input id="owner-new-institute-name" type="text" placeholder="Institute ka naam" required style="flex:1;min-width:160px;" />
+          <input id="owner-new-institute-owner-name" type="text" placeholder="Institute ke Owner ka naam" required style="flex:1;min-width:160px;" />
           <div style="width:100%;font-size:.76rem;color:#64748b;margin-top:2px;">🎓 Ye Institute kin Classes ke liye eligible hai:</div>
           <div id="owner-new-institute-classes"></div>
           <button type="submit" class="btn-primary" style="white-space:nowrap;">+ Add Karein</button>
@@ -2127,6 +2245,7 @@ B"></textarea>
 <script src="upgrade.js"></script>
 <script src="whatsapp-poll-export.js"></script>
 <script src="student-features.js"></script>
+<script src="id-card.js"></script>
 <script src="omr.js?v=2"></script>
 <script src="exam-manager.js?v=5"></script>
 <script src="push-notifications.js"></script>

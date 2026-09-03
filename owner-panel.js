@@ -279,9 +279,11 @@ function ownerRenderList() {
           <div>
             <strong>${ownerDecorateInstituteName(inst.name || "(naam nahi)")}</strong>
             <span class="owner-badge ${inst.active === false ? "owner-badge-off" : "owner-badge-on"}">${inst.active === false ? "Inactive" : "Active"}</span>
+            <div style="font-size:.78rem;color:#64748b;margin-top:2px;">👤 Owner: ${inst.ownerName ? ownerEsc(inst.ownerName) : `<span style="color:#c2410c;">Naam set nahi hai ⚠️</span>`}</div>
           </div>
           <div class="owner-inst-actions">
             <button type="button" class="owner-mini-btn" onclick="ownerRenameInstitute('${inst.id}', '${ownerEscAttr(inst.name || "")}')">✏️ Rename</button>
+            <button type="button" class="owner-mini-btn" onclick="ownerSetInstituteOwnerName('${inst.id}', '${ownerEscAttr(inst.ownerName || "")}')">👤 Owner Naam</button>
             <button type="button" class="owner-mini-btn" onclick="ownerToggleInstitute('${inst.id}', ${inst.active === false})">${inst.active === false ? "▶️ Activate" : "⏸️ Deactivate"}</button>
             <button type="button" class="owner-mini-btn owner-mini-danger" onclick="ownerDeleteInstitute('${inst.id}')">🗑️ Remove</button>
           </div>
@@ -351,8 +353,10 @@ function ownerAdminRowHtml(a) {
       <div class="owner-admin-email">
         ${ownerEsc(a.email)}
         <span class="owner-badge ${disabled ? "owner-badge-off" : "owner-badge-on"}">${disabled ? "Disabled" : "Active"}</span>
+        <div style="flex-basis:100%;font-size:.76rem;color:#64748b;margin-top:2px;font-weight:400;">🧑 ${a.name ? ownerEsc(a.name) : `<span style="color:#94a3b8;">(naam set nahi hai)</span>`}</div>
       </div>
       <div class="owner-admin-actions">
+        <button type="button" class="owner-mini-btn" onclick="ownerSetAdminName('${ownerEscAttr(a.email)}', '${ownerEscAttr(a.name || "")}')">✏️ Naam</button>
         <button type="button" class="owner-mini-btn" onclick="ownerToggleAdmin('${ownerEscAttr(a.email)}', ${disabled}, this)">${disabled ? "✅ Enable" : "⛔ Disable"}</button>
         <button type="button" class="owner-mini-btn" onclick="ownerResetAdminPassword('${ownerEscAttr(a.email)}')">🔑 Password Reset Email</button>
         <button type="button" class="owner-mini-btn owner-mini-danger" onclick="ownerRemoveAdminRecord('${ownerEscAttr(a.email)}')">🗑️ Remove</button>
@@ -430,6 +434,12 @@ async function ownerAddInstituteSubmit(e) {
   const input = document.getElementById("owner-new-institute-name");
   const name = (input?.value || "").trim();
   if (!name) { alert("Institute ka naam likhein."); return false; }
+  // v112: ID Card ki "Owner of Institute" signature ab COACHING ka
+  // naam nahi, balki institute ke ASLI owner (insaan) ka naam dikhati
+  // hai — isliye institute banate hi ye naam bhi le lete hain.
+  const ownerNameInput = document.getElementById("owner-new-institute-owner-name");
+  const ownerName = (ownerNameInput?.value || "").trim();
+  if (!ownerName) { alert("Institute ke Owner ka naam likhein (ID Card ki signature mein yahi dikhega)."); return false; }
   const allowedClasses = ownerGetCheckedClasses("owner-new-institute-classes");
   if (allowedClasses.length === 0) {
     alert("Kam se kam ek Class select karein jiske liye ye Institute eligible ho.");
@@ -438,11 +448,13 @@ async function ownerAddInstituteSubmit(e) {
   try {
     await db.collection("institutes").add({
       name,
+      ownerName,
       active: true,
       allowedClasses,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     if (input) input.value = "";
+    if (ownerNameInput) ownerNameInput.value = "";
     // Checkboxes wapas Class-10-only default par le aao agli baar ke liye.
     const box = document.getElementById("owner-new-institute-classes");
     if (box) box.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = cb.value === "class_10"; });
@@ -586,6 +598,21 @@ async function ownerRenameInstitute(id, currentName) {
       db.collection("admins").doc(a.email).update({ instituteName: trimmed }).catch(() => {})
     ));
   });
+}
+
+// v112: Institute ka ASLI Owner (insaan) ka naam — ID Card ki "Owner of
+// Institute" signature isi field se aati hai (coaching ke naam se
+// NAHI). Institute banate waqt hi le liya jaata hai, lekin baad mein
+// bhi yahan se badla ja sakta hai.
+async function ownerSetInstituteOwnerName(id, currentName) {
+  const newName = prompt("Institute ke Owner ka naam likhein (ID Card ki signature mein yahi dikhega):", currentName || "");
+  if (newName === null) return; // cancel
+  const trimmed = newName.trim();
+  if (!trimmed) { alert("Owner ka naam khaali nahi ho sakta."); return; }
+  const db = ownerGetDb();
+  await ownerRetryOnPermissionDenied(() =>
+    db.collection("institutes").doc(id).update({ ownerName: trimmed })
+  );
 }
 
 async function ownerToggleInstitute(id, makeActive) {
@@ -840,6 +867,22 @@ async function ownerResetAdminPassword(email) {
   }
 }
 
+// v112: Ek institute se kai admins juday ho sakte hain — har ek ka
+// apna alag personal naam yahin se (Owner Panel) set/badla ja sakta
+// hai (admin khud bhi apne Settings → ID Card se ✏️ ke zariye apna
+// naam badal sakta hai — dono ek hi field, `admins/{email}.name`,
+// use karte hain).
+async function ownerSetAdminName(email, currentName) {
+  const newName = prompt(`"${email}" ka naam likhein (iske ID Card par yahi dikhega):`, currentName || "");
+  if (newName === null) return; // cancel
+  const trimmed = newName.trim();
+  if (!trimmed) { alert("Naam khaali nahi ho sakta."); return; }
+  const db = ownerGetDb();
+  await ownerRetryOnPermissionDenied(() =>
+    db.collection("admins").doc(email).update({ name: trimmed })
+  );
+}
+
 async function ownerRemoveAdminRecord(email) {
   if (!confirm(
     `${email} ka admin record hatayein?\n\n` +
@@ -914,10 +957,12 @@ window.ownerAddInstituteSubmit = ownerAddInstituteSubmit;
 window.ownerRecreateInstituteSubmit = ownerRecreateInstituteSubmit;
 window.ownerAssignNewInstituteSubmit = ownerAssignNewInstituteSubmit;
 window.ownerRenameInstitute = ownerRenameInstitute;
+window.ownerSetInstituteOwnerName = ownerSetInstituteOwnerName;
 window.ownerToggleInstitute = ownerToggleInstitute;
 window.ownerDeleteInstitute = ownerDeleteInstitute;
 window.ownerHandlePendingRemovalFromUrl = ownerHandlePendingRemovalFromUrl;
 window.ownerAddAdminSubmit = ownerAddAdminSubmit;
 window.ownerToggleAdmin = ownerToggleAdmin;
 window.ownerResetAdminPassword = ownerResetAdminPassword;
+window.ownerSetAdminName = ownerSetAdminName;
 window.ownerRemoveAdminRecord = ownerRemoveAdminRecord;

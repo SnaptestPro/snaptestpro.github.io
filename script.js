@@ -1156,9 +1156,13 @@ function goStudentSection(id) {
   if (id === "student-form-fields-anchor" && typeof loadMyTestAttempts === "function") {
     loadMyTestAttempts(true).then(() => renderStudentTestCards());
   }
-  // Student ne Settings kholi — apni Photo/Naam/Mobile turant dikhao.
-  if (id === "student-settings-card" && typeof loadStudentDpProfile === "function") {
-    loadStudentDpProfile();
+  // Student ne Settings kholi — apna poora ID Card (Photo/Naam/ID
+  // Number/Class/Academic Session/Issue Date) turant dikhao. (v111:
+  // renderStudentIdCard, id-card.js mein, loadStudentDpProfile ka
+  // kaam bhi andar hi kar deta hai — isliye ab dono call karne ki
+  // zaroorat nahi.)
+  if (id === "student-settings-card" && typeof renderStudentIdCard === "function") {
+    renderStudentIdCard();
   }
 }
 window.goStudentSection = goStudentSection;
@@ -1280,6 +1284,14 @@ async function registerStudent(e) {
       hash, pinHash, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     await ref.set({ name, mobile, hasPin: true, instituteId, classId, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+    // ID Card feature (v111): turant institute-wide unique serial number
+    // assign kar dete hain (ID Card ka "ID Number" isi se banta hai) —
+    // taaki Settings kholte hi poora ID Card ban chuka mile, koi wait na
+    // ho. Fail ho bhi jaaye to koi baat nahi — ID Card page khulte waqt
+    // (renderStudentIdCard) ye khud-ba-khud dobara try kar leta hai.
+    if (instituteId && window.SavyaIdCard && typeof window.SavyaIdCard.getOrAssignStudentSerial === "function") {
+      window.SavyaIdCard.getOrAssignStudentSerial(db, instituteId, mobile).catch(() => {});
+    }
     setStudentSession({ name, mobile, instituteId: instituteId || null, classId: classId || null });
     showMode("student");
     watchStudentAccountStatus();
@@ -1660,6 +1672,9 @@ function showAdminTab(tab) {
   if (tab === "trash") renderTrashBin();
   if (tab === "records" && !allStudentsCache.length) loadStudentsDirectory();
   if (tab === "grade") renderGradeTestSelect();
+  // Admin ne Settings kholi — apna ID Card (Naam/Photo/Institute Logo/
+  // Issue Date) turant dikhao. (v111)
+  if (tab === "settings" && typeof renderAdminIdCard === "function") renderAdminIdCard();
 }
 
 // ── Secure admin login (real Firebase Authentication) ──────────────

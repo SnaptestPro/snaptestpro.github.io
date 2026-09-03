@@ -466,6 +466,30 @@ service cloud.firestore {
       // kabhi chhed na sake.
       allow read: if isAdmin();
       allow create: if isAdmin() && instituteId.matches('^legacy_.*');
+
+      // ── ID Card feature (v111) ────────────────────────────────────
+      // (a) Admin apne HI institute ka logo upload/badal sake (ID Card
+      //     ke corner-logo ke liye) — sirf `logoDataUrl` field, koi aur
+      //     field (name/active/allowedClasses waghera) is rule se nahi
+      //     chhed sakta.
+      allow update: if isAdmin() && instituteId == adminInstituteId() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['logoDataUrl']);
+
+      // (b) Har student ka ID Number ek institute-wide serial number
+      //     (studentSerialCounter) se banta hai — student ka apna client
+      //     hi (pehli baar registration/ID Card khulte waqt) ise ek
+      //     Firestore TRANSACTION mein +1 badhata hai. Isliye koi bhi
+      //     signed-in client (sirf apna institute nahi, koi bhi — kyunki
+      //     student ka apna instituteId yahan verify karne ka koi safe
+      //     tareeka nahi hai bina ek aur read ke) ise chhoo sakta hai,
+      //     PAR sirf ISI ek field ko, aur sirf pichle value se THEEK +1
+      //     karke — na kam, na zyada, na koi bhi random value. Isse
+      //     zyada se zyada koi doosre institute ka counter bewajah +1
+      //     kar sakta hai (koi sensitive data expose/corrupt nahi hota).
+      allow update: if isSignedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentSerialCounter']) &&
+        request.resource.data.studentSerialCounter ==
+          (('studentSerialCounter' in resource.data) ? resource.data.studentSerialCounter : 0) + 1;
     }
 
     // Doc ID = admin ka email address (isAdmin() function isi se

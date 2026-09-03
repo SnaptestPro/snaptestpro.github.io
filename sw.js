@@ -1,4 +1,4 @@
-const CACHE_NAME = 'snaptestpro-v110-fix-swipe-reload';
+const CACHE_NAME = 'snaptestpro-v112-owner-name-signature';
 
 // App-shell files — sab kuch jo student ko app chalane ke liye chahiye
 // (code + question-bank data + icons). Pehli visit par yeh sab download
@@ -12,10 +12,12 @@ const urlsToCache = [
   '/theme-picker.css',
   '/creative-dashboard.css',
   '/exam-manager.css',
+  '/id-card.css',
   '/script.js',
   '/upgrade.js',
   '/whatsapp-poll-export.js',
   '/student-features.js',
+  '/id-card.js',
   '/omr.js',
   '/exam-manager.js',
   '/push-notifications.js',
