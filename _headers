@@ -23,3 +23,12 @@
 
 /*.css
   Cache-Control: no-cache, must-revalidate
+
+/*.png
+  Cache-Control: public, max-age=604800
+/*.jpg
+  Cache-Control: public, max-age=604800
+/*.jpeg
+  Cache-Control: public, max-age=604800
+/*.ico
+  Cache-Control: public, max-age=604800

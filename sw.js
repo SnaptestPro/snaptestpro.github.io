@@ -1,4 +1,4 @@
-const CACHE_NAME = 'snaptestpro-v113-owner-panel-login-guard';
+const CACHE_NAME = 'snaptestpro-v114-pagespeed-perf-fix';
 
 // App-shell files — sab kuch jo student ko app chalane ke liye chahiye
 // (code + question-bank data + icons). Pehli visit par yeh sab download

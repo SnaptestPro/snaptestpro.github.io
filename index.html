@@ -122,34 +122,23 @@
   <link rel="stylesheet" href="exam-manager.css?v=1">
   <link rel="stylesheet" href="id-card.css?v=2">
   
-  <!-- CDNs for Mega Update Features — defer kiya kyunki ye sab (chart,
-       excel/pdf/word export, confetti) sirf user ke button-click par
-       kaam mein aate hain, page open hote hi nahi. defer se yeh initial
-       page paint ko block nahi karte, background mein parallel load
-       hote hain, aur phir DOM-ready hone se pehle order mein chal jaate
-       hain — behavior same rehta hai, sirf shuruaati load fast ho jaata
-       hai. -->
-  <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- v22: free/offline-friendly handwriting OCR for the Scan Sheet
-       Naam (OCR guess) feature — see exam-manager.js's examgrRunNameOcr.
-       Loaded here (defer) so it's ready by the time Scan Sheet is first
-       opened without slowing down the initial page load. -->
-  <script defer src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <!-- Standalone jsPDF (exposes window.jspdf.jsPDF). Used by the Exam
-       Manager's OMR-sheet PDF export to draw the sheet as real PDF vector
-       shapes (rects/circles/text) instead of rasterizing HTML through
-       html2canvas — see the note above examgrBuildSheetPdf() in
-       exam-manager.js for why the old html2canvas route produced blank
-       pages and failed to download on mobile. -->
-  <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.iife.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-  <!-- KaTeX for automatic Math Equation rendering -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <!-- PERF FIX: 8 heavy CDN libraries (chart/OCR/excel/pdf/word-export/
+       confetti/katex, ~1MB+ combined) pehle yahan "defer" ke saath
+       register thi — jiska matlab tha ye sab page ke "load" event tak
+       (jab PageSpeed/Lighthouse Total Blocking Time measure karta hai)
+       download+parse hoti rehti thin, chahe student sirf test dene aaya
+       ho aur inmein se kisi feature ko haath tak na lagaye. Ab yahan
+       koi CDN <script> tag register nahi hoti — inko "load" event ke
+       BAAD, idle time mein, ek chhote loader se load kiya jaata hai
+       (dekhein </body> se pehle "PERF FIX: lazy CDN loader"). Har
+       library sirf button-click handlers mein use hoti hai
+       (script.js/exam-manager.js/omr.js), aur defensive checks
+       (window.Tesseract, window.renderMathInElement) ke saath likhi
+       hui hai, isliye thodi der baad load hone se koi feature nahi
+       tootta. -->
+  <!-- KaTeX CSS: print-media trick se non-render-blocking bana diya. -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"></noscript>
 </head>
 <body>
 
@@ -164,7 +153,15 @@
 <script>
   (function () {
     var SPLASH_DURATION_MS = 2200; // itni der splash dikhega
-    window.addEventListener("load", function () {
+    // FIX (perf): pehle "load" event ka wait karta tha — jo tabhi fire
+    // hota hai jab page ki SAARI cheezein (fonts, images, aur sabhi CDN
+    // libraries — kuch MB-scale) poori tarah download ho chuki hon.
+    // Splash fullscreen image hone ki wajah se yehi Largest Contentful
+    // Paint (LCP) element bana raha tha, isliye LCP 16+ second tak chala
+    // jaata tha. Ab sirf "DOMContentLoaded" ka wait karta hai (HTML
+    // parse hone ke turant baad fire hota hai) — splash apne fixed
+    // 2200ms ke baad turant hat jaata hai.
+    document.addEventListener("DOMContentLoaded", function () {
       setTimeout(function () {
         var el = document.getElementById("app-splash-screen");
         if (!el) return;
@@ -2209,21 +2206,21 @@ B"></textarea>
 </style>
 
 <!-- Firebase SDKs -->
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
-<script src="firebase-config.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+<script defer src="firebase-config.js"></script>
 <!-- Question Banks -->
-<script src="mathematics-question-bank.js"></script>
-<script src="theme-palette.js"></script>
-<script src="live-theme-effects.js"></script>
-<script src="theme-manager.js"></script>
+<script defer src="mathematics-question-bank.js"></script>
+<script defer src="theme-palette.js"></script>
+<script defer src="live-theme-effects.js"></script>
+<script defer src="theme-manager.js"></script>
 
-<script src="history-question-bank.js"></script>
-<script src="History-India-question-bank.js"></script>
-<script src="history-indochina-question-bank.js"></script>
-<script src="socialism-question-bank.js"></script>
+<script defer src="history-question-bank.js"></script>
+<script defer src="History-India-question-bank.js"></script>
+<script defer src="history-indochina-question-bank.js"></script>
+<script defer src="socialism-question-bank.js"></script>
 <!-- Main App
      NOTE: Pehle ye files document.write('<script src="X?v='+Date.now()+'">')
      se load hoti thi. Iske 2 nuksaan the:
@@ -2238,21 +2235,70 @@ B"></textarea>
           guaranteed hai — is URL-versioning ki ab zaroorat nahi. Stable
           URL rakhne se browser/SW ka apna cache theek se kaam karta hai
           aur repeat visits kaafi fast ho jaate hain. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="subject-resolver.js"></script>
-<script src="pdf-import.js"></script>
-<script src="script.js"></script>
-<script src="owner-panel.js"></script>
-<script src="upgrade.js"></script>
-<script src="whatsapp-poll-export.js"></script>
-<script src="student-features.js"></script>
-<script src="id-card.js"></script>
-<script src="omr.js?v=2"></script>
-<script src="exam-manager.js?v=5"></script>
-<script src="push-notifications.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script defer src="subject-resolver.js"></script>
+<script defer src="pdf-import.js"></script>
+<script defer src="script.js"></script>
+<script defer src="owner-panel.js"></script>
+<script defer src="upgrade.js"></script>
+<script defer src="whatsapp-poll-export.js"></script>
+<script defer src="student-features.js"></script>
+<script defer src="id-card.js"></script>
+<script defer src="omr.js?v=2"></script>
+<script defer src="exam-manager.js?v=5"></script>
+<script defer src="push-notifications.js"></script>
 <!-- Android/TWA back-button fix: exam ya kisi bhi screen ke beech
      back dabane par app close hone se rokta hai -->
-<script src="back-button-guard.js"></script>
+<script defer src="back-button-guard.js"></script>
+
+<!-- PERF FIX: lazy CDN loader — 8 heavy libraries (chart.js,
+     tesseract.js, xlsx, html2pdf, jspdf, docx, canvas-confetti, katex)
+     ab yahan se load hoti hain: page ke "load" event ke baad, idle
+     time mein, background mein — taaki initial paint/TBT par inka koi
+     asar na pade. Feature use karte waqt (Scan-Sheet OCR, Export
+     Excel/PDF/Word, Math questions, results ka confetti) tab tak yeh
+     99% cases mein already load ho chuki hoti hain. -->
+<script>
+  (function () {
+    function lazyLoadScript(src) {
+      return new Promise(function (resolve, reject) {
+        var s = document.createElement("script");
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+    function whenIdle(fn) {
+      if (window.requestIdleCallback) requestIdleCallback(fn, { timeout: 4000 });
+      else setTimeout(fn, 1500);
+    }
+    function startLazyLoads() {
+      whenIdle(function () {
+        [
+          "https://cdn.jsdelivr.net/npm/chart.js",
+          "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js",
+          "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
+          "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js",
+          "https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js",
+          "https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.iife.js",
+          "https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"
+        ].forEach(function (src) { lazyLoadScript(src).catch(function () {}); });
+
+        // KaTeX auto-render, katex core par depend karta hai — isliye
+        // sequential (core load hone ke baad hi auto-render).
+        lazyLoadScript("https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js")
+          .then(function () {
+            return lazyLoadScript("https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js");
+          })
+          .catch(function () {});
+      });
+    }
+    if (document.readyState === "complete") startLazyLoads();
+    else window.addEventListener("load", startLazyLoads);
+  })();
+</script>
+
 <script>
 // ══════════════════════════════════════════════════════
 //  AUTOMATIC MATH EQUATION FORMATTER + KATEX RENDERER
