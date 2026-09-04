@@ -430,6 +430,23 @@ let studentTestActiveCategory = "All"; // currently selected filter chip
 let myTestAttemptsCache = null;        // testId -> most-recent studentRecords doc (for this student)
 let myTestAttemptsMobile = null;       // jis mobile ke liye cache upar valid hai
 
+// v123: myTestAttemptsCache pehle sirf IN-MEMORY tha — page reload
+// (ya app dobara khulne) par khaali ho jaata tha, aur "Start Test" tab
+// par jaate hi (goStudentSection) forceRefresh=true ke saath hamesha
+// Firestore query fire hoti thi, render hone se PEHLE uska wait bhi
+// hota tha — matlab har visit par ek chhota "reload" jaisa mehsoos
+// hota tha. Ab isi cache ko localStorage mein bhi rakhte hain (mobile
+// ke hisaab se), taaki page reload ke baad bhi turant purana attempt-
+// status mil jaaye, aur render turant ho — background refresh chalta
+// rehta hai, lekin card-list ab uska wait nahi karti.
+const ATTEMPTS_CACHE_PREFIX = "savya_attempts_cache_";
+function readAttemptsCache(mobile) {
+  try { return JSON.parse(localStorage.getItem(ATTEMPTS_CACHE_PREFIX + mobile) || "null"); } catch (e) { return null; }
+}
+function writeAttemptsCacheQuietly(mobile, map) {
+  try { localStorage.setItem(ATTEMPTS_CACHE_PREFIX + mobile, JSON.stringify(map)); } catch (e) { /* quota — skip */ }
+}
+
 let current = {
   testId: "",
   test: null,
@@ -1170,6 +1187,13 @@ function goStudentSection(id) {
   // kar deta hai — taaki abhi-abhi submit kiya gaya test turant "Solution/
   // Analysis" mein badal jaaye, poora page reload kiye bina.
   if (id === "student-form-fields-anchor" && typeof loadMyTestAttempts === "function") {
+    // v123: pehle yahan render sirf fetch complete hone KE BAAD hota
+    // tha — matlab har baar tab kholte hi ek chhota "wait/reload"
+    // dikhta tha. Ab turant (jo bhi cache mein hai — disk se hydrated)
+    // render karte hain, fresh attempt-status background mein aata
+    // rehta hai aur milte hi (sirf agar kuch badla ho) chup-chaap
+    // dobara render kar deta hai.
+    renderStudentTestCards();
     loadMyTestAttempts(true).then(() => renderStudentTestCards());
   }
   // Student ne Settings kholi — apna poora ID Card (Photo/Naam/ID
@@ -3128,8 +3152,17 @@ async function showResult() {
   percentile = Math.max(0, Math.min(100, percentile));
 
   // Show screens
+  // v124: result-screen (poora "Weak %/analysis + Parent-ko-bhejein/
+  // Share" wala screen) ab submit ke turant baad AUTOMATICALLY nahi
+  // dikhta. Neeche jo bhi is function mein result-screen ke andar
+  // (chapter-wise report, WhatsApp/re-attempt/weak-practice buttons)
+  // populate hota hai wo bilkul waisa hi chalta hai (data sahi rehta
+  // hai) — bas is baar poora screen kabhi "visible" nahi kiya jaata.
+  // Function ke bilkul end mein iski jagah student seedha "Start Test"
+  // page par bhej diya jaata hai — wahan test-card par 📖 Solution,
+  // 🎯 Weak Practice, 🔁 Re-attempt Wrong, 📊 Analysis buttons se yahi
+  // sab dobara, kabhi bhi dekha ja sakta hai.
   $("#exam-screen").classList.add("hidden");
-  $("#result-screen").classList.remove("hidden");
 
   const pendingRecord = {
     ...current.student,
@@ -3240,33 +3273,9 @@ async function showResult() {
     });
   }
 
-  // ── WhatsApp share (general) ──
-  const whatsBtn = $("#whatsapp-share-btn");
-  if (whatsBtn) {
-    whatsBtn.onclick = () => {
-      const msg = `🎯 *${current.test.title}* — Result\n👤 ${current.student.name || "Student"}\n📊 Score: ${fmtNum(score)}/${fmtNum(maxScore)} (${Math.round(pct)}%)\n✅ Correct: ${correct} | ❌ Wrong: ${wrong}\n🏅 Rank: ${rank}/${total2}\n\nTest karein: SnapTest Pro`;
-      const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
-      window.open(url, "_blank");
-    };
-  }
-
-  // ── Student ke number pe result bhejein ──
-  const parentWABtn = $("#whatsapp-parent-btn");
-  if (parentWABtn) {
-    parentWABtn.onclick = () => {
-      const phone = (current.student.mobile || "").replace(/\D/g, "");
-      if (!phone || phone.length < 10) {
-        alert("WhatsApp number nahi mila. Kripya sahi number ke saath dobara test shuru karein.");
-        return;
-      }
-      const fullPhone = phone.startsWith("91") ? phone : "91" + phone;
-      const grade = pct >= 90 ? "A+" : pct >= 80 ? "A" : pct >= 70 ? "B+" : pct >= 60 ? "B" : pct >= 50 ? "C" : "D";
-      const passed = pct >= 33;
-      const msg = `🏫 *SnapTest Pro*\n\nNamaste! 🙏\n\nAapke bachche *${current.student.name || "Student"}* ka test result:\n\n📝 *Test:* ${current.test.title}\n🎯 *Score:* ${fmtNum(score)} / ${fmtNum(maxScore)}\n📊 *Pratishat:* ${Math.round(pct)}%\n🏅 *Grade:* ${grade}\n✅ *Sahi:* ${correct} | ❌ *Galat:* ${wrong}\n🥇 *Rank:* ${rank} / ${total2}\n\n${passed ? "Bahut achcha kiya! 👏🎉" : "Aur mehnat karein, agli baar zaroor achcha karenge! 💪"}\n\n— SnapTest Pro Team`;
-      const url = `https://wa.me/${fullPhone}?text=${encodeURIComponent(msg)}`;
-      window.open(url, "_blank");
-    };
-  }
+  // v124: "Parent ko Result Bhejein" aur "Share Result" (WhatsApp)
+  // buttons + features poori tarah hata diye gaye hain (jaisa
+  // request kiya gaya).
 
   // ── Re-attempt wrong questions ──
   const reBtn = $("#reattempt-wrong-btn");
@@ -3351,9 +3360,14 @@ async function showResult() {
     }
   } catch (e) { console.warn("SavyaExtras hook failed", e); }
 
-  // Practice attempts: hide the leaderboard-oriented WhatsApp share buttons
-  if (whatsBtn)     whatsBtn.style.display     = current.test.isPractice ? "none" : "inline-block";
-  if (parentWABtn)  parentWABtn.style.display  = current.test.isPractice ? "none" : "inline-block";
+  // v124: submit ho gaya — result-screen kabhi dikhaya hi nahi gaya,
+  // ab seedha Start Test page par bhej dete hain (jahan is test ke
+  // card par 📖 Solution / 🎯 Weak Practice / 🔁 Re-attempt Wrong /
+  // 📊 Analysis se poora result kabhi bhi dekha ja sakta hai).
+  $("#result-screen")?.classList.add("hidden");
+  $("#home-screen")?.classList.remove("hidden");
+  if (typeof showMode === "function") showMode("student", { preserveSection: true });
+  goStudentSection("student-form-fields-anchor");
 }
 
 function setPerf(key, text, pctVal) {
@@ -3601,6 +3615,15 @@ async function loadMyTestAttempts(forceRefresh) {
   if (!mobile) return {};
   if (!forceRefresh && myTestAttemptsCache && myTestAttemptsMobile === mobile) return myTestAttemptsCache;
 
+  // v123: agar is mobile ke liye abhi memory mein kuch nahi hai, disk
+  // (localStorage) se ek baar hydrate kar lo — turant kuch to milega,
+  // Firestore fetch chahe forceRefresh ki wajah se ho hi rahi ho.
+  if (myTestAttemptsMobile !== mobile || !myTestAttemptsCache) {
+    const fromDisk = readAttemptsCache(mobile);
+    if (fromDisk) { myTestAttemptsCache = fromDisk; myTestAttemptsMobile = mobile; }
+  }
+  const beforeJSON = JSON.stringify(myTestAttemptsCache || {});
+
   const db = getDB();
   let myRecs = [];
   try {
@@ -3619,6 +3642,9 @@ async function loadMyTestAttempts(forceRefresh) {
   myRecs.forEach(r => { if (r.testId && !map[r.testId]) map[r.testId] = r; }); // pehla (sabse recent) hi rakhna hai
   myTestAttemptsCache = map;
   myTestAttemptsMobile = mobile;
+  // Sirf tabhi disk par likhte hain jab kuch waqai badla ho — koi
+  // fayda nahi hai bekaar mein baar-baar wahi data likhte rehne ka.
+  if (JSON.stringify(map) !== beforeJSON) writeAttemptsCacheQuietly(mobile, map);
   return map;
 }
 
@@ -3720,7 +3746,11 @@ function renderStudentTestCards() {
       btns += `<button type="button" class="test-card-btn resume" data-action="resume" data-test="${t.id}">⏳ Resume</button>`;
     }
     if (attempt) {
-      if (hasDetails) btns += `<button type="button" class="test-card-btn solution" data-action="solution" data-test="${t.id}">📖 Solution</button>`;
+      if (hasDetails) {
+        btns += `<button type="button" class="test-card-btn solution" data-action="solution" data-test="${t.id}">📖 Solution</button>`;
+        btns += `<button type="button" class="test-card-btn weak" data-action="weakpractice" data-test="${t.id}">🎯 Weak Practice</button>`;
+        btns += `<button type="button" class="test-card-btn reattempt" data-action="reattempt" data-test="${t.id}">🔁 Re-attempt Wrong</button>`;
+      }
       btns += `<button type="button" class="test-card-btn analysis" data-action="analysis" data-test="${t.id}">📊 Analysis</button>`;
     }
     if (!isResumable && !attempt) {
@@ -3753,6 +3783,10 @@ function renderStudentTestCards() {
       btn.onclick = () => openTestSolutionFromRecord(attemptsMap[testId]);
     } else if (action === "analysis") {
       btn.onclick = () => openTestAnalysisFromRecord(attemptsMap[testId], testId);
+    } else if (action === "weakpractice") {
+      btn.onclick = () => startWeakPracticeFromRecord(attemptsMap[testId]);
+    } else if (action === "reattempt") {
+      btn.onclick = () => reattemptWrongFromRecord(attemptsMap[testId], (tests[testId] && tests[testId].title));
     } else if (action === "locked") {
       btn.onclick = () => { const s = checkTestSchedule(tests[testId]); alert(s.msg || "Ye test abhi available nahi hai."); };
     }
@@ -3855,6 +3889,78 @@ function openTestAnalysisFromRecord(record, testId) {
 }
 function closeTestAnalysisOverlay() {
   $("#test-analysis-overlay")?.classList.add("hidden");
+}
+
+// ── "🎯 Weak Practice" (test-card button) — bilkul wahi "Weak-Chapter
+// Auto Practice" logic jo pehle sirf submit ke turant baad wale
+// result-screen par milti thi, ab kisi bhi PURANE attempt (record) se
+// bhi seedha chalayi ja sakti hai — record.details se hi chapter-wise
+// accuracy nikaal ke SavyaExtras.startWeakChapterPractice() ko deta
+// hai (jo poore question-bank se ek fresh practice mini-test banata
+// hai, sirf isi test ke sawaalon se nahi).
+function startWeakPracticeFromRecord(record) {
+  if (!record || !Array.isArray(record.details) || !record.details.length) {
+    alert("Is result ke sath sawaal-wise detail save nahi hai.");
+    return;
+  }
+  const chapMap = {};
+  record.details.forEach(d => {
+    const ch = d.chapter || d.subject || "Unknown";
+    if (!chapMap[ch]) chapMap[ch] = { correct: 0, total: 0 };
+    chapMap[ch].total++;
+    if (d.status === "Correct") chapMap[ch].correct++;
+  });
+  const weakChapters = Object.entries(chapMap)
+    .filter(([, data]) => data.total > 0 && (data.correct / data.total) < 0.7)
+    .map(([ch]) => ch);
+  if (!weakChapters.length) {
+    alert("🎉 Is test ke saare chapters mein achha score hai — koi weak chapter nahi mila!");
+    return;
+  }
+  if (window.SavyaExtras && window.SavyaExtras.startWeakChapterPractice) {
+    window.SavyaExtras.startWeakChapterPractice(weakChapters, 15);
+  }
+}
+
+// ── "🔁 Re-attempt Wrong" (test-card button) — bilkul wahi "Re-attempt
+// wrong questions" logic jo pehle sirf submit ke turant baad wale
+// result-screen par milti thi. record.details mein har galat sawaal ka
+// poora text/options/answer/explanation already saved hota hai —
+// isliye live test-definition (tests[id]) ki bhi zaroorat nahi padti,
+// yeh kabhi bhi (chahe woh test baad mein edit/delete ho chuka ho)
+// kaam karta hai.
+function reattemptWrongFromRecord(record, testTitle) {
+  if (!record || !Array.isArray(record.details) || !record.details.length) {
+    alert("Is result ke sath sawaal-wise detail save nahi hai.");
+    return;
+  }
+  const wrongQs = record.details.filter(d => d.status === "Wrong");
+  if (!wrongQs.length) {
+    alert("🎉 Is test mein koi galat jawab nahi tha!");
+    return;
+  }
+  if (!confirm(`${wrongQs.length} galat questions ka mini-test shuru karein?`)) return;
+  const miniTest = {
+    title: "Re-attempt: " + (testTitle || record.testTitle || "Test"),
+    minutes: Math.ceil(wrongQs.length * 1.5),
+    marksPerQuestion: wrongQs[0]?.marksPerQuestion || 1,
+    negativeEnabled: false, negativeMarks: 0,
+    questions: wrongQs.map(d => ({
+      textEN: d.questionEN, textHI: d.questionHI,
+      optionsEN: d.optionsEN, optionsHI: d.optionsHI,
+      answer: d.correctAnswer, subject: d.subject, chapter: d.chapter,
+      explanationEN: d.explanationEN, explanationHI: d.explanationHI
+    })),
+    custom: true,
+    isPractice: true // re-attempt of wrong Qs is self-practice — must not be saved as a scored record / show up in Result Sheet
+  };
+  current.test = miniTest;
+  current.testId = "reattempt-" + Date.now();
+  current.answers = new Array(miniTest.questions.length).fill(null);
+  current.marked = {};
+  current.startedAt = new Date();
+  $("#home-screen")?.classList.add("hidden");
+  beginExam();
 }
 
 function renderTestList() {
@@ -6430,12 +6536,52 @@ async function ensureAllStudentsCache() {
 let studentRecordCountByMobile = {};
 let studentRecordCountIsFull = false; // true once the unlimited studentRecords count-query succeeds
 
+// v123: Students Directory tab bhi pehle har baar khulte hi "Loading..."
+// dikhata tha aur poori (scoped) fetch + chunked record-count queries
+// dobara chalti thi — chahe kuch bhi naya na bada ho. Ab yahi data
+// localStorage mein bhi cache hota hai (default, non-legacy scope ke
+// liye) — tab khulte hi agar memory khaali hai to pehle disk-cache se
+// turant list dikha dete hain (koi "Loading..." nahi), background mein
+// fresh data aata hai aur sirf tabhi disk+UI dobara update hote hain
+// jab kuch waqai badla ho.
+const STUDENTS_DIR_CACHE_KEY = "savya_students_directory_cache";
+function loadStudentsDirCacheInstantly() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(STUDENTS_DIR_CACHE_KEY) || "null");
+    if (cached && Array.isArray(cached.students)) {
+      allStudentsCache = cached.students;
+      studentRecordCountByMobile = cached.counts || {};
+      studentRecordCountIsFull = !!cached.countsFull;
+    }
+  } catch (e) { /* corrupt cache — ignore */ }
+}
+function saveStudentsDirCacheQuietly() {
+  try {
+    localStorage.setItem(STUDENTS_DIR_CACHE_KEY, JSON.stringify({
+      students: allStudentsCache,
+      counts: studentRecordCountByMobile,
+      countsFull: studentRecordCountIsFull
+    }));
+  } catch (e) { /* quota exceeded (bahut zyada students) — silently skip */ }
+}
+loadStudentsDirCacheInstantly(); // script load hote hi, kisi bhi tab khulne se pehle
+
 async function loadStudentsDirectory(includeFullLegacyScan) {
   const db = getDB();
   const listEl = $("#students-directory-list");
   if (!listEl) return;
   if (!db) { listEl.innerHTML = '<p class="empty-state">Internet/Firebase connection nahi hai.</p>'; return; }
-  listEl.innerHTML = '<p class="muted-text">Loading...</p>';
+  const beforeJSON = (!includeFullLegacyScan) ? JSON.stringify({
+    students: allStudentsCache, counts: studentRecordCountByMobile, countsFull: studentRecordCountIsFull
+  }) : null;
+  if (allStudentsCache.length) {
+    // Pehle se (memory ya disk se) kuch hai — turant wahi dikha do,
+    // "Loading..." ki zaroorat nahi. Legacy full-scan mein bhi purana
+    // (chhota, scoped) data dikhana behtar hai khaali screen se.
+    renderStudentsDirectory();
+  } else {
+    listEl.innerHTML = '<p class="muted-text">Loading...</p>';
+  }
   try {
     if (includeFullLegacyScan) {
       // Sirf jab admin explicitly "🗄️ Purane/legacy students" button
@@ -6481,9 +6627,20 @@ async function loadStudentsDirectory(includeFullLegacyScan) {
     studentRecordCountIsFull = allChunksOk;
 
     renderStudentsDirectory();
+    // Legacy full-scan result ko disk-cache mein nahi rakhte (alag,
+    // bahut bada dataset hai, sirf ek-baar-click use-case) — sirf
+    // default (roz-marra) scope hi cache hoti hai.
+    if (!includeFullLegacyScan) {
+      const afterJSON = JSON.stringify({
+        students: allStudentsCache, counts: studentRecordCountByMobile, countsFull: studentRecordCountIsFull
+      });
+      if (afterJSON !== beforeJSON) saveStudentsDirCacheQuietly();
+    }
   } catch (err) {
     console.error(err);
-    listEl.innerHTML = '<p class="empty-state">Students load nahi hue: ' + escHtml(err.message || "") + "</p>";
+    if (!allStudentsCache.length) {
+      listEl.innerHTML = '<p class="empty-state">Students load nahi hue: ' + escHtml(err.message || "") + "</p>";
+    }
   }
 }
 

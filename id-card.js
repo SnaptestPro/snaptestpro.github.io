@@ -49,6 +49,33 @@
     if (fallback) fallback.style.display = dataUrl ? "none" : "flex";
   }
 
+  /* ── v121: ID Card cache — pehle Settings/ID-Card section jab bhi
+     khulta tha, har baar Firestore se sab kuch dobara fetch hota tha
+     (student: student-doc + institute-doc; admin: admin-doc +
+     institute-doc), aur admin wale mein to explicitly "Loading..."
+     text bhi dikhta tha — matlab HAR baar ek chhota loading/flicker
+     mehsoos hota tha, chahe kuch bhi naya na bada ho.
+     Ab poora card ek localStorage snapshot mein cache hota hai
+     (student: mobile ke hisaab se, admin: email ke hisaab se). Section
+     khulte hi cache se TURANT (0ms, koi network wait nahi) poora card
+     paint ho jaata hai — "Loading..." ab sirf bilkul pehli baar (jab
+     cache khaali ho) dikhta hai. Background mein fresh data bhi le
+     aate hain, lekin DOM ko sirf tabhi dobara chhoote hain jab fetch
+     ki gayi value cache se ALAG ho — matlab jab tak kuch waqai update
+     na ho, card bilkul static/frozen rehta hai. ── */
+  function readIdCardCache(key) {
+    try { return JSON.parse(localStorage.getItem(key) || "null"); } catch (e) { return null; }
+  }
+  function writeIdCardCache(key, data) {
+    try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) {}
+  }
+  function updateIdCardCacheField(key, patch) {
+    const existing = readIdCardCache(key) || {};
+    writeIdCardCache(key, Object.assign({}, existing, patch));
+  }
+  const STUDENT_IDCARD_CACHE_PREFIX = "savya_idcard_student_";
+  const ADMIN_IDCARD_CACHE_PREFIX = "savya_idcard_admin_";
+
   /* ── Academic Session — HAMESHA live-calculated, kabhi Firestore
      mein save nahi hota. Indian coaching/school convention: session
      April se shuru hokar agle saal March mein khatam hoti hai — isliye
@@ -132,6 +159,18 @@
   /* ══════════════════════════════════════════════════
      STUDENT ID CARD
      ══════════════════════════════════════════════════ */
+  function paintStudentIdCard(snap) {
+    if (typeof renderStudentDpPhoto === "function") renderStudentDpPhoto(snap.photoDataUrl || "");
+    setText("#student-dp-name", snap.name);
+    setText("#idcard-class", snap.classRaw);
+    setText("#idcard-inst-name", snap.instName || "-");
+    setText("#idcard-sign-name", snap.instOwnerName || "-");
+    setImgOrFallback("#idcard-inst-logo-left-img", "#idcard-inst-logo-left-fallback", snap.instLogo);
+    setImgOrFallback("#idcard-inst-logo-right-img", "#idcard-inst-logo-right-fallback", snap.instLogo);
+    setText("#idcard-id-number", snap.idNumber || "-");
+    setText("#idcard-issue-date", snap.issueDate || "-");
+  }
+
   async function renderStudentIdCard() {
     const session = (typeof getStudentSession === "function") ? getStudentSession() : null;
     if (!session) return;
@@ -141,24 +180,24 @@
     setText("#student-dp-mobile", session.mobile);
     setText("#idcard-session", computeAcademicSession());
 
+    const mobile = normalizeMobile(session.mobile);
+    const cacheKey = STUDENT_IDCARD_CACHE_PREFIX + mobile;
+    const cached = readIdCardCache(cacheKey);
+    if (cached) paintStudentIdCard(cached); // turant, koi loading nahi
+
     const db = (typeof getDB === "function") ? getDB() : null;
     if (!db) return;
 
     try {
-      const mobile = normalizeMobile(session.mobile);
       const studentSnap = await db.collection(STUDENTS_COLLECTION).doc(mobile).get();
       const sdata = studentSnap.exists ? studentSnap.data() : {};
-
-      if (typeof renderStudentDpPhoto === "function") renderStudentDpPhoto(sdata.photoDataUrl || "");
-      setText("#student-dp-name", sdata.name || session.name);
 
       // Class label — "Class:" field-label ke saath sirf number/naam
       // dikhana hai (jaise "10"), "Class 10" poora nahi — warna card
       // par "Class: Class 10" jaisa "Class" do baar likha dikhta hai.
       const classId = sdata.classId || session.classId || null;
       const classOpt = (window.SAVYA_CLASS_OPTIONS || []).find(c => c.id === classId);
-      const classRaw = classOpt ? classOpt.label : (classId || "-");
-      setText("#idcard-class", classRaw.replace(/^Class\s+/i, ""));
+      const classRaw = (classOpt ? classOpt.label : (classId || "-")).replace(/^Class\s+/i, "");
 
       // Institute (naam + logo + ASLI Owner ka naam — signature ke liye)
       const instituteId = sdata.instituteId || session.instituteId || null;
@@ -173,37 +212,42 @@
           }
         } catch (e) { console.warn("[idcard] institute fetch failed", e); }
       }
-      setText("#idcard-inst-name", instName || "-");
-      setText("#idcard-sign-name", instOwnerName || "-");
-      setImgOrFallback("#idcard-inst-logo-left-img", "#idcard-inst-logo-left-fallback", instLogo);
-      setImgOrFallback("#idcard-inst-logo-right-img", "#idcard-inst-logo-right-fallback", instLogo);
 
       // Serial No → ID Number (missing ho to yahin turant assign kar dete hain)
-      // (v113) DEBUG: agar assign fail ho, ab "-" ki jagah asli error
-      // seedha card par dikhta hai — taaki DevTools/console khole bina
-      // hi pata chal jaaye ki wajah kya hai (permission, missing
-      // instituteId, network, waghera). Ek baar sahi wajah pata chal
-      // jaaye aur fix ho jaaye, is debug-text ko wapas hata denge.
+      let idNumber = "-";
       let serialNo = sdata.serialNo || null;
       if (!serialNo) {
         if (!instituteId) {
-          setText("#idcard-id-number", "⚠️ No instituteId on student");
+          idNumber = "⚠️ No instituteId on student";
         } else {
           try {
             serialNo = await getOrAssignStudentSerial(db, instituteId, mobile);
-            setText("#idcard-id-number", formatIdNumber(instName, serialNo));
+            idNumber = formatIdNumber(instName, serialNo);
           } catch (e) {
             console.warn("[idcard] serial assign failed", e);
-            setText("#idcard-id-number", "⚠️ " + (e && e.code ? e.code + ": " : "") + (e && e.message ? e.message : String(e)));
+            idNumber = "⚠️ " + (e && e.code ? e.code + ": " : "") + (e && e.message ? e.message : String(e));
           }
         }
       } else {
-        setText("#idcard-id-number", formatIdNumber(instName, serialNo));
+        idNumber = formatIdNumber(instName, serialNo);
       }
 
       // Issue date
       const issuedAt = await ensureIssuedAt(db, STUDENTS_COLLECTION, mobile, sdata);
-      setText("#idcard-issue-date", formatIssueDate(issuedAt));
+
+      const fresh = {
+        name: sdata.name || session.name,
+        classRaw, instName, instOwnerName, instLogo, idNumber,
+        issueDate: formatIssueDate(issuedAt),
+        photoDataUrl: sdata.photoDataUrl || ""
+      };
+      // Sirf tabhi DOM chhoote hain (aur cache update karte hain) jab
+      // kuch waqai badla ho — warna card bilkul static rehta hai, koi
+      // dobara "load" jaisa flicker nahi.
+      if (JSON.stringify(fresh) !== JSON.stringify(cached)) {
+        paintStudentIdCard(fresh);
+        writeIdCardCache(cacheKey, fresh);
+      }
     } catch (e) {
       console.warn("[renderStudentIdCard] failed", e);
     }
@@ -224,14 +268,32 @@
     if (placeholder) placeholder.style.display = dataUrl ? "none" : "flex";
   }
 
+  function paintAdminIdCard(snap) {
+    renderAdminDpPhoto(snap.photoDataUrl || "");
+    setText("#admin-idcard-name", snap.name || "— Naam Set Karein ✏️");
+    setText("#admin-idcard-inst-name", snap.instName || "-");
+    setText("#admin-idcard-sign-name", snap.instOwnerName || "-");
+    setImgOrFallback("#admin-idcard-logo-left-img", "#admin-idcard-logo-left-fallback", snap.instLogo);
+    setImgOrFallback("#admin-idcard-logo-right-img", "#admin-idcard-logo-right-fallback", snap.instLogo);
+    setText("#admin-idcard-issue-date", snap.issueDate || "-");
+  }
+
   async function renderAdminIdCard() {
     const db = (typeof getDB === "function") ? getDB() : null;
     const auth = (typeof getAuth === "function") ? getAuth() : null;
     const email = auth && auth.currentUser && auth.currentUser.email;
     if (!db || !email) return;
 
-    setText("#admin-idcard-name", "Loading...");
-    setText("#admin-idcard-inst-name", "Loading...");
+    const cacheKey = ADMIN_IDCARD_CACHE_PREFIX + email;
+    const cached = readIdCardCache(cacheKey);
+    if (cached) {
+      paintAdminIdCard(cached); // turant, koi loading nahi
+    } else {
+      // Sirf bilkul pehli baar (is device par pehle kabhi cache nahi
+      // bani) — jab tak asli data na aa jaaye.
+      setText("#admin-idcard-name", "Loading...");
+      setText("#admin-idcard-inst-name", "Loading...");
+    }
 
     try {
       if (typeof ensureAdminInstituteResolved === "function") await ensureAdminInstituteResolved();
@@ -239,8 +301,6 @@
 
       const adminSnap = await db.collection("admins").doc(email).get();
       const adata = adminSnap.exists ? adminSnap.data() : {};
-      renderAdminDpPhoto(adata.photoDataUrl || "");
-      setText("#admin-idcard-name", adata.name || "— Naam Set Karein ✏️");
 
       let instName = "", instLogo = "", instOwnerName = "";
       if (instituteId) {
@@ -253,13 +313,19 @@
           }
         } catch (e) { console.warn("[idcard] institute fetch (admin) failed", e); }
       }
-      setText("#admin-idcard-inst-name", instName || "-");
-      setText("#admin-idcard-sign-name", instOwnerName || "-");
-      setImgOrFallback("#admin-idcard-logo-left-img", "#admin-idcard-logo-left-fallback", instLogo);
-      setImgOrFallback("#admin-idcard-logo-right-img", "#admin-idcard-logo-right-fallback", instLogo);
 
       const issuedAt = await ensureIssuedAt(db, "admins", email, adata);
-      setText("#admin-idcard-issue-date", formatIssueDate(issuedAt));
+
+      const fresh = {
+        name: adata.name || "",
+        instName, instOwnerName, instLogo,
+        issueDate: formatIssueDate(issuedAt),
+        photoDataUrl: adata.photoDataUrl || ""
+      };
+      if (JSON.stringify(fresh) !== JSON.stringify(cached)) {
+        paintAdminIdCard(fresh);
+        writeIdCardCache(cacheKey, fresh);
+      }
     } catch (e) {
       console.warn("[renderAdminIdCard] failed", e);
     }
@@ -298,6 +364,7 @@
         if (statusEl) statusEl.textContent = "⏳ Save ho raha hai...";
         try {
           await db.collection("admins").doc(email).set({ photoDataUrl: dataUrl }, { merge: true });
+          updateIdCardCacheField(ADMIN_IDCARD_CACHE_PREFIX + email, { photoDataUrl: dataUrl });
           if (statusEl) statusEl.textContent = "✅ Photo save ho gaya.";
         } catch (err) {
           console.error(err);
@@ -328,6 +395,7 @@
     if (!trimmed) { alert("⚠️ Naam khaali nahi ho sakta."); return; }
     try {
       await db.collection("admins").doc(email).set({ name: trimmed }, { merge: true });
+      updateIdCardCacheField(ADMIN_IDCARD_CACHE_PREFIX + email, { name: trimmed });
       setText("#admin-idcard-name", trimmed);
     } catch (e) {
       console.error(e);
@@ -383,6 +451,9 @@
         if (statusEl) statusEl.textContent = "⏳ Save ho raha hai...";
         try {
           await db.collection("institutes").doc(instituteId).set({ logoDataUrl: dataUrl }, { merge: true });
+          const auth = (typeof getAuth === "function") ? getAuth() : null;
+          const email = auth && auth.currentUser && auth.currentUser.email;
+          if (email) updateIdCardCacheField(ADMIN_IDCARD_CACHE_PREFIX + email, { instLogo: dataUrl });
           if (statusEl) statusEl.textContent = "✅ Logo save ho gaya — sabhi students ke ID Card par turant dikhega.";
         } catch (err) {
           console.error(err);
