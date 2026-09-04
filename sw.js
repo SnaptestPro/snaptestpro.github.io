@@ -1,4 +1,4 @@
-const CACHE_NAME = 'snaptestpro-v119-sw-precache-list-fix';
+const CACHE_NAME = 'snaptestpro-v120-lazy-examgr-owner';
 
 // App-shell files — sab kuch jo student ko app chalane ke liye chahiye
 // (code + question-bank data + icons). Pehli visit par yeh sab download
@@ -19,7 +19,13 @@ const urlsToCache = [
   '/student-features.js',
   '/id-card.js',
   '/omr.js',
-  '/exam-manager.js',
+  // exam-manager.js YAHAN SE HATA DI — v120 perf-fix ke baad yeh sirf
+  // Admin ke "Exam Manager" tab kholne par __ensureLib se on-demand
+  // load hoti hai (student iske paas kabhi jaata hi nahi). Precache
+  // list mein rakhte to har student ki pehli visit par bhi 231 KiB
+  // background mein download ho jaata — bilkul wahi cheez jo yeh fix
+  // rokna chahta hai. Fetch handler khud-ba-khud cache kar leta hai
+  // jab admin actually is feature ko use kare.
   '/push-notifications.js',
   '/back-button-guard.js',
   '/subject-resolver.js',
@@ -47,8 +53,14 @@ const urlsToCache = [
   '/screenshot-wide.jpg',
   '/screenshot-narrow.jpg',
   // Owner App — separate, self-contained installable PWA (see owner-app.html)
+  // owner-panel.js YAHAN SE HATA DI — main app (index.html) ke liye ab
+  // yeh sirf "Owner Panel Kholein" button dabane par __ensureLib se
+  // on-demand load hoti hai (50 KiB jo har student/admin ki pehli visit
+  // par pehle download hota tha). owner-app.html apna khud ka
+  // <script src="owner-panel.js"> use karta hai (non-lazy) jo fetch
+  // handler se apne aap cache ho jaata hai jab bhi Owner us page ko
+  // pehli baar kholta hai.
   '/owner-app.html',
-  '/owner-panel.js',
   '/manifest-owner.webmanifest',
   '/icon-192-owner.png',
   '/icon-512-owner.png',

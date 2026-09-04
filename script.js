@@ -611,6 +611,7 @@ function init() {
     showMode("admin");
     $("#admin-login-form").classList.add("hidden");
     $("#admin-panel").classList.remove("hidden");
+    paintAdminWelcomeInstant();
     startAdminSyncs();
     const tab = params.get("tab") || "tests";
     showAdminTab(tab);
@@ -901,6 +902,7 @@ function showMode(mode, opts) {
     // seedha panel dikha do taaki admin apna kaam turant dekh sake.
     $("#admin-login-form").classList.add("hidden");
     $("#admin-panel").classList.remove("hidden");
+    paintAdminWelcomeInstant();
     startAdminSyncs();
     // Agar koi section pehle se khula tha to wahi khula rahega (uske
     // andar sab kuch dikhta rahega), warna dashboard cards dikhao —
@@ -1619,7 +1621,19 @@ function showOmrSubTab(sub) {
   // yahan pehli baar is tab par aate hi load kar lo taaki suggestions
   // turant sahi (aur complete) dikhein.
   if (sub === "manual" && !allStudentsCache.length && typeof loadStudentsDirectory === "function") loadStudentsDirectory();
-  if (sub === "exammgr" && typeof window.loadExamManagerExams === "function") window.loadExamManagerExams();
+  if (sub === "exammgr") {
+    // v120: exam-manager.js ab lazy hai (__ensureLib) — pehle load
+    // ensure karo, uske baad hi list load karo. Agar pehle se load hai
+    // to promise turant (cached) resolve ho jaata hai, koi extra delay
+    // nahi.
+    if (window.__ensureLib) {
+      window.__ensureLib("examManager").then(function () {
+        if (typeof window.loadExamManagerExams === "function") window.loadExamManagerExams();
+      });
+    } else if (typeof window.loadExamManagerExams === "function") {
+      window.loadExamManagerExams();
+    }
+  }
   $(`#${OMR_SUB_BOX_IDS[sub]}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 window.showOmrSubTab = showOmrSubTab;
@@ -1989,6 +2003,34 @@ function getCurrentAdminInstituteId() {
   try { return localStorage.getItem(ADMIN_INSTITUTE_LOCAL_KEY) || null; } catch (e) { return null; }
 }
 
+// v120: "Welcome, Admin" flash fix — institute ka naam ek baar fetch
+// hone ke baad yahan cache ho jaata hai, taaki agli baar (agli login,
+// ya admin tab par wapas aane par) heading bina kisi Firestore-wait ke
+// TURANT sahi naam se bhar jaaye — "Welcome, Admin" placeholder kabhi
+// dikhta hi nahi. Pehli-baar-kabhi-login ke liye (jab cache khaali ho)
+// neutral "Welcome 👋" dikhta hai jab tak asli naam na aa jaaye — kabhi
+// bhi galat "Admin" text nahi dikhta.
+const ADMIN_INSTITUTE_NAME_LOCAL_KEY = "savya_admin_institute_name";
+function getCachedAdminInstituteName() {
+  try { return localStorage.getItem(ADMIN_INSTITUTE_NAME_LOCAL_KEY) || ""; } catch (e) { return ""; }
+}
+function setCachedAdminInstituteName(name) {
+  try {
+    if (name) localStorage.setItem(ADMIN_INSTITUTE_NAME_LOCAL_KEY, name);
+    else localStorage.removeItem(ADMIN_INSTITUTE_NAME_LOCAL_KEY);
+  } catch (e) {}
+}
+// Admin panel dikhte hi (kisi bhi entry point se) SYNCHRONOUSLY call
+// karo — koi await/Firestore-fetch nahi, isliye 0ms mein render hota
+// hai, kabhi bhi "loading" jaisa flash mehsoos nahi hota.
+function paintAdminWelcomeInstant() {
+  const heading = document.querySelector("#admin-dashboard-home .cd-hero-text h2");
+  if (!heading) return;
+  const cached = getCachedAdminInstituteName();
+  heading.textContent = cached ? ("Welcome, " + decorateInstituteNameForDisplay(cached) + " 👋") : "Welcome 👋";
+}
+window.paintAdminWelcomeInstant = paintAdminWelcomeInstant;
+
 // ── Class Eligibility (v25) ──────────────────────────────────────────
 // Is admin ke institute ki allowedClasses (jaise ["class_10"]).
 // resolveCurrentAdminInstitute() ke andar cache hoti hai. null =
@@ -2216,6 +2258,15 @@ function startAdminSyncs() {
 // turant update ho jayega) — agar wo doc kisi wajah se na mile
 // (offline / abhi tak resolve nahi hua), to admin ke apne doc mein
 // stamped `instituteName` fallback ke roop mein use hota hai.
+//
+// v120: is function ke chalne se PEHLE hi `paintAdminWelcomeInstant()`
+// (localStorage cache se, synchronous) heading ko turant bhar deta
+// hai — isliye yeh async fetch complete hone tak "Welcome, Admin"
+// wala purana flash ab nahi dikhta. Yeh function sirf silently fresh
+// naam confirm/update karta hai; agar kisi wajah se naam na mile (offline
+// pehli hi login, ya fetch fail), to jo pehle se (cache se ya neutral
+// "Welcome 👋") dikh raha hai usi ko chhod deta hai — kabhi bhi wapas
+// "Welcome, Admin" par regress nahi karta.
 async function renderAdminWelcomeInstituteName() {
   const heading = document.querySelector("#admin-dashboard-home .cd-hero-text h2");
   if (!heading) return;
@@ -2236,7 +2287,12 @@ async function renderAdminWelcomeInstituteName() {
   } catch (e) {
     console.warn("[admin] institute name fetch failed (ignoring)", e);
   }
-  heading.textContent = name ? ("Welcome, " + decorateInstituteNameForDisplay(name) + " 👋") : "Welcome, Admin 👋";
+  if (name) {
+    setCachedAdminInstituteName(name);
+    heading.textContent = "Welcome, " + decorateInstituteNameForDisplay(name) + " 👋";
+  }
+  // else: heading ko chheda hi nahi — jo instant-paint (cache/neutral)
+  // se pehle se dikh raha hai wahi rehne do.
 }
 
 // Owner ne maanga hai ki har institute ka naam is decorative block-
@@ -2250,6 +2306,7 @@ function decorateInstituteNameForDisplay(name) {
 function enterAdminPanel() {
   $("#admin-login-form").classList.add("hidden");
   $("#admin-panel").classList.remove("hidden");
+  paintAdminWelcomeInstant();
   setAdminLoggedIn();
   startAdminSyncs();
   backToAdminDashboard();
