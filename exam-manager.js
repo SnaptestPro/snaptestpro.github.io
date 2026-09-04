@@ -1197,6 +1197,7 @@
   // deferred jsPDF <script> tag has finished downloading. Instead of
   // failing immediately, wait briefly for it to show up.
   function waitForJsPdf(timeoutMs) {
+    if (window.__ensureLib) window.__ensureLib("jspdf").catch(function () {});
     return new Promise(resolve => {
       if (window.jspdf && window.jspdf.jsPDF) return resolve(window.jspdf.jsPDF);
       const start = Date.now();
@@ -2770,6 +2771,11 @@
   // otherwise repeat on every single scan.
   async function examgrGetOcrWorker() {
     if (scannerOcrWorker) return scannerOcrWorker;
+    // On-demand load: Tesseract.js (~2MB) sirf yahan, Scan-Sheet OCR
+    // pehli baar use hone par hi fetch hoti hai — page load par nahi.
+    if (typeof Tesseract === "undefined" && window.__ensureLib) {
+      try { await window.__ensureLib("tesseract"); } catch (e) { /* offline/blocked */ }
+    }
     if (typeof Tesseract === "undefined") return null; // CDN blocked/offline — OCR quietly skipped, rest of scanning is unaffected
     try {
       scannerOcrWorker = await Tesseract.createWorker("eng");
