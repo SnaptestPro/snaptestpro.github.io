@@ -1895,6 +1895,16 @@ h4 { color: var(--navy); font-size: .95rem; font-weight: 700; margin-bottom: 10p
   border: 1.5px solid #e5e7eb;
   cursor: pointer;
 }
+.test-card-btn.weak {
+  background: #fff;
+  color: #7c3aed;
+  border: 1.5px solid #c4b5fd;
+}
+.test-card-btn.reattempt {
+  background: #fff;
+  color: #b45309;
+  border: 1.5px solid #fcd34d;
+}
 
 /* ── Test Analysis overlay ── */
 .test-analysis-overlay {
