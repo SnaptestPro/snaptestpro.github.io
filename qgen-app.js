@@ -1446,7 +1446,15 @@ function fixMixedScriptMathSpacing(html) {
 }
 
 function renderMathIn(el) {
-  if (!el || !window.renderMathInElement) return;
+  if (!el) return;
+  // On-demand load: pehli baar Math content dikhne par hi KaTeX fetch
+  // hoti hai (index.html ke __ensureLib loader se, same page hai).
+  if (!window.renderMathInElement) {
+    if (window.__ensureLib) {
+      window.__ensureLib("katex").then(function () { renderMathIn(el); }).catch(function () {});
+    }
+    return;
+  }
   try {
     var fixed = fixMixedScriptMathSpacing(el.innerHTML);
     if (fixed !== el.innerHTML) el.innerHTML = fixed;
@@ -1498,6 +1506,10 @@ function updateMathPreviewBox(rawText, box) {
         throwOnError: false
       });
     } catch (e) {}
+  } else if (window.__ensureLib) {
+    // On-demand load: pehli baar preview box dikhne par hi KaTeX
+    // fetch hoti hai; load hone ke baad isi box ko dobara render karo.
+    window.__ensureLib("katex").then(function () { updateMathPreviewBox(rawText, box); }).catch(function () {});
   }
   if (box.querySelector('.katex-error')) {
     var err = box.querySelector('.mp-err');
@@ -2450,6 +2462,9 @@ async function exportToWord() {
   const totalQ = isSectionMode() ? getAllQuestionsFlat().length : paperQuestions.length;
   if(!totalQ){ toast('ℹ️ Paper khaali hai!'); return; }
 
+  if (!window.docx && window.__ensureLib) {
+    try { await window.__ensureLib("docx"); } catch (e) { /* offline/blocked */ }
+  }
   if (!window.docx) {
     toast('❌ Word export library load nahi hui — internet check karke page reload karein.');
     return;
@@ -2564,6 +2579,9 @@ async function generateOMRSheetForPaper() {
   const list = getAllQuestionsFlat().filter(q => q.qType !== 'subjective');
   if (!list.length) { alert('OMR Sheet ke liye pehle paper mein kam se kam ek MCQ question add karein.'); return; }
   if (list.length > 100) { alert('OMR sheet abhi max 100 MCQ questions tak support karti hai.'); return; }
+  if (!window.docx && window.__ensureLib) {
+    try { await window.__ensureLib("docx"); } catch (e) { /* offline/blocked */ }
+  }
   if (typeof window.buildOMRSheetDocx !== 'function' || !window.docx) {
     alert('OMR sheet generator load nahi hua — page reload karke dobara try karein.');
     return;

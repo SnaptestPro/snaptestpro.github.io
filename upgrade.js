@@ -63,6 +63,12 @@ window.showResult = async function() {
   localStorage.removeItem("savya_ongoing_test");
   if (_origShowResult) await _origShowResult();
   try {
+    // On-demand load: confetti lib sirf result dikhne par hi fetch hoti
+    // hai — page load par nahi. Chhota (~5KB) hai, isliye await karna
+    // safe hai (result animation thoda sa hi delay hoga).
+    if (typeof confetti !== "function" && window.__ensureLib) {
+      try { await window.__ensureLib("confetti"); } catch (e) {}
+    }
     if (typeof confetti === "function") {
       var end = Date.now() + 3000;
       (function frame() {
@@ -75,8 +81,14 @@ window.showResult = async function() {
 };
 
 // Excel Export
-function exportToExcel() {
+async function exportToExcel() {
   if (!records || records.length === 0) { alert("No records to export"); return; }
+  // On-demand load: xlsx.js (~800KB) sirf "Export Excel" button dabane
+  // par hi fetch hoti hai.
+  if (typeof XLSX === "undefined" && window.__ensureLib) {
+    try { await window.__ensureLib("xlsx"); } catch (e) {}
+  }
+  if (typeof XLSX === "undefined") { alert("Excel export library load nahi hui — internet check karke dobara try karein."); return; }
   const testId = document.getElementById("admin-result-test-select")?.value || document.getElementById("result-test-select")?.value;
   let data = records;
   if (testId) data = records.filter(r => r.testId === testId);
@@ -96,8 +108,14 @@ function exportToExcel() {
 }
 
 // PDF Export
-function exportToPdf() {
+async function exportToPdf() {
   const element = document.getElementById("records-list");
+  // On-demand load: html2pdf.js sirf "Export PDF" button dabane par hi
+  // fetch hoti hai.
+  if (typeof html2pdf === "undefined" && window.__ensureLib) {
+    try { await window.__ensureLib("html2pdf"); } catch (e) {}
+  }
+  if (typeof html2pdf === "undefined") { alert("PDF export library load nahi hui — internet check karke dobara try karein."); return; }
   html2pdf().from(element).save("SnapTestPro_Results.pdf");
 }
 

@@ -384,16 +384,21 @@
 
   let progressChartInstance = null;
 
-  function paintProgressChart(myRecs) {
+  async function paintProgressChart(myRecs) {
     const emptyEl = document.getElementById("my-progress-empty");
     const canvas = document.getElementById("my-progress-chart");
-    if (!emptyEl || !canvas || typeof Chart === "undefined") return;
-
+    if (!emptyEl || !canvas) return;
     if (!myRecs.length) {
       emptyEl.style.display = "block";
       canvas.style.display = "none";
       return;
     }
+    // On-demand load: chart.js sirf jab student "My Progress" tab kholta
+    // hai aur uske paas kam se kam 1 result ho, tab hi fetch hoti hai.
+    if (typeof Chart === "undefined" && window.__ensureLib) {
+      try { await window.__ensureLib("chart"); } catch (e) {}
+    }
+    if (typeof Chart === "undefined") return;
     emptyEl.style.display = "none";
     canvas.style.display = "block";
 

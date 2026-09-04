@@ -785,6 +785,20 @@ async function seedAllQuestions() {
   const btn = $("#seed-questions-btn");
   if (btn) { btn.disabled = true; btn.textContent = "Seeding... Please wait"; }
   try {
+    // On-demand load: 5 question-bank files (176 KiB) sirf yahan, jab
+    // admin ye button dabaye tab hi fetch hoti hain — normal page load
+    // par nahi.
+    if (window.__ensureLib) {
+      try {
+        await Promise.all([
+          window.__ensureLib("qb_math"),
+          window.__ensureLib("qb_history"),
+          window.__ensureLib("qb_hist_india"),
+          window.__ensureLib("qb_indochina"),
+          window.__ensureLib("qb_socialism")
+        ]);
+      } catch (e) { /* koi ek file load na ho paaye to bhi jo load ho gayi unko seed karne do */ }
+    }
     let msg = "";
     if (typeof window.seedMathematicsQuestionBank === "function") {
       await window.seedMathematicsQuestionBank();

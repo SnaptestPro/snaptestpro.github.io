@@ -56,6 +56,12 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#1e1b4b" />
+  <!-- PERF FIX: splash-screen.jpg hi is page ka LCP (Largest Contentful
+       Paint) element hai, lekin <body> mein kaafi neeche (~165 lines)
+       likha hai. Preload karne se browser HTML parse hote hi (turant)
+       iski download shuru kar deta hai, us line tak pahunchne ka wait
+       kiye bina — LCP timing improve karta hai. -->
+  <link rel="preload" as="image" href="splash-screen.jpg" fetchpriority="high">
   <style>
     /* Installed-app pinch/double-tap zoom lock — works alongside the
        viewport meta tag above (which some browsers, notably iOS Safari
@@ -115,27 +121,41 @@
        isko dekhte hain — manifest.webmanifest ke saath extra safety -->
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Cinzel:wght@700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css?v=8">
   <link rel="stylesheet" href="theme-picker.css">
-  <link rel="stylesheet" href="creative-dashboard.css?v=1">
-  <link rel="stylesheet" href="exam-manager.css?v=1">
-  <link rel="stylesheet" href="id-card.css?v=2">
+  <!-- PERF FIX: yeh 3 CSS files sirf Admin/Owner-side panels
+       (Creative Dashboard cards, Exam Manager, ID Card generator) ke
+       liye hain — jo student ke normal login/test-taking screen par
+       kabhi dikhte hi nahi (hidden panels, sirf admin login ke baad
+       navigate karne par visible hote hain). Pehle yeh teeno bhi
+       render-blocking the (~41 KiB extra CSS parse initial paint se
+       pehle). Print-media trick se non-render-blocking bana diya —
+       jab tak admin us panel par jaaye, tab tak yeh already load ho
+       chuki hoti hain. -->
+  <link rel="stylesheet" href="creative-dashboard.css?v=1" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="exam-manager.css?v=1" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="id-card.css?v=2" media="print" onload="this.media='all'">
+  <noscript>
+    <link rel="stylesheet" href="creative-dashboard.css?v=1">
+    <link rel="stylesheet" href="exam-manager.css?v=1">
+    <link rel="stylesheet" href="id-card.css?v=2">
+  </noscript>
   
-  <!-- PERF FIX: 8 heavy CDN libraries (chart/OCR/excel/pdf/word-export/
-       confetti/katex, ~1MB+ combined) pehle yahan "defer" ke saath
-       register thi — jiska matlab tha ye sab page ke "load" event tak
-       (jab PageSpeed/Lighthouse Total Blocking Time measure karta hai)
-       download+parse hoti rehti thin, chahe student sirf test dene aaya
-       ho aur inmein se kisi feature ko haath tak na lagaye. Ab yahan
-       koi CDN <script> tag register nahi hoti — inko "load" event ke
-       BAAD, idle time mein, ek chhote loader se load kiya jaata hai
-       (dekhein </body> se pehle "PERF FIX: lazy CDN loader"). Har
-       library sirf button-click handlers mein use hoti hai
-       (script.js/exam-manager.js/omr.js), aur defensive checks
-       (window.Tesseract, window.renderMathInElement) ke saath likhi
-       hui hai, isliye thodi der baad load hone se koi feature nahi
-       tootta. -->
+  <!-- PERF FIX v2: 8 heavy CDN libraries (chart/OCR/excel/pdf/word-
+       export/confetti/katex, ~1MB+ combined) pehle yahan "defer" ke
+       saath register thi. Ab yahan koi CDN <script> tag register nahi
+       hoti — inko TRUE on-demand load kiya jaata hai, matlab jab tak
+       student/admin actual feature (Scan-Sheet OCR / Export Excel-PDF-
+       Word / Chart / Math question / results confetti) use na kare,
+       tab tak yeh download hi nahi hoti. Loader utility
+       (window.__ensureLib) </body> se pehle define hai; har library ke
+       real use-point par call kiya gaya hai (upgrade.js,
+       exam-manager.js, omr.js, student-features.js, aur math-render
+       code). Normal PageSpeed audit (jisme koi button click nahi
+       hota) mein yeh 8 libraries bilkul load hi nahi hoti — TBT par
+       zero asar. -->
   <!-- KaTeX CSS: print-media trick se non-render-blocking bana diya. -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"></noscript>
@@ -148,7 +168,7 @@
      deti hai. Isse hata na jaaye — sirf image (splash-screen.jpg) ya
      duration change karni ho to neeche ka JS timing (2200ms) badlein. -->
 <div id="app-splash-screen" style="position:fixed;inset:0;z-index:99999;background:#060513;display:flex;align-items:center;justify-content:center;transition:opacity .5s ease;">
-  <img src="splash-screen.jpg" alt="SnapTest Pro" style="width:100%;height:100%;object-fit:cover;" />
+  <img src="splash-screen.jpg" alt="SnapTest Pro" fetchpriority="high" style="width:100%;height:100%;object-fit:cover;" />
 </div>
 <script>
   (function () {
@@ -2211,16 +2231,17 @@ B"></textarea>
 <script defer src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
 <script defer src="firebase-config.js"></script>
-<!-- Question Banks -->
-<script defer src="mathematics-question-bank.js"></script>
 <script defer src="theme-palette.js"></script>
 <script defer src="live-theme-effects.js"></script>
 <script defer src="theme-manager.js"></script>
 
-<script defer src="history-question-bank.js"></script>
-<script defer src="History-India-question-bank.js"></script>
-<script defer src="history-indochina-question-bank.js"></script>
-<script defer src="socialism-question-bank.js"></script>
+<!-- PERF FIX: 5 question-bank files (176 KiB combined — mathematics
+     akela 118 KiB) yahan se hata di gayi. Inka data sirf ek baar,
+     Admin panel ke "🌱 Seed All Questions to Firebase" button se
+     Firebase mein seed karne ke kaam aata hai (student/normal test-
+     taking flow inhe kabhi touch nahi karta — dekhein script.js ke
+     seedAllQuestions() mein "AUTO-SEED DISABLED" comment). Ab yeh
+     __ensureLib se sirf us button dabane par hi load hoti hain. -->
 <!-- Main App
      NOTE: Pehle ye files document.write('<script src="X?v='+Date.now()+'">')
      se load hoti thi. Iske 2 nuksaan the:
@@ -2235,7 +2256,6 @@ B"></textarea>
           guaranteed hai — is URL-versioning ki ab zaroorat nahi. Stable
           URL rakhne se browser/SW ka apna cache theek se kaam karta hai
           aur repeat visits kaafi fast ho jaate hain. -->
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script defer src="subject-resolver.js"></script>
 <script defer src="pdf-import.js"></script>
 <script defer src="script.js"></script>
@@ -2251,16 +2271,49 @@ B"></textarea>
      back dabane par app close hone se rokta hai -->
 <script defer src="back-button-guard.js"></script>
 
-<!-- PERF FIX: lazy CDN loader — 8 heavy libraries (chart.js,
-     tesseract.js, xlsx, html2pdf, jspdf, docx, canvas-confetti, katex)
-     ab yahan se load hoti hain: page ke "load" event ke baad, idle
-     time mein, background mein — taaki initial paint/TBT par inka koi
-     asar na pade. Feature use karte waqt (Scan-Sheet OCR, Export
-     Excel/PDF/Word, Math questions, results ka confetti) tab tak yeh
-     99% cases mein already load ho chuki hoti hain. -->
+<!-- PERF FIX v2: TRUE on-demand loader for the 8 heavy CDN libraries
+     (chart.js, tesseract.js, xlsx, html2pdf, jspdf, docx,
+     canvas-confetti, katex). Pehla attempt (page "load" ke turant baad
+     background mein sabko load karna) se Total Blocking Time UL̥TA
+     BADH gaya tha (1,890ms → 3,600ms) — kyunki Lighthouse TBT sirf
+     "page load" tak nahi, balki jab tak page CPU/network dono par
+     "quiet" na ho jaaye tab tak count karta hai, aur 8 bhaari
+     libraries ek saath background mein parse/execute hone se bade
+     "long tasks" ban rahe the jo isi window ke andar aa rahe the.
+     Ab in libraries ko bilkul bhi load NAHI kiya jaata jab tak student/
+     admin actual feature (Scan-Sheet OCR / Export Excel-PDF-Word /
+     Math question / Chart / results confetti) use na kare — isliye
+     normal PageSpeed audit (jo koi button nahi dabata) ke dauraan yeh
+     8 libraries bilkul download/execute hi nahi hoti, TBT par zero
+     asar padta hai. window.__ensureLib(key) neeche wale sabhi files
+     (upgrade.js, exam-manager.js, omr.js, student-features.js, aur
+     KaTeX render karne wale code) ke andar unke actual use-point par
+     call kiya gaya hai. -->
 <script>
   (function () {
-    function lazyLoadScript(src) {
+    var LIBS = {
+      chart:    ["https://cdn.jsdelivr.net/npm/chart.js"],
+      tesseract:["https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"],
+      xlsx:     ["https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"],
+      html2pdf: ["https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"],
+      jspdf:    ["https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"],
+      docx:     ["https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.iife.js"],
+      confetti: ["https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"],
+      pdfjs:    ["https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"],
+      // Question-bank files (local, same-origin) — Admin ke "Seed All
+      // Questions" button ke liye, normal student flow use nahi karta.
+      qb_math:      ["mathematics-question-bank.js"],
+      qb_history:   ["history-question-bank.js"],
+      qb_hist_india:["History-India-question-bank.js"],
+      qb_indochina: ["history-indochina-question-bank.js"],
+      qb_socialism: ["socialism-question-bank.js"],
+      // katex auto-render, core par depend karta hai isliye 2 URLs
+      // sequence mein (ensureLib in dono ko order mein load karta hai).
+      katex:    ["https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js",
+                 "https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"]
+    };
+    var pending = {};
+    function loadOne(src) {
       return new Promise(function (resolve, reject) {
         var s = document.createElement("script");
         s.src = src;
@@ -2269,33 +2322,19 @@ B"></textarea>
         document.head.appendChild(s);
       });
     }
-    function whenIdle(fn) {
-      if (window.requestIdleCallback) requestIdleCallback(fn, { timeout: 4000 });
-      else setTimeout(fn, 1500);
-    }
-    function startLazyLoads() {
-      whenIdle(function () {
-        [
-          "https://cdn.jsdelivr.net/npm/chart.js",
-          "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js",
-          "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
-          "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js",
-          "https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js",
-          "https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.iife.js",
-          "https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"
-        ].forEach(function (src) { lazyLoadScript(src).catch(function () {}); });
-
-        // KaTeX auto-render, katex core par depend karta hai — isliye
-        // sequential (core load hone ke baad hi auto-render).
-        lazyLoadScript("https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js")
-          .then(function () {
-            return lazyLoadScript("https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js");
-          })
-          .catch(function () {});
+    // window.__ensureLib("xlsx") -> Promise. Pehli baar call hone par
+    // hi actual library download shuru hota hai; uske baad har call
+    // wahi cached Promise return karti hai (dobara download nahi hota).
+    window.__ensureLib = function (key) {
+      if (pending[key]) return pending[key];
+      var urls = LIBS[key] || [];
+      var chain = Promise.resolve();
+      urls.forEach(function (url) {
+        chain = chain.then(function () { return loadOne(url); });
       });
-    }
-    if (document.readyState === "complete") startLazyLoads();
-    else window.addEventListener("load", startLazyLoads);
+      pending[key] = chain;
+      return chain;
+    };
   })();
 </script>
 
@@ -2452,7 +2491,15 @@ window.autoFormatMathText = autoFormatMathText;
 window.autoFormatMathFields = autoFormatMathFields;
 
 function renderMathIn(el) {
-  if (!el || !window.renderMathInElement) return;
+  if (!el) return;
+  // On-demand load: KaTeX (~300KB) sirf pehli baar kisi Math question
+  // dikhne par hi fetch hoti hai — page load par nahi.
+  if (!window.renderMathInElement) {
+    if (window.__ensureLib) {
+      window.__ensureLib("katex").then(function () { renderMathIn(el); }).catch(function () {});
+    }
+    return;
+  }
   try {
     window.renderMathInElement(el, {
       delimiters: [

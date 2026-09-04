@@ -171,6 +171,11 @@
   }
 
   async function extractTextFromPdf(file) {
+    // On-demand load: pdf.js (~300KB) sirf yahan, PDF-import feature
+    // use hone par hi fetch hoti hai — page load par nahi.
+    if (!window.pdfjsLib && window.__ensureLib) {
+      try { await window.__ensureLib("pdfjs"); } catch (e) { /* offline/blocked */ }
+    }
     const pdfjsLib = window.pdfjsLib;
     if (!pdfjsLib) throw new Error("PDF.js load nahi hua");
     pdfjsLib.GlobalWorkerOptions.workerSrc =

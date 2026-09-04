@@ -1,4 +1,4 @@
-const CACHE_NAME = 'snaptestpro-v114-pagespeed-perf-fix';
+const CACHE_NAME = 'snaptestpro-v119-sw-precache-list-fix';
 
 // App-shell files — sab kuch jo student ko app chalane ke liye chahiye
 // (code + question-bank data + icons). Pehli visit par yeh sab download
@@ -28,11 +28,16 @@ const urlsToCache = [
   '/theme-palette.js',
   '/live-theme-effects.js',
   '/theme-manager.js',
-  '/mathematics-question-bank.js',
-  '/history-question-bank.js',
-  '/History-India-question-bank.js',
-  '/history-indochina-question-bank.js',
-  '/socialism-question-bank.js',
+  // Question-bank files (mathematics/history/...) YAHAN SE HATA DI —
+  // v117 perf-fix ke baad ye files sirf Admin ke "Seed All Questions"
+  // button dabane par on-demand load hoti hain (dekhein index.html ka
+  // __ensureLib). Agar yahan precache list mein rakhte, to Service
+  // Worker HAR NAYE STUDENT ki pehli visit par bhi ye 176 KiB
+  // background mein download kar leta — jo bilkul wahi cheez hai jo
+  // v117 fix rokna chahta tha. Ab yeh sirf tabhi cache hoti hain jab
+  // admin actually us feature ko use kare (neeche wala fetch handler
+  // khud-ba-khud cache kar leta hai — normal 'agar cache mein nahi hai
+  // to network se le aao aur cache mein daal do' behavior).
   '/icon-192.png',
   '/icon-512.png',
   '/icon-192-maskable.png',

@@ -365,6 +365,11 @@
   }
 
   async function downloadOMRSheetAsWord(test, testId) {
+    // On-demand load: docx.js (~500KB) sirf yahan, "Export Word" button
+    // dabane par hi fetch hoti hai — page load par nahi.
+    if (!window.docx && window.__ensureLib) {
+      try { await window.__ensureLib("docx"); } catch (e) { /* offline/blocked */ }
+    }
     if (!window.docx) throw new Error("Word library load nahi ho payi — internet connection check karein aur page reload karein.");
     const filename = `OMR-Sheet-${(test.title || "test").replace(/[^a-z0-9]+/gi, "-")}.docx`;
     const doc = buildOMRSheetDocx(test, testId);
