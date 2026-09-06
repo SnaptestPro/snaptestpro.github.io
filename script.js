@@ -1164,11 +1164,16 @@ function getLastView() {
 const STUDENT_TAB_BOX_IDS = [
   "student-form-fields-anchor", "practice-mode-card", "student-results-card",
   "my-result-detail-card", "my-progress-card", "my-mistakes-card",
-  "student-settings-card"
+  "student-settings-card", "student-solids-lab-card"
 ];
 function goStudentSection(id) {
   const el = document.getElementById(id);
   if (!el) return;
+  // v125: 3D Solids Lab (WebGL) chhodte waqt saaf tarike se unmount karo,
+  // taaki render-loop/GPU context chalta na rahe.
+  if (id !== "student-solids-lab-card" && typeof window.unmountSolidsLab === "function") {
+    window.unmountSolidsLab(document.getElementById("solids-lab-mount-student"));
+  }
   STUDENT_TAB_BOX_IDS.forEach(sid => {
     document.getElementById(sid)?.classList.toggle("hidden", sid !== id);
   });
@@ -1204,10 +1209,23 @@ function goStudentSection(id) {
   if (id === "student-settings-card" && typeof renderStudentIdCard === "function") {
     renderStudentIdCard();
   }
+  // v125: 3D Solids Lab khula — pehli baar 4 libraries (React, Three.js,
+  // Babel-standalone, apna boot script) load hongi; agli baar isi
+  // session mein turant (cached) mount ho jaata hai.
+  if (id === "student-solids-lab-card" && typeof window.__ensureLib === "function") {
+    window.__ensureLib("solidsLab").then(function () {
+      if (typeof window.mountSolidsLab === "function") {
+        window.mountSolidsLab(document.getElementById("solids-lab-mount-student"));
+      }
+    });
+  }
 }
 window.goStudentSection = goStudentSection;
 
 function backToStudentDashboard() {
+  if (typeof window.unmountSolidsLab === "function") {
+    window.unmountSolidsLab(document.getElementById("solids-lab-mount-student"));
+  }
   STUDENT_TAB_BOX_IDS.forEach(sid => document.getElementById(sid)?.classList.add("hidden"));
   document.getElementById("student-dashboard-home")?.classList.remove("hidden");
   document.getElementById("student-back-btn")?.classList.add("hidden");
@@ -1559,7 +1577,7 @@ const ADMIN_TAB_BOX_IDS = {
   tests: "tests-area", bank: "bank-box", "bulk-upload": "bulk-upload-box",
   records: "records-box", generator: "generator-box", trash: "trash-box",
   omr: "omr-box", grade: "grade-box", settings: "settings-box",
-  leaderboard: "leaderboard-box"
+  leaderboard: "leaderboard-box", solidslab: "solidslab-box"
 };
 function goAdmin(tab) {
   showAdminTab(tab);
@@ -1571,6 +1589,9 @@ function goAdmin(tab) {
 window.goAdmin = goAdmin;
 
 function backToAdminDashboard() {
+  if (typeof window.unmountSolidsLab === "function") {
+    window.unmountSolidsLab(document.getElementById("solids-lab-mount-admin"));
+  }
   Object.values(ADMIN_TAB_BOX_IDS).forEach(id => document.getElementById(id)?.classList.add("hidden"));
   document.getElementById("admin-dashboard-home")?.classList.remove("hidden");
   document.getElementById("admin-back-btn")?.classList.add("hidden");
@@ -1717,6 +1738,7 @@ function showAdminTab(tab) {
   $("#grade-box")?.classList.toggle("hidden", tab !== "grade");
   $("#settings-box")?.classList.toggle("hidden", tab !== "settings");
   $("#leaderboard-box")?.classList.toggle("hidden", tab !== "leaderboard");
+  $("#solidslab-box")?.classList.toggle("hidden", tab !== "solidslab");
   document.querySelector(".main-wrap")?.classList.toggle("wide-mode", tab === "generator");
   if (tab === "bank") renderBank();
   if (tab === "leaderboard" && window.SavyaExtras) window.SavyaExtras.renderAdminLeaderboard();
@@ -1727,6 +1749,18 @@ function showAdminTab(tab) {
   // Admin ne Settings kholi — apna ID Card (Naam/Photo/Institute Logo/
   // Issue Date) turant dikhao. (v111)
   if (tab === "settings" && typeof renderAdminIdCard === "function") renderAdminIdCard();
+  // v125: 3D Solids Lab — sirf tabhi (lazy) load hoti hai jab admin
+  // yahan aaye; kisi doosre tab par jaate hi WebGL context unmount ho
+  // jaata hai (neeche wala unmountSolidsLab call).
+  if (tab === "solidslab" && typeof window.__ensureLib === "function") {
+    window.__ensureLib("solidsLab").then(function () {
+      if (typeof window.mountSolidsLab === "function") {
+        window.mountSolidsLab(document.getElementById("solids-lab-mount-admin"));
+      }
+    });
+  } else if (typeof window.unmountSolidsLab === "function") {
+    window.unmountSolidsLab(document.getElementById("solids-lab-mount-admin"));
+  }
 }
 
 // ── Secure admin login (real Firebase Authentication) ──────────────

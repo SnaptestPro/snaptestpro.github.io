@@ -402,6 +402,13 @@
             <div class="cd-card-bottom"><span class="cd-arrow-btn">→</span></div>
           </button>
 
+          <button type="button" class="cd-card cd-pink" onclick="goStudentSection('student-solids-lab-card')">
+            <div class="cd-card-top"><div class="cd-icon-circle">📐</div><span class="cd-badge">3D</span></div>
+            <div class="cd-card-title">Solids Lab</div>
+            <div class="cd-card-sub">Surface Area/Volume ghumaa kar seekhein</div>
+            <div class="cd-card-bottom"><span class="cd-arrow-btn">→</span></div>
+          </button>
+
         </div>
 
         <div class="cd-promo">
@@ -443,6 +450,16 @@
 
         <!-- Card-style test list -->
         <div id="test-cards-list" class="test-cards-list"></div>
+      </div>
+
+      <!-- ── 3D Solids Lab (v125) — Surface Area/Volume ke solids
+           interactively banaiye, ghumaiye, cut karke andar dekhiye.
+           React+Three.js widget hai, __ensureLib se lazy load hota
+           hai (goStudentSection wiring script.js mein). ── -->
+      <div class="card hidden" id="student-solids-lab-card">
+        <h3 class="section-title">📐 3D Solids Lab</h3>
+        <p class="muted-text">Cylinder, cone, sphere, cuboid jaise solids khud banaiye aur ghumaiye, unhe stack/combine kariye, cut karke andar dekhiye — aur unka Volume/Surface Area formula turant saamne dekhiye.</p>
+        <div id="solids-lab-mount-student" class="solids-lab-root"></div>
       </div>
 
       <div class="card hidden" id="student-settings-card">
@@ -1008,6 +1025,13 @@
             <div class="cd-card-top"><div class="cd-icon-circle">🔐</div><span class="cd-badge">Setup</span></div>
             <div class="cd-card-title">Settings</div>
             <div class="cd-card-sub">Firebase seed, password &amp; logout</div>
+            <div class="cd-card-bottom"><span class="cd-arrow-btn">→</span></div>
+          </button>
+
+          <button type="button" class="cd-card cd-red" onclick="goAdmin('solidslab')">
+            <div class="cd-card-top"><div class="cd-icon-circle">📐</div><span class="cd-badge">3D</span></div>
+            <div class="cd-card-title">Solids Lab</div>
+            <div class="cd-card-sub">Class mein dikhane ke liye 3D solids</div>
             <div class="cd-card-bottom"><span class="cd-arrow-btn">→</span></div>
           </button>
         </div>
@@ -1863,6 +1887,15 @@ B"></textarea>
         </div>
       </div>
 
+      <!-- 3D SOLIDS LAB (v125) -->
+      <div id="solidslab-box" class="hidden">
+        <div class="card">
+          <h3 class="section-title">📐 3D Solids Lab</h3>
+          <p class="muted-text">Surface Area aur Volume ke chapter ke solids (cylinder, cone, sphere, cuboid waghera) 3D mein banaiye, ghumaiye, cut karke andar dekhiye — class mein students ko concept live dikhane ke liye.</p>
+          <div id="solids-lab-mount-admin" class="solids-lab-root"></div>
+        </div>
+      </div>
+
       <!-- OMR -->
       <div id="omr-box" class="hidden">
 
@@ -2323,7 +2356,18 @@ B"></textarea>
       // bhi isi on-demand loader se load hoti hain — pehle dono
       // <script defer> se har page load par eager download hoti thin.
       ownerPanel:  ["owner-panel.js"],
-      examManager: ["exam-manager.js?v=5"]
+      examManager: ["exam-manager.js?v=5"],
+      // v125: 3D Solids Lab — React + Three.js + Babel-standalone (JSX
+      // ko browser mein hi compile karta hai, kyunki app khud koi
+      // build-step use nahi karta) — sab kuch sirf tabhi load hota hai
+      // jab koi is feature ko khole (Student ya Admin, dono se).
+      solidsLab: [
+        "https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js",
+        "https://unpkg.com/@babel/standalone@7/babel.min.js",
+        "solids-lab-boot.js?v=1"
+      ]
     };
     var pending = {};
     function loadOne(src) {
