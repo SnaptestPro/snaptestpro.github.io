@@ -122,9 +122,21 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Cinzel:wght@700&display=swap" rel="stylesheet" />
+  <!-- PERF FIX v126: Google Fonts + theme-picker.css pehle render-
+       blocking the (font stylesheet ek external round-trip + parse,
+       theme-picker.css ek extra 12 KiB, dono first-paint se pehle
+       zaroori ho gaye the). Same print-media trick jo creative-
+       dashboard/exam-manager/id-card CSS ke liye already use ho raha
+       hai — ab yeh bhi non-blocking hain, first paint fonts/theme ka
+       wait nahi karta (already-loaded system font se turant dikhta
+       hai, font/theme aane par seamlessly switch ho jaata hai). -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Cinzel:wght@700&display=swap" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="styles.css?v=8">
-  <link rel="stylesheet" href="theme-picker.css">
+  <link rel="stylesheet" href="theme-picker.css" media="print" onload="this.media='all'">
+  <noscript>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Cinzel:wght@700&display=swap">
+    <link rel="stylesheet" href="theme-picker.css">
+  </noscript>
   <!-- PERF FIX: yeh 3 CSS files sirf Admin/Owner-side panels
        (Creative Dashboard cards, Exam Manager, ID Card generator) ke
        liye hain — jo student ke normal login/test-taking screen par
@@ -172,7 +184,11 @@
 </div>
 <script>
   (function () {
-    var SPLASH_DURATION_MS = 2200; // itni der splash dikhega
+    var SPLASH_DURATION_MS = 400; // PERF FIX v126: pehle 2200ms tha —
+    // jabardasti har visit par 2.2s+ wait karwata tha chahe content
+    // turant ready ho. LCP/Speed Index dono is fixed delay ki wajah se
+    // seedha 2.2s+ se start hote the. Ab sirf ek chhota "brand flash"
+    // (400ms) — content jitni jaldi ready ho utni jaldi dikhta hai.
     // FIX (perf): pehle "load" event ka wait karta tha — jo tabhi fire
     // hota hai jab page ki SAARI cheezein (fonts, images, aur sabhi CDN
     // libraries — kuch MB-scale) poori tarah download ho chuki hon.
