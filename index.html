@@ -122,6 +122,17 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- PERF FIX v127: styles.css (39 KiB) bhi ab non-render-blocking
+       hai — bilkul same print-media trick. Splash screen (neeche)
+       kam se kam ~900ms ke liye poori screen ko full-bleed image se
+       dhaanke rakhta hai, isliye is chhoti si window mein agar
+       styles.css thoda der se bhi aaye, user ko koi unstyled flash
+       kabhi dikhta hi nahi — splash hatne tak CSS already load ho
+       chuki hoti hai. Safety-net ke taur par ek chhota inline
+       ".hidden" rule bhi diya hai (neeche <style> mein) taaki agar
+       kisi bahut hi slow connection par CSS abhi tak na aayi ho, tab
+       bhi modals/hidden panels galti se visible na ho jaayein. -->
+  <style>.hidden{display:none!important}</style>
   <!-- PERF FIX v126: Google Fonts + theme-picker.css pehle render-
        blocking the (font stylesheet ek external round-trip + parse,
        theme-picker.css ek extra 12 KiB, dono first-paint se pehle
@@ -131,10 +142,11 @@
        wait nahi karta (already-loaded system font se turant dikhta
        hai, font/theme aane par seamlessly switch ho jaata hai). -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Cinzel:wght@700&display=swap" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="stylesheet" href="styles.css?v=8" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="theme-picker.css" media="print" onload="this.media='all'">
   <noscript>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Cinzel:wght@700&display=swap">
+    <link rel="stylesheet" href="styles.css?v=8">
     <link rel="stylesheet" href="theme-picker.css">
   </noscript>
   <!-- PERF FIX: yeh 3 CSS files sirf Admin/Owner-side panels
@@ -189,22 +201,23 @@
     // turant ready ho. LCP/Speed Index dono is fixed delay ki wajah se
     // seedha 2.2s+ se start hote the. Ab sirf ek chhota "brand flash"
     // (400ms) — content jitni jaldi ready ho utni jaldi dikhta hai.
-    // FIX (perf): pehle "load" event ka wait karta tha — jo tabhi fire
-    // hota hai jab page ki SAARI cheezein (fonts, images, aur sabhi CDN
-    // libraries — kuch MB-scale) poori tarah download ho chuki hon.
-    // Splash fullscreen image hone ki wajah se yehi Largest Contentful
-    // Paint (LCP) element bana raha tha, isliye LCP 16+ second tak chala
-    // jaata tha. Ab sirf "DOMContentLoaded" ka wait karta hai (HTML
-    // parse hone ke turant baad fire hota hai) — splash apne fixed
-    // 2200ms ke baad turant hat jaata hai.
-    document.addEventListener("DOMContentLoaded", function () {
+    // PERF FIX v127: pehle "DOMContentLoaded" ka wait karta tha — jo
+    // is script se BAAD wale saare `<script defer>` (4 Firebase SDK
+    // files + script.js 232 KB + 10+ aur files) poori tarah
+    // download+execute hone ke baad hi fire hota hai. Splash us poori
+    // chain ke khatam hone tak screen ko block kiye rakhta tha (LCP
+    // 9+ second tak chala jaata tha), jabki splash hatane ke liye in
+    // mein se kisi bhi file ki zaroorat nahi hai — yeh apna khud ka
+    // fixed-timer hai. Ab seedha turant (is inline script ke chalte
+    // hi) apna 400ms ka timer shuru karta hai.
+    (function () {
       setTimeout(function () {
         var el = document.getElementById("app-splash-screen");
         if (!el) return;
         el.style.opacity = "0";
         setTimeout(function () { el.remove(); }, 500);
       }, SPLASH_DURATION_MS);
-    });
+    })();
   })();
 </script>
 
@@ -4548,7 +4561,18 @@ document.addEventListener('DOMContentLoaded',function(){
     dismissAppInstallModal();
   });
 
-  document.addEventListener('DOMContentLoaded', function () {
+  // PERF FIX v127: pehle yeh poora block 'DOMContentLoaded' ka wait
+  // karta tha — jo tabhi fire hota hai jab is script se PEHLE wale
+  // SAARE `<script defer>` (4 Firebase SDK files + script.js 232 KB +
+  // 10+ aur files) poori tarah download+execute ho chuke hon. Yehi
+  // is popup (jo screen ka sabse bada visible element hai — LCP
+  // candidate) ko kaafi der tak (9+ second) hone se rok raha tha.
+  // Is script ki position HTML mein already header/modal HTML ke
+  // NEECHE hai — matlab jab parser yahan tak pahunchta hai, upar
+  // wale saare elements (#install-app-btn, #app-install-modal)
+  // already DOM mein maujood hain. DOMContentLoaded ka wait karne ki
+  // koi zaroorat nahi thi — turant chala sakte hain.
+  (function () {
     const btn = document.getElementById('install-app-btn');
     // Agar ye app pehle se hi installed/standalone mode mein khuli hai,
     // to Student/Admin install button dikhane ka koi matlab nahi —
@@ -4578,7 +4602,7 @@ document.addEventListener('DOMContentLoaded',function(){
         showAppInstallModal();
       }
     }
-  });
+  })();
 </script>
 <script>
 // ══════════════════════════════════════════════════════════════
