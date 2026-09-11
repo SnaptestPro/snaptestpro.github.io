@@ -187,9 +187,42 @@ service cloud.firestore {
     // ── Public/shared content: question bank & tests ─────────────
     // Student app ko ye padhna zaroori hai taaki test/questions load ho
     // sakein. Likhna/delete karna sirf admin kar sakta hai.
+    //
+    // ⚠️ OWNERSHIP-BASED DELETE PROTECTION (added — "dushmani" fix):
+    // Pehle YE HAR active admin poore shared questionBank mein KISI BHI
+    // question ko delete kar sakta tha — chahe wo unhone khud upload
+    // kiya ho ya kisi doosre admin/institute ne. Ab:
+    //   - Naya question banate waqt uska `createdBy` field khud
+    //     request bhejne wale admin ke email se match karna ZAROORI
+    //     hai (client spoof nahi kar sakta — server-side check).
+    //   - Update karte waqt `createdBy` ko badla nahi ja sakta (sirf
+    //     Owner badal sakta hai) — taaki koi edit karke ownership
+    //     "chura" na sake.
+    //   - Delete sirf 2 log kar sakte hain: (1) Owner (hamesha), ya
+    //     (2) wahi admin jiska email `createdBy` mein hai. Purane
+    //     (is fix se pehle bane / seeded) questions jinme `createdBy`
+    //     field hai hi nahi, unke liye backward-compat rakha gaya hai
+    //     — koi bhi active admin unhe delete kar sakta hai (jaisa
+    //     pehle tha), taaki purana data lock na ho jaaye.
+    // Client-side (script.js / qgen-app.js) ko naya question banate
+    // waqt `createdBy: <apna email>` field bhejna zaroori hai, warna
+    // create hi reject ho jayega.
     match /questionBank/{docId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow create: if isAdmin() && (
+        isOwner() ||
+        !('createdBy' in request.resource.data) ||
+        request.resource.data.createdBy == request.auth.token.email
+      );
+      allow update: if isAdmin() && (
+        !('createdBy' in resource.data) ||
+        request.resource.data.createdBy == resource.data.createdBy ||
+        isOwner()
+      );
+      allow delete: if isOwner() || (isAdmin() && (
+        !('createdBy' in resource.data) ||
+        resource.data.createdBy == request.auth.token.email
+      ));
     }
 
     match /tests/{docId} {

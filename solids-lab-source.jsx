@@ -827,10 +827,10 @@ function SolidsLab() {
         </div>
 
         <div className="flex-1 min-h-0 flex flex-col">
-          <div ref={containerRef} className="flex-1 min-h-0" style={{ position: "relative" }}>
+          <div ref={containerRef} className="flex-1 min-h-0" style={{ position: "relative", minHeight: "260px" }}>
             <canvas ref={canvasRef} className="w-full h-full block" style={{ touchAction: "none", cursor: "grab" }} />
           </div>
-          <div style={{ borderTop: "1px solid #274870", backgroundColor: "#0E2C52", maxHeight: "220px" }} className="overflow-y-auto p-3 flex-shrink-0">
+          <div style={{ borderTop: "1px solid #274870", backgroundColor: "#0E2C52", maxHeight: "160px" }} className="overflow-y-auto p-3 flex-shrink-0">
             <FormulaPanel shapes={shapes} />
           </div>
         </div>
