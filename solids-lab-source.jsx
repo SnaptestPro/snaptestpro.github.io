@@ -677,8 +677,8 @@ function SolidsLab() {
   function fitView() {
     if (!threeRef.current.orbit) return;
     const { totalHeight, maxRadius } = layoutShapes(shapes);
-    const dist = Math.max(totalHeight, maxRadius * 2.2) * 1.5 + 2;
-    threeRef.current.orbit.radius = Math.min(Math.max(dist, 3), 35);
+    const dist = Math.max(totalHeight, maxRadius * 2.2) * 1.25 + 1.4;
+    threeRef.current.orbit.radius = Math.min(Math.max(dist, 2.6), 35);
     threeRef.current.updateCamera();
   }
 
@@ -729,7 +729,7 @@ function SolidsLab() {
 
   return (
     <div
-      style={{ height: "700px", backgroundColor: "#0B2545", color: "#E8EEF7", fontFamily: "'Trebuchet MS','Century Gothic',sans-serif" }}
+      style={{ height: "clamp(560px, 85vh, 920px)", backgroundColor: "#0B2545", color: "#E8EEF7", fontFamily: "'Trebuchet MS','Century Gothic',sans-serif" }}
       className="w-full flex flex-col rounded-lg overflow-hidden border border-slate-700"
     >
       <div style={{ borderBottom: "1px solid #274870", backgroundColor: "#0E2C52" }} className="px-4 py-3 flex items-center justify-between flex-shrink-0">
@@ -827,10 +827,10 @@ function SolidsLab() {
         </div>
 
         <div className="flex-1 min-h-0 flex flex-col">
-          <div ref={containerRef} className="flex-1 min-h-0" style={{ position: "relative", minHeight: "260px" }}>
+          <div ref={containerRef} className="flex-1 min-h-0" style={{ position: "relative", minHeight: "440px" }}>
             <canvas ref={canvasRef} className="w-full h-full block" style={{ touchAction: "none", cursor: "grab" }} />
           </div>
-          <div style={{ borderTop: "1px solid #274870", backgroundColor: "#0E2C52", maxHeight: "160px" }} className="overflow-y-auto p-3 flex-shrink-0">
+          <div style={{ borderTop: "1px solid #274870", backgroundColor: "#0E2C52", maxHeight: "150px" }} className="overflow-y-auto p-3 flex-shrink-0">
             <FormulaPanel shapes={shapes} />
           </div>
         </div>
