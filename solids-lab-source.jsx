@@ -525,6 +525,16 @@ function SolidsLab() {
   const [cutPosition, setCutPosition] = useState(0.5);
   const [cutAngle, setCutAngle] = useState(0);
   const [wireframeOn, setWireframeOn] = useState(false);
+  const [isDesktopLayout, setIsDesktopLayout] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width:768px)").matches);
+  useEffect(() => {
+    const mql = window.matchMedia("(min-width:768px)");
+    const onChange = () => setIsDesktopLayout(mql.matches);
+    onChange();
+    mql.addEventListener ? mql.addEventListener("change", onChange) : mql.addListener(onChange);
+    return () => {
+      mql.removeEventListener ? mql.removeEventListener("change", onChange) : mql.removeListener(onChange);
+    };
+  }, []);
 
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
@@ -782,7 +792,7 @@ function SolidsLab() {
 
       <div className="flex flex-1 min-h-0 flex-col md:flex-row">
         <div
-          style={{ backgroundColor: "#0E2C52", borderRight: "1px solid #274870" }}
+          style={{ backgroundColor: "#0E2C52", borderRight: "1px solid #274870", maxHeight: isDesktopLayout ? "none" : "36vh" }}
           className="w-full md:w-72 flex-shrink-0 overflow-y-auto p-3 flex flex-col gap-3 max-h-64 md:max-h-none"
         >
           <div>
@@ -864,10 +874,10 @@ function SolidsLab() {
         </div>
 
         <div className="flex-1 min-h-0 flex flex-col">
-          <div ref={containerRef} className="flex-1 min-h-0" style={{ position: "relative", minHeight: "440px" }}>
+          <div ref={containerRef} className="flex-1 min-h-0" style={{ position: "relative", minHeight: isDesktopLayout ? "440px" : "34vh" }}>
             <canvas ref={canvasRef} className="w-full h-full block" style={{ touchAction: "none", cursor: "grab" }} />
           </div>
-          <div style={{ borderTop: "1px solid #274870", backgroundColor: "#0E2C52", maxHeight: "150px" }} className="overflow-y-auto p-3 flex-shrink-0">
+          <div style={{ borderTop: "1px solid #274870", backgroundColor: "#0E2C52", maxHeight: isDesktopLayout ? "150px" : "18vh" }} className="overflow-y-auto p-3 flex-shrink-0">
             <FormulaPanel shapes={shapes} />
           </div>
         </div>
