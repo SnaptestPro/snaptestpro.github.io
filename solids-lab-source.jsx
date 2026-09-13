@@ -571,8 +571,34 @@ function SolidsLab() {
     updateCamera();
 
     let dragging = false, lastX = 0, lastY = 0;
-    function onPointerDown(e) { dragging = true; lastX = e.clientX; lastY = e.clientY; canvas.style.cursor = "grabbing"; }
+    const activePointers = new Map();
+    let pinchStartDist = 0, pinchStartRadius = orbit.radius;
+    function getPointerDist(map) {
+      const pts = Array.from(map.values());
+      return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    }
+    function onPointerDown(e) {
+      canvas.setPointerCapture && canvas.setPointerCapture(e.pointerId);
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (activePointers.size === 2) {
+        dragging = false;
+        pinchStartDist = getPointerDist(activePointers);
+        pinchStartRadius = orbit.radius;
+      } else if (activePointers.size === 1) {
+        dragging = true; lastX = e.clientX; lastY = e.clientY; canvas.style.cursor = "grabbing";
+      }
+    }
     function onPointerMove(e) {
+      if (!activePointers.has(e.pointerId)) return;
+      activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (activePointers.size === 2) {
+        const dist = getPointerDist(activePointers);
+        if (pinchStartDist > 10) {
+          orbit.radius = Math.min(Math.max(pinchStartRadius * (pinchStartDist / dist), 2.5), 40);
+          updateCamera();
+        }
+        return;
+      }
       if (!dragging) return;
       const dx = e.clientX - lastX, dy = e.clientY - lastY;
       lastX = e.clientX; lastY = e.clientY;
@@ -580,7 +606,16 @@ function SolidsLab() {
       orbit.phi = Math.min(Math.max(orbit.phi - dy * 0.006, 0.15), Math.PI - 0.15);
       updateCamera();
     }
-    function onPointerUp() { dragging = false; canvas.style.cursor = "grab"; }
+    function onPointerUp(e) {
+      activePointers.delete(e.pointerId);
+      if (activePointers.size === 1) {
+        const rem = Array.from(activePointers.values())[0];
+        dragging = true; lastX = rem.x; lastY = rem.y;
+      } else {
+        dragging = false;
+      }
+      if (activePointers.size === 0) canvas.style.cursor = "grab";
+    }
     function onWheel(e) {
       e.preventDefault();
       orbit.radius = Math.min(Math.max(orbit.radius * (1 + e.deltaY * 0.001), 2.5), 40);
@@ -589,6 +624,7 @@ function SolidsLab() {
     canvas.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
     canvas.addEventListener("wheel", onWheel, { passive: false });
 
     function resize() {
@@ -617,6 +653,7 @@ function SolidsLab() {
       canvas.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
       canvas.removeEventListener("wheel", onWheel);
       renderer.dispose();
     };
@@ -729,7 +766,7 @@ function SolidsLab() {
 
   return (
     <div
-      style={{ height: "clamp(560px, 85vh, 920px)", backgroundColor: "#0B2545", color: "#E8EEF7", fontFamily: "'Trebuchet MS','Century Gothic',sans-serif" }}
+      style={{ height: "clamp(480px, 78vh, 920px)", backgroundColor: "#0B2545", color: "#E8EEF7", fontFamily: "'Trebuchet MS','Century Gothic',sans-serif" }}
       className="w-full flex flex-col rounded-lg overflow-hidden border border-slate-700"
     >
       <div style={{ borderBottom: "1px solid #274870", backgroundColor: "#0E2C52" }} className="px-4 py-3 flex items-center justify-between flex-shrink-0">
