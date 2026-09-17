@@ -148,6 +148,27 @@ service cloud.firestore {
       return isAdminEmailAllowed() && adminInstituteActive();
     }
 
+    // ── FIX (v133 — cross-institute admin isolation) ────────────────
+    // Pehle isAdmin() sirf itna check karta tha ki "koi active admin
+    // hai" — ye kabhi nahi dekhta tha ki TARGET student usी admin ke
+    // apne institute ka hai ya kisi doosre ka. Matlab Institute A ka
+    // admin, Institute B ke kisi bhi student ka password reset/delete
+    // kar sakta tha. Ab har jagah jahan admin kisi SPECIFIC student
+    // (uske mobile se) par action leta hai, ye function bhi check
+    // hota hai.
+    //
+    // Backward-compat (upar wale patterns jaisa): agar target student
+    // ka `students/{mobile}` doc hi exist nahi karta (abhi register
+    // nahi hua — studentSecrets create is se pehle hota hai) YA uska
+    // koi instituteId set nahi hai (bahut purana, multi-institute
+    // feature se pehle ka student) — to allow kar diya jaata hai,
+    // taaki koi turant lock-out na ho.
+    function studentBelongsToAdmin(mobile) {
+      return !exists(/databases/$(database)/documents/students/$(mobile)) ||
+        get(/databases/$(database)/documents/students/$(mobile)).data.instituteId == null ||
+        get(/databases/$(database)/documents/students/$(mobile)).data.instituteId == adminInstituteId();
+    }
+
     // ── Class Eligibility (v25) — Multi-Institute Shared Question Bank ──
     // Har Institute ke `institutes/{id}.allowedClasses` mein un Classes
     // ki list hoti hai jinke liye wo eligible hai (jaise ["class_10"]).
@@ -384,9 +405,41 @@ service cloud.firestore {
     // DELETE sirf admin kar sakta hai — isse accidental/malicious mass
     // data-loss nahi ho sakta.
     match /students/{mobile} {
-      allow get, create, update: if isSignedIn();
-      allow list: if isAdmin();
-      allow delete: if isAdmin();
+      allow get, create: if isSignedIn();
+
+      // ⚠️ FIX (v133): pehle "update" poori tarah khula tha
+      // (isSignedIn()) — koi bhi signed-in (anonymous) visitor kisi
+      // bhi doosre student ka naam/institute/class seedha badal sakta
+      // tha, sirf uska mobile number jaan kar. Ab: bina-proof
+      // self-service update sirf in FIXED, non-identity fields tak
+      // simit hai (jo app ke sabhi current student-side flows —
+      // DP photo, Security PIN set, legacy-secret migration cleanup,
+      // daily streak — use karte hain). naam/instituteId/classId/
+      // mobile in mein NAHI hain, isliye koi bhi current student-flow
+      // yahan nahi tootta.
+      // Admin apne hi institute ke student ke liye ye sab (naam/
+      // institute/class/proof-fields samet) poori tarah badal sakta
+      // hai — jaise "Proof Update" form se.
+      allow update: if (
+        isAdmin() && studentBelongsToAdmin(mobile)
+      ) || (
+        isSignedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'photoDataUrl', 'hasPin', 'hash', 'pinHash',
+          'streakCount', 'lastActiveDate'
+        ])
+      );
+
+      // ⚠️ FIX (v133): list ab admin ke apne institute (ya
+      // institute-less legacy students) tak simit hai — pehle koi
+      // bhi active admin PORE platform ke saare students (naam,
+      // mobile, class, sab institutes) ek saath list kar sakta tha.
+      allow list: if isAdmin() && (
+        resource.data.instituteId == null ||
+        resource.data.instituteId == adminInstituteId()
+      );
+
+      allow delete: if isAdmin() && studentBelongsToAdmin(mobile);
     }
 
     // ── Student secrets (password hash + Security PIN hash) ────────
@@ -409,12 +462,17 @@ service cloud.firestore {
     // jaata hai. Isse secret kabhi client tak pahunchta hi nahi.
     // ══════════════════════════════════════════════════════════════
     match /studentSecrets/{mobile} {
-      allow read: if isAdmin();
+      // ⚠️ FIX (v133): admin ab sirf apne HI institute ke student ka
+      // password-hash/PIN-hash padh/reset/delete kar sakta hai — pehle
+      // koi bhi active admin, kisi bhi doosre institute ke student ka
+      // password yahan se reset karke uske account mein "ghus" sakta
+      // tha.
+      allow read: if isAdmin() && studentBelongsToAdmin(mobile);
 
       // Registration (aur legacy-account migration) — pehli baar create.
       allow create: if isSignedIn();
 
-      allow update: if isAdmin() ||
+      allow update: if (isAdmin() && studentBelongsToAdmin(mobile)) ||
         (
           // (a) LOGIN proof: client bhejta hai lastLoginProof = sha256(entered
           // password); tabhi accept hoga jab ye stored "hash" se match kare.
@@ -440,7 +498,7 @@ service cloud.firestore {
           request.resource.data.pinProof == resource.data.pinHash
         );
 
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() && studentBelongsToAdmin(mobile);
     }
 
     match /studentRecords/{docId} {
@@ -457,7 +515,20 @@ service cloud.firestore {
     // but writes stay admin-only since linking is an admin action.
     match /studentScanReports/{docId} {
       allow get, list: if isSignedIn();
-      allow write: if isAdmin();
+
+      // ⚠️ FIX (v133): create/update/delete ab admin ke apne institute
+      // ke student tak simit hai (doc ke `mobile` field se check hota
+      // hai) — pehle koi bhi active admin kisi bhi doosre institute ke
+      // student ka scanned OMR result unse link/unlink/delete kar
+      // sakta tha.
+      allow create: if isAdmin() &&
+        'mobile' in request.resource.data &&
+        studentBelongsToAdmin(request.resource.data.mobile);
+      allow update: if isAdmin() &&
+        'mobile' in request.resource.data &&
+        studentBelongsToAdmin(request.resource.data.mobile);
+      allow delete: if isAdmin() &&
+        (!('mobile' in resource.data) || studentBelongsToAdmin(resource.data.mobile));
     }
 
     // ── My Mistakes (auto-collected wrong answers, per student) ────
@@ -469,7 +540,8 @@ service cloud.firestore {
     match /studentMistakes/{mobile} {
       allow get, create, update: if isSignedIn();
       allow list: if isAdmin();
-      allow delete: if isAdmin();
+      // ⚠️ FIX (v133): admin ke apne institute ke student tak simit.
+      allow delete: if isAdmin() && studentBelongsToAdmin(mobile);
     }
 
     // ── OWNER PANEL: institutes & their admins ─────────────────────
@@ -508,6 +580,15 @@ service cloud.firestore {
       allow update: if isAdmin() && instituteId == adminInstituteId() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['logoDataUrl']);
 
+      // (a2) v132: Institute Join Code protection ka ON/OFF flag — sirf
+      //      `requiresJoinCode` field. Asli code yahan kabhi nahi aata
+      //      (woh alag, protected `instituteJoinCodes` collection mein
+      //      hai) — yeh sirf ek public "haan/na" flag hai jisse
+      //      registration form ko pata chale ki code maangna hai ya
+      //      nahi, bina asli code kisi ko dikhaye.
+      allow update: if isAdmin() && instituteId == adminInstituteId() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requiresJoinCode']);
+
       // (b) Har student ka ID Number ek institute-wide serial number
       //     (studentSerialCounter) se banta hai — student ka apna client
       //     hi (pehli baar registration/ID Card khulte waqt) ise ek
@@ -523,6 +604,52 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentSerialCounter']) &&
         request.resource.data.studentSerialCounter ==
           (('studentSerialCounter' in resource.data) ? resource.data.studentSerialCounter : 0) + 1;
+    }
+
+    // ── Institute Join Code protection (v132) ──────────────────────
+    // ══════════════════════════════════════════════════════════════
+    // PROBLEM: Registration form mein student sirf ek dropdown se
+    // apna institute chun leta tha — koi bhi student, kisi bhi
+    // institute ka naam dekh kar, seedha usme "ghus" sakta tha, bina
+    // us institute se koi permission liye.
+    //
+    // FIX (bilkul studentSecrets/password wale pattern jaisa): asli
+    // code kabhi client ko `read` nahi hota — sirf isAdmin() (apne hi
+    // institute ke liye) ise dekh/badal sakta hai. Student jab
+    // register karta hai, wo apna guess ek ALAG throwaway collection
+    // (`instituteJoinCodeChecks`) mein CREATE karne ki koshish karta
+    // hai; Firestore Rules khud (server-side, `get()` se) us guess ko
+    // stored code se compare karti hain — sirf tabhi create allow
+    // hota hai jab match ho. Client ko kabhi asli code dikhta hi
+    // nahi, sirf pata chalta hai ki uska attempt "allow" hua ya
+    // "permission-denied" mila.
+    // ══════════════════════════════════════════════════════════════
+    match /instituteJoinCodes/{instituteId} {
+      allow read, write: if isOwner();
+      // Admin apne hi institute ka code set/badal/dekh sake (students
+      // ko dene ke liye) — kisi doosre institute ka nahi.
+      allow read, create, update: if isAdmin() && instituteId == adminInstituteId();
+    }
+
+    match /instituteJoinCodeChecks/{checkId} {
+      allow read, update, delete: if isOwner();
+      // Koi bhi signed-in client (anonymous student bhi) apna code
+      // "guess" yahan submit kar sakta hai — par CREATE sirf tabhi
+      // safal hota hai jab woh guess us institute ke stored code se
+      // exactly match kare. Agar institute ne abhi tak koi code set
+      // hi nahi kiya (instituteJoinCodes doc exist nahi karta), to
+      // backward-compatibility ke liye check khud-ba-khud pass ho
+      // jaata hai — matlab jab tak admin khud apna code set na kare,
+      // uske institute ka registration pehle jaisa hi (bina code ke)
+      // chalta rehta hai.
+      allow create: if isSignedIn() &&
+        'instituteId' in request.resource.data &&
+        'codeAttempt' in request.resource.data &&
+        (
+          !exists(/databases/$(database)/documents/instituteJoinCodes/$(request.resource.data.instituteId)) ||
+          request.resource.data.codeAttempt ==
+            get(/databases/$(database)/documents/instituteJoinCodes/$(request.resource.data.instituteId)).data.code
+        );
     }
 
     // Doc ID = admin ka email address (isAdmin() function isi se
