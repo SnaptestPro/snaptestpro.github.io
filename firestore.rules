@@ -169,6 +169,33 @@ service cloud.firestore {
         get(/databases/$(database)/documents/students/$(mobile)).data.instituteId == adminInstituteId();
     }
 
+    // ── FIX (v134 — join-code enforcement moved server-side) ────────
+    // PROBLEM: "Institute Join Code" (v132) sirf CLIENT-SIDE JS mein
+    // gate tha — script.js apna ek-baar-cache kiya hua institutes list
+    // check karta tha (`_instReg.requiresJoinCode`), aur sirf TABHI
+    // `instituteJoinCodeChecks` mein guess likhta tha. Agar wo client-
+    // side check kisi bhi wajah se (stale cache, timing) skip ho jaaye,
+    // to `students/{mobile}` CREATE rule ko iske baare mein pata hi
+    // nahi chalta tha — matlab bina koi code check huye hi account ban
+    // jaata tha. Ab ye verification `students/{mobile}` ke CREATE rule
+    // mein khud, server-side, unconditionally hoti hai — client ka
+    // cache kuch bhi ho, koi farq nahi padta.
+    function instituteRequiresJoinCode(instituteId) {
+      return instituteId != null &&
+        exists(/databases/$(database)/documents/institutes/$(instituteId)) &&
+        get(/databases/$(database)/documents/institutes/$(instituteId)).data.requiresJoinCode == true;
+    }
+
+    // Registration ke turant pehle (30 min ke andar) `instituteJoinCodeChecks/{mobile}`
+    // mein SAHI code verify ho chuka ho, usी institute ke liye — tabhi true.
+    // (Us check-doc ka CREATE khud rules se, server-side code-match ke
+    // baad hi allow hota hai — neeche instituteJoinCodeChecks match dekhein.)
+    function joinCodeVerifiedForRegistration(mobile, instituteId) {
+      return exists(/databases/$(database)/documents/instituteJoinCodeChecks/$(mobile)) &&
+        get(/databases/$(database)/documents/instituteJoinCodeChecks/$(mobile)).data.instituteId == instituteId &&
+        request.time < get(/databases/$(database)/documents/instituteJoinCodeChecks/$(mobile)).data.checkedAt + duration.value(30, 'm');
+    }
+
     // ── Class Eligibility (v25) — Multi-Institute Shared Question Bank ──
     // Har Institute ke `institutes/{id}.allowedClasses` mein un Classes
     // ki list hoti hai jinke liye wo eligible hai (jaise ["class_10"]).
@@ -405,7 +432,21 @@ service cloud.firestore {
     // DELETE sirf admin kar sakta hai — isse accidental/malicious mass
     // data-loss nahi ho sakta.
     match /students/{mobile} {
-      allow get, create: if isSignedIn();
+      allow get: if isSignedIn();
+
+      // ⚠️ FIX (v134): pehle create sirf isSignedIn() tha — Join Code
+      // wale institute ke liye bhi, kyunki ye rule us feature se poori
+      // tarah anjaan tha. Ab: agar target institute ka
+      // requiresJoinCode true hai, to yahan ek verified
+      // instituteJoinCodeChecks/{mobile} doc (sahi code ke saath,
+      // 30 min ke andar) exist karna ZAROORI hai — warna create khud
+      // reject ho jaata hai, chahe client kuch bhi bheje.
+      allow create: if isSignedIn() && (
+        !instituteRequiresJoinCode(
+          ('instituteId' in request.resource.data) ? request.resource.data.instituteId : null
+        ) ||
+        joinCodeVerifiedForRegistration(mobile, request.resource.data.instituteId)
+      );
 
       // ⚠️ FIX (v133): pehle "update" poori tarah khula tha
       // (isSignedIn()) — koi bhi signed-in (anonymous) visitor kisi
@@ -631,18 +672,27 @@ service cloud.firestore {
       allow read, create, update: if isAdmin() && instituteId == adminInstituteId();
     }
 
-    match /instituteJoinCodeChecks/{checkId} {
-      allow read, update, delete: if isOwner();
+    // ⚠️ FIX (v134): doc ID ab {checkId} (random) nahi, {mobile} hai —
+    // taaki students/{mobile} ka CREATE rule (upar) ise mobile se
+    // seedha, deterministically dhoondh sake aur verify kar sake ki
+    // ISI mobile ke liye, ISI institute ke liye, sahi code guess ho
+    // chuka hai. (create+update dono allow hain kyunki agar pehla
+    // registration attempt beech mein fail ho jaaye, to retry par
+    // doc pehle se exist karega — dono baar SAME code-match check
+    // lagta hai, isliye ek purana/galat doc dobara likhe bina naye
+    // sahi guess ke wapas "verified" nahi ban sakta.)
+    match /instituteJoinCodeChecks/{mobile} {
+      allow read, delete: if isOwner();
       // Koi bhi signed-in client (anonymous student bhi) apna code
-      // "guess" yahan submit kar sakta hai — par CREATE sirf tabhi
-      // safal hota hai jab woh guess us institute ke stored code se
-      // exactly match kare. Agar institute ne abhi tak koi code set
-      // hi nahi kiya (instituteJoinCodes doc exist nahi karta), to
-      // backward-compatibility ke liye check khud-ba-khud pass ho
-      // jaata hai — matlab jab tak admin khud apna code set na kare,
-      // uske institute ka registration pehle jaisa hi (bina code ke)
-      // chalta rehta hai.
-      allow create: if isSignedIn() &&
+      // "guess" yahan submit kar sakta hai — par create/update sirf
+      // tabhi safal hota hai jab woh guess us institute ke stored
+      // code se exactly match kare. Agar institute ne abhi tak koi
+      // code set hi nahi kiya (instituteJoinCodes doc exist nahi
+      // karta), to backward-compatibility ke liye check khud-ba-khud
+      // pass ho jaata hai — matlab jab tak admin khud apna code set na
+      // kare, uske institute ka registration pehle jaisa hi (bina code
+      // ke) chalta rehta hai.
+      allow create, update: if isSignedIn() &&
         'instituteId' in request.resource.data &&
         'codeAttempt' in request.resource.data &&
         (
