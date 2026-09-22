@@ -1,5 +1,6 @@
 /* ============================================================================
-   BOOKLET PRINT MODULE  (v2 — 2-column logical pages, full spec)
+   BOOKLET PRINT MODULE  (v3 — measurement fixed: runs inside the print
+   window itself, using the real booklet CSS, so page heights are accurate)
    ----------------------------------------------------------------------------
    Structure enforced everywhere in this file:
 
@@ -7,51 +8,49 @@
         └── Left Half  = one Logical Page  → 2 Question Columns
         └── Right Half = one Logical Page  → 2 Question Columns
 
-   Pipeline (matches the booklet spec step by step):
-     1. Collect questions + options.
-     2. Measure each question's real rendered height.
-     3. Distribute questions into Logical Pages (Page 1, 2, 3 ...).
-     4. Split every logical page into exactly 2 columns (Sequential or
-        Balanced — user configurable, default Balanced).
-     5. Never split a question across columns/pages — the whole question
-        (text + options + table/diagram/etc.) always moves together.
-     6. Stamp every logical page with its real page number (1..N) —
-        independent of which physical Left/Right half it ends up on.
-     7. Pad logical pages to the next multiple of 4 with blank pages
-        (blank pages carry no content and no page number).
-     8. Run booklet imposition (front/back, Left/Right) — works for ANY
-        page count that is a multiple of 4 (4, 8, 12, 16, 20 ...), not
-        hard-coded to 8.
-     9. Render two preview modes: Logical Page Preview and Print /
-        Imposition Preview (landscape sheets — shown first / by default).
-    10. Print always prints the Imposition view, which is what's
-        physically correct for duplex + fold + staple.
+   Pipeline:
+     1. (Parent window) Collect questions + header HTML.
+     2. Open the print window and hand it the raw data (header + question
+        items + settings) as JSON.
+     3. (Print window, its OWN document/CSS) Measure each question's real
+        rendered height, distribute into Logical Pages, split each page
+        into exactly 2 columns (Sequential or Balanced), stamp page
+        numbers, pad to a multiple of 4 with blank pages, run booklet
+        imposition (front/back, Left/Right) for ANY page count that's a
+        multiple of 4, and render both preview modes.
+     4. Print always prints the Imposition (landscape sheets) view.
+
+   Why measurement happens inside the print window: the print window has
+   its own compact stylesheet (small fonts, tight spacing, KaTeX). If a
+   question's height were measured in the parent app window instead, it
+   would use whatever default styling exists there — usually much taller
+   — which makes the paginator think questions are bigger than they
+   really are, cut pages short, and leave real, print-ready pages with a
+   large empty gap at the bottom. Measuring in the same document that
+   will actually render the content keeps the two in sync.
    ========================================================================= */
 (function () {
   "use strict";
 
   /* -------------------------------------------------------------------- *
    *  Geometry (mm) — A4 landscape sheet, split into two halves            *
+   *  (kept here too, only to compute mm-based CSS values for the          *
+   *   stylesheet; the popup engine below has its own copy for measuring)  *
    * -------------------------------------------------------------------- */
-  var MM2PX      = 3.7795275590551185; // px per mm @ 96dpi, for measuring
-  var HALF_W     = 148;   // usable half-sheet width reference (mm)
-  var HALF_H     = 210;   // half-sheet height (mm)
-  var MARGIN     = 7;     // outer margin (mm)
-  var GUTTER     = 5;     // extra margin on the inner (spine) edge (mm)
-  var PAGE_NUM_H = 6;     // reserved strip at the bottom for the page number (mm)
-  var COL_GAP    = 4;     // gap between the 2 columns (mm)
-  var COLS       = 2;     // ALWAYS 2 columns per logical page (per spec)
-
-  var CONTENT_W    = HALF_W - MARGIN * 2 - GUTTER;      // usable width inside a half
-  var CONTENT_H    = HALF_H - MARGIN * 2 - PAGE_NUM_H;  // usable height, minus page-number strip
-  var CONTENT_W_PX = Math.floor(CONTENT_W * MM2PX);
-  var CONTENT_H_PX = Math.floor(CONTENT_H * MM2PX);
-  var COL_W        = (CONTENT_W - COL_GAP * (COLS - 1)) / COLS;
-  var COL_W_PX     = Math.floor(COL_W * MM2PX);
+  var HALF_H     = 210;
+  var MARGIN     = 7;
+  var GUTTER     = 5;
+  var PAGE_NUM_H = 6;
+  var COL_GAP    = 4;
+  var COLS       = 2;
+  var HALF_W     = 148;
+  var CONTENT_W  = HALF_W - MARGIN * 2 - GUTTER;
+  var CONTENT_H  = HALF_H - MARGIN * 2 - PAGE_NUM_H;
+  var COL_W      = (CONTENT_W - COL_GAP * (COLS - 1)) / COLS;
 
   /* -------------------------------------------------------------------- *
    *  Settings (Column Mode + Page Number Position) — remembered per      *
-   *  browser via localStorage, editable any time via the ⚙ Settings      *
+   *  browser via localStorage, editable via the ⚙ Booklet Settings       *
    *  button next to the Booklet Print buttons.                           *
    * -------------------------------------------------------------------- */
   var SETTINGS_KEY = "bookletSettings";
@@ -123,7 +122,7 @@
   };
 
   /* -------------------------------------------------------------------- *
-   *  STEP 1 — Collect questions + header                                  *
+   *  STEP 1 — Collect questions + header (runs in the PARENT app window)  *
    * -------------------------------------------------------------------- */
   function collectQuestions() {
     try {
@@ -165,195 +164,8 @@
   }
 
   /* -------------------------------------------------------------------- *
-   *  STEP 2 & 3 — Measure heights, distribute into Logical Pages          *
-   *  STEP 4 & 5 — Split each page into 2 columns without splitting a      *
-   *               question; Sequential or Balanced per user setting       *
+   *  Stylesheet shared by the print window (Logical + Imposition views)   *
    * -------------------------------------------------------------------- */
-  function buildLogicalPages(headerHtmlStr, itemsHtml, settings) {
-    // Measure the header once (only occupies space on the very first page)
-    var headerBox = document.createElement("div");
-    headerBox.style.cssText = "position:fixed;left:-9999px;top:0;width:" + CONTENT_W_PX + "px;visibility:hidden;pointer-events:none;";
-    document.body.appendChild(headerBox);
-    headerBox.innerHTML = headerHtmlStr || "";
-    var headerH = headerHtmlStr ? headerBox.getBoundingClientRect().height : 0;
-    headerBox.remove();
-
-    // Measure every question at the real column width
-    var measureBox = document.createElement("div");
-    measureBox.className = "bp-col";
-    measureBox.style.cssText = "position:fixed;left:-9999px;top:0;width:" + COL_W_PX + "px;visibility:hidden;pointer-events:none;";
-    document.body.appendChild(measureBox);
-    var heights = itemsHtml.map(function (html) {
-      measureBox.innerHTML = html;
-      return measureBox.getBoundingClientRect().height;
-    });
-    measureBox.remove();
-
-    var pages = [];
-    var idx = 0;
-    var n = itemsHtml.length;
-    var pageNum = 0;
-
-    while (idx < n) {
-      pageNum++;
-      var isFirstPage = pages.length === 0;
-      var avail = CONTENT_H_PX - (isFirstPage ? headerH : 0);
-      var budget = avail * 2; // total space across both columns of this page
-
-      // Work out which run of (whole) questions lands on this page
-      var runEnd = idx, sum = 0;
-      while (runEnd < n) {
-        var h = heights[runEnd];
-        if (sum > 0 && sum + h > budget) break;
-        sum += h;
-        runEnd++;
-      }
-      if (runEnd === idx) runEnd = idx + 1; // safety: always make progress
-
-      var runItems = itemsHtml.slice(idx, runEnd);
-      var runHeights = heights.slice(idx, runEnd);
-      var left, right, splitAt, colH, i;
-
-      if (settings.columnMode === "sequential") {
-        // Fill Column 1 completely first, then continue in Column 2
-        colH = 0; splitAt = runItems.length;
-        for (i = 0; i < runItems.length; i++) {
-          if (colH > 0 && colH + runHeights[i] > avail) { splitAt = i; break; }
-          colH += runHeights[i];
-        }
-      } else {
-        // Balanced — distribute so both columns end up close to equal height
-        var total = runHeights.reduce(function (a, b) { return a + b; }, 0);
-        var half = total / 2;
-        colH = 0; splitAt = runItems.length;
-        for (i = 0; i < runItems.length; i++) {
-          if (colH + runHeights[i] > avail) { splitAt = i; break; }             // column-1 hard limit
-          if (colH > 0 && colH + runHeights[i] > half) { splitAt = i; break; }  // balance point
-          colH += runHeights[i];
-        }
-      }
-      left = runItems.slice(0, splitAt);
-      right = runItems.slice(splitAt);
-
-      pages.push({ num: pageNum, left: left, right: right, hasHeader: isFirstPage });
-      idx = runEnd;
-    }
-
-    if (!pages.length) pages.push({ num: 1, left: [], right: [], hasHeader: true });
-    return pages;
-  }
-
-  /* -------------------------------------------------------------------- *
-   *  STEP 6 — render a logical page's inner HTML (2 columns + page #)     *
-   * -------------------------------------------------------------------- */
-  function renderPageInner(page, headerHtmlStr, settings) {
-    var cols = '<div class="bp-cols">' +
-      '<div class="bp-col">' + page.left.join("") + '</div>' +
-      '<div class="bp-col">' + page.right.join("") + '</div>' +
-      '</div>';
-    var header = page.hasHeader ? headerHtmlStr : "";
-    var pageNum = '<div class="bp-pagenum bp-pn-' + settings.pageNumberPos + '">' + page.num + '</div>';
-    return header + cols + pageNum;
-  }
-
-  /* -------------------------------------------------------------------- *
-   *  STEP 7 & 8 — pad to a multiple of 4, run booklet imposition          *
-   *  (works for ANY multiple of 4: 4, 8, 12, 16, 20, 24, 28, 32 ...)      *
-   * -------------------------------------------------------------------- */
-  function imposeBooklet(pages) {
-    var t = pages.slice();
-    while (t.length % 4 !== 0) t.push(null); // blank filler — no content, no number
-    var a = t.length;
-    var sheets = [];
-    for (var n = 0; n < a / 4; n++) {
-      var s = a - 2 * n - 1, d = 2 * n, i = 2 * n + 1, o = a - 2 * n - 2;
-      sheets.push({ front: [t[s] || null, t[d] || null], back: [t[i] || null, t[o] || null] });
-    }
-    return sheets;
-  }
-
-  function renderHalf(page, headerHtmlStr, settings, side) {
-    var blank = !page;
-    var inner = blank ? "" : renderPageInner(page, headerHtmlStr, settings);
-    return '<div class="bp-half bp-half-' + side + (blank ? " bp-half-blank" : "") + '">' +
-      '<div class="bp-half-inner">' + inner + '</div></div>';
-  }
-
-  function renderSheet(sheetSide, headerHtmlStr, settings) {
-    return '<div class="bp-sheet">' +
-      renderHalf(sheetSide[0], headerHtmlStr, settings, "left") +
-      '<div class="bp-fold"></div>' +
-      renderHalf(sheetSide[1], headerHtmlStr, settings, "right") +
-      '</div>';
-  }
-
-  /* -------------------------------------------------------------------- *
-   *  STEP 9 — Logical Page Preview (Page 1, Page 2, Page 3 ... stacked)   *
-   * -------------------------------------------------------------------- */
-  function renderLogicalView(pages, headerHtmlStr, settings) {
-    return pages.map(function (page) {
-      return '<div class="bp-logical-page">' +
-        '<div class="bp-logical-label">Page ' + page.num + '</div>' +
-        '<div class="bp-half-inner">' + renderPageInner(page, headerHtmlStr, settings) + '</div>' +
-        '</div>';
-    }).join("");
-  }
-
-  /* -------------------------------------------------------------------- *
-   *  Full HTML document assembly                                          *
-   * -------------------------------------------------------------------- */
-  function buildDocument(pages, headerHtmlStr, settings) {
-    var sheets = imposeBooklet(pages);
-    var impositionHtml = sheets.map(function (sheet) {
-      return renderSheet(sheet.front, headerHtmlStr, settings) + renderSheet(sheet.back, headerHtmlStr, settings);
-    }).join("");
-    var logicalHtml = renderLogicalView(pages, headerHtmlStr, settings);
-
-    var modeLabel = settings.columnMode === "sequential" ? "Sequential" : "Balanced";
-    var posLabel = { "bottom-center": "Bottom Center", "bottom-left": "Bottom Left", "bottom-right": "Bottom Right" }[settings.pageNumberPos];
-
-    var head =
-      '<meta charset="UTF-8"/><title>Booklet Print</title>' +
-      '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet"/>' +
-      '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"/>' +
-      '<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"><\/script>' +
-      '<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"><\/script>' +
-      '<style>' + stylesheet() + '</style>';
-
-    var toolbar =
-      '<div class="bp-toolbar no-print">' +
-        '<div><b>📖 Booklet Print Ready</b> — ' + pages.length + ' page' + (pages.length > 1 ? "s" : "") +
-          ' · ' + sheets.length + ' sheet' + (sheets.length > 1 ? "s" : "") +
-          ' · 2 columns/page · ' + modeLabel + ' · Page #: ' + posLabel + '</div>' +
-        '<div class="bp-toolbar-hint">Print dialog mein: <b>Two-sided → Flip on Short Edge</b> · Paper <b>A4</b> · Layout <b>Landscape</b> · Margins <b>None</b></div>' +
-        '<div class="bp-view-toggle">' +
-          '<button id="bp-view-logical-btn" onclick="bpShowView(\'logical\')">🗂 Logical Pages</button>' +
-          '<button id="bp-view-imposition-btn" class="active" onclick="bpShowView(\'imposition\')">🖨 Landscape / Print View</button>' +
-        '</div>' +
-        '<button onclick="bpPrintNow()">🖨️ Print Now</button>' +
-      '</div>';
-
-    var body =
-      '<div id="bp-logical-view" class="bp-logical-view" style="display:none">' + logicalHtml + '</div>' +
-      '<div id="bp-imposition-view" class="bp-imposition-view">' + impositionHtml + '</div>';
-
-    var script =
-      '<script>' +
-      'function bpShowView(v){' +
-        'document.getElementById("bp-logical-view").style.display = v==="logical" ? "flex" : "none";' +
-        'document.getElementById("bp-imposition-view").style.display = v==="imposition" ? "flex" : "none";' +
-        'document.getElementById("bp-view-logical-btn").classList.toggle("active", v==="logical");' +
-        'document.getElementById("bp-view-imposition-btn").classList.toggle("active", v==="imposition");' +
-      '}' +
-      'function bpPrintNow(){ bpShowView("imposition"); setTimeout(function(){ window.print(); }, 60); }' +
-      'window.addEventListener("load",function(){' +
-        'if(window.renderMathInElement){renderMathInElement(document.body,{delimiters:[{left:"$$",right:"$$",display:true},{left:"$",right:"$",display:false}],throwOnError:false});}' +
-      '});' +
-      '<\/script>';
-
-    return "<!DOCTYPE html><html><head>" + head + "</head><body>" + toolbar + body + script + "</body></html>";
-  }
-
   function stylesheet() {
     return [
       "@page{size:A4 landscape;margin:0}",
@@ -410,6 +222,9 @@
       ".bp-pn-bottom-left{text-align:left;padding-left:2mm}",
       ".bp-pn-bottom-right{text-align:right;padding-right:2mm}",
 
+      // shown briefly while the popup measures + paginates
+      ".bp-loading{padding:40px;color:#fff;text-align:center;font-size:13px}",
+
       "@media print{",
       "body{background:#fff}",
       ".no-print{display:none!important}",
@@ -417,6 +232,206 @@
       ".bp-sheet{box-shadow:none}",
       "}"
     ].join("\n");
+  }
+
+  /* -------------------------------------------------------------------- *
+   *  Engine that runs INSIDE the popup print window. Written as a plain   *
+   *  source string so that, once injected into that window's <script>    *
+   *  tag, every `document`/`window` reference inside it resolves to the  *
+   *  POPUP's own document — which is what actually carries the           *
+   *  stylesheet above. That's what makes measurement accurate.           *
+   * -------------------------------------------------------------------- */
+  function popupEngineSource() {
+    return [
+      '(function () {',
+      '  "use strict";',
+      '  var MM2PX = 3.7795275590551185;',
+      '  var HALF_H = ' + HALF_H + ', MARGIN = ' + MARGIN + ', GUTTER = ' + GUTTER + ', PAGE_NUM_H = ' + PAGE_NUM_H + ', COL_GAP = ' + COL_GAP + ', HALF_W = ' + HALF_W + ';',
+      '  var CONTENT_W = HALF_W - MARGIN * 2 - GUTTER;',
+      '  var CONTENT_H = HALF_H - MARGIN * 2 - PAGE_NUM_H;',
+      '  var CONTENT_W_PX = Math.floor(CONTENT_W * MM2PX);',
+      '  var CONTENT_H_PX = Math.floor(CONTENT_H * MM2PX);',
+      '  var COL_W_PX = Math.floor(((CONTENT_W - ' + COL_GAP + ' * 1) / 2) * MM2PX);',
+
+      /* ---- pagination (measures using THIS document's real CSS) ---- */
+      '  function buildLogicalPages(headerHtmlStr, itemsHtml, settings) {',
+      '    var headerBox = document.createElement("div");',
+      '    headerBox.style.cssText = "position:fixed;left:-9999px;top:0;width:" + CONTENT_W_PX + "px;visibility:hidden;pointer-events:none;";',
+      '    document.body.appendChild(headerBox);',
+      '    headerBox.innerHTML = headerHtmlStr || "";',
+      '    var headerH = headerHtmlStr ? headerBox.getBoundingClientRect().height : 0;',
+      '    headerBox.remove();',
+
+      '    var measureBox = document.createElement("div");',
+      '    measureBox.className = "bp-col";',
+      '    measureBox.style.cssText = "position:fixed;left:-9999px;top:0;width:" + COL_W_PX + "px;visibility:hidden;pointer-events:none;";',
+      '    document.body.appendChild(measureBox);',
+      '    var heights = itemsHtml.map(function (html) {',
+      '      measureBox.innerHTML = html;',
+      '      return measureBox.getBoundingClientRect().height;',
+      '    });',
+      '    measureBox.remove();',
+
+      '    var pages = [], idx = 0, n = itemsHtml.length, pageNum = 0;',
+      '    while (idx < n) {',
+      '      pageNum++;',
+      '      var isFirstPage = pages.length === 0;',
+      '      var avail = CONTENT_H_PX - (isFirstPage ? headerH : 0);',
+      '      var budget = avail * 2;',
+
+      '      var runEnd = idx, sum = 0;',
+      '      while (runEnd < n) {',
+      '        var h = heights[runEnd];',
+      '        if (sum > 0 && sum + h > budget) break;',
+      '        sum += h;',
+      '        runEnd++;',
+      '      }',
+      '      if (runEnd === idx) runEnd = idx + 1;',
+
+      '      var runItems = itemsHtml.slice(idx, runEnd);',
+      '      var runHeights = heights.slice(idx, runEnd);',
+      '      var left, right, splitAt, colH, i;',
+
+      '      if (settings.columnMode === "sequential") {',
+      '        colH = 0; splitAt = runItems.length;',
+      '        for (i = 0; i < runItems.length; i++) {',
+      '          if (colH > 0 && colH + runHeights[i] > avail) { splitAt = i; break; }',
+      '          colH += runHeights[i];',
+      '        }',
+      '      } else {',
+      '        var total = runHeights.reduce(function (a, b) { return a + b; }, 0);',
+      '        var half = total / 2;',
+      '        colH = 0; splitAt = runItems.length;',
+      '        for (i = 0; i < runItems.length; i++) {',
+      '          if (colH + runHeights[i] > avail) { splitAt = i; break; }',
+      '          if (colH > 0 && colH + runHeights[i] > half) { splitAt = i; break; }',
+      '          colH += runHeights[i];',
+      '        }',
+      '      }',
+      '      left = runItems.slice(0, splitAt);',
+      '      right = runItems.slice(splitAt);',
+
+      '      pages.push({ num: pageNum, left: left, right: right, hasHeader: isFirstPage });',
+      '      idx = runEnd;',
+      '    }',
+      '    if (!pages.length) pages.push({ num: 1, left: [], right: [], hasHeader: true });',
+      '    return pages;',
+      '  }',
+
+      '  function renderPageInner(page, headerHtmlStr, settings) {',
+      '    var cols = \'<div class="bp-cols"><div class="bp-col">\' + page.left.join("") + \'</div><div class="bp-col">\' + page.right.join("") + "</div></div>";',
+      '    var header = page.hasHeader ? headerHtmlStr : "";',
+      '    var pageNum = \'<div class="bp-pagenum bp-pn-\' + settings.pageNumberPos + \'">\' + page.num + "</div>";',
+      '    return header + cols + pageNum;',
+      '  }',
+
+      '  function imposeBooklet(pages) {',
+      '    var t = pages.slice();',
+      '    while (t.length % 4 !== 0) t.push(null);',
+      '    var a = t.length, sheets = [];',
+      '    for (var n = 0; n < a / 4; n++) {',
+      '      var s = a - 2 * n - 1, d = 2 * n, i = 2 * n + 1, o = a - 2 * n - 2;',
+      '      sheets.push({ front: [t[s] || null, t[d] || null], back: [t[i] || null, t[o] || null] });',
+      '    }',
+      '    return sheets;',
+      '  }',
+
+      '  function renderHalf(page, headerHtmlStr, settings, side) {',
+      '    var blank = !page;',
+      '    var inner = blank ? "" : renderPageInner(page, headerHtmlStr, settings);',
+      '    return \'<div class="bp-half bp-half-\' + side + (blank ? " bp-half-blank" : "") + \'"><div class="bp-half-inner">\' + inner + "</div></div>";',
+      '  }',
+
+      '  function renderSheet(sheetSide, headerHtmlStr, settings) {',
+      '    return \'<div class="bp-sheet">\' + renderHalf(sheetSide[0], headerHtmlStr, settings, "left") + \'<div class="bp-fold"></div>\' + renderHalf(sheetSide[1], headerHtmlStr, settings, "right") + "</div>";',
+      '  }',
+
+      '  function renderLogicalView(pages, headerHtmlStr, settings) {',
+      '    return pages.map(function (page) {',
+      '      return \'<div class="bp-logical-page"><div class="bp-logical-label">Page \' + page.num + \'</div><div class="bp-half-inner">\' + renderPageInner(page, headerHtmlStr, settings) + "</div></div>";',
+      '    }).join("");',
+      '  }',
+
+      '  function render() {',
+      '    var data = window.__BOOKLET_DATA__;',
+      '    var pages = buildLogicalPages(data.header, data.items, data.settings);',
+      '    var sheets = imposeBooklet(pages);',
+      '    var impositionHtml = sheets.map(function (sheet) {',
+      '      return renderSheet(sheet.front, data.header, data.settings) + renderSheet(sheet.back, data.header, data.settings);',
+      '    }).join("");',
+      '    var logicalHtml = renderLogicalView(pages, data.header, data.settings);',
+
+      '    document.getElementById("bp-logical-view").innerHTML = logicalHtml;',
+      '    document.getElementById("bp-imposition-view").innerHTML = impositionHtml;',
+
+      '    var modeLabel = data.settings.columnMode === "sequential" ? "Sequential" : "Balanced";',
+      '    var posLabels = { "bottom-center": "Bottom Center", "bottom-left": "Bottom Left", "bottom-right": "Bottom Right" };',
+      '    document.getElementById("bp-toolbar-info").textContent =',
+      '      pages.length + " page" + (pages.length > 1 ? "s" : "") + " · " + sheets.length + " sheet" + (sheets.length > 1 ? "s" : "") +',
+      '      " · 2 columns/page · " + modeLabel + " · Page #: " + posLabels[data.settings.pageNumberPos];',
+
+      '    if (window.renderMathInElement) {',
+      '      renderMathInElement(document.body, { delimiters: [{ left: "$$", right: "$$", display: true }, { left: "$", right: "$", display: false }], throwOnError: false });',
+      '    }',
+      '    bpShowView("imposition");',
+      '  }',
+
+      '  window.bpShowView = function (v) {',
+      '    document.getElementById("bp-logical-view").style.display = v === "logical" ? "flex" : "none";',
+      '    document.getElementById("bp-imposition-view").style.display = v === "imposition" ? "flex" : "none";',
+      '    document.getElementById("bp-view-logical-btn").classList.toggle("active", v === "logical");',
+      '    document.getElementById("bp-view-imposition-btn").classList.toggle("active", v === "imposition");',
+      '  };',
+      '  window.bpPrintNow = function () { bpShowView("imposition"); setTimeout(function () { window.print(); }, 60); };',
+      '  window.bpRender = render;',
+
+      '  if (document.readyState === "loading") {',
+      '    document.addEventListener("DOMContentLoaded", render);',
+      '  } else {',
+      '    render();',
+      '  }',
+      '})();'
+    ].join("\n");
+  }
+
+  /* -------------------------------------------------------------------- *
+   *  Full HTML document assembly for the popup                            *
+   * -------------------------------------------------------------------- */
+  function escapeScriptClose(str) {
+    return str.replace(/<\/script/gi, "<\\/script");
+  }
+
+  function buildDocument(header, items, settings) {
+    var dataJson = escapeScriptClose(JSON.stringify({ header: header, items: items, settings: settings }));
+
+    var head =
+      '<meta charset="UTF-8"/><title>Booklet Print</title>' +
+      '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet"/>' +
+      '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"/>' +
+      '<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"><\/script>' +
+      '<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"><\/script>' +
+      '<style>' + stylesheet() + '</style>';
+
+    var toolbar =
+      '<div class="bp-toolbar no-print">' +
+        '<div><b>📖 Booklet Print Ready</b> — <span id="bp-toolbar-info">calculating layout…</span></div>' +
+        '<div class="bp-toolbar-hint">Print dialog mein: <b>Two-sided → Flip on Short Edge</b> · Paper <b>A4</b> · Layout <b>Landscape</b> · Margins <b>None</b></div>' +
+        '<div class="bp-view-toggle">' +
+          '<button id="bp-view-logical-btn" onclick="bpShowView(\'logical\')">🗂 Logical Pages</button>' +
+          '<button id="bp-view-imposition-btn" class="active" onclick="bpShowView(\'imposition\')">🖨 Landscape / Print View</button>' +
+        '</div>' +
+        '<button onclick="bpPrintNow()">🖨️ Print Now</button>' +
+      '</div>';
+
+    var body =
+      '<div id="bp-logical-view" class="bp-logical-view" style="display:none"><div class="bp-loading">Layout calculate ho raha hai…</div></div>' +
+      '<div id="bp-imposition-view" class="bp-imposition-view"><div class="bp-loading">Layout calculate ho raha hai…</div></div>';
+
+    var script =
+      '<script>window.__BOOKLET_DATA__ = ' + dataJson + ';<\/script>' +
+      '<script>' + escapeScriptClose(popupEngineSource()) + '<\/script>';
+
+    return "<!DOCTYPE html><html><head>" + head + "</head><body>" + toolbar + body + script + "</body></html>";
   }
 
   /* -------------------------------------------------------------------- *
@@ -431,8 +446,7 @@
     var settings = getBookletSettings();
     var header = headerHtml();
     var items = questionItemsHtml(questions);
-    var pages = buildLogicalPages(header, items, settings);
-    var doc = buildDocument(pages, header, settings);
+    var doc = buildDocument(header, items, settings);
 
     var win = window.open("", "_blank");
     if (!win) {
