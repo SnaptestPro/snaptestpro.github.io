@@ -435,13 +435,166 @@
   }
 
   /* -------------------------------------------------------------------- *
+   *  Logical-page pagination for the WORD export.                        *
+   *  Same measuring algorithm as buildLogicalPages() inside the print     *
+   *  popup (see popupEngineSource above) — kept as a real, callable      *
+   *  function here (instead of only a string run in the popup) so it     *
+   *  can hand back QUESTION INDICES instead of rendered HTML. Word needs  *
+   *  the original {q} objects (for docxQuestionBlock/math), not markup.  *
+   *  NOTE: if you change the pagination logic in popupEngineSource, port  *
+   *  the same change here so print and Word export stay in sync.         *
+   * -------------------------------------------------------------------- */
+  function buildLogicalPagesForWord(headerHtmlStr, itemsHtml, settings) {
+    var MM2PX = 3.7795275590551185;
+    var CONTENT_W_PX = Math.floor(CONTENT_W * MM2PX);
+    var CONTENT_H_PX = Math.floor(CONTENT_H * MM2PX);
+    var COL_W_PX = Math.floor(((CONTENT_W - COL_GAP * 1) / 2) * MM2PX);
+
+    // make sure measurement uses the same fonts/spacing as the real print
+    if (!document.getElementById("bp-word-measure-style")) {
+      var styleEl = document.createElement("style");
+      styleEl.id = "bp-word-measure-style";
+      styleEl.textContent = stylesheet();
+      document.head.appendChild(styleEl);
+    }
+
+    var headerBox = document.createElement("div");
+    headerBox.style.cssText = "position:fixed;left:-9999px;top:0;width:" + CONTENT_W_PX + "px;visibility:hidden;pointer-events:none;";
+    document.body.appendChild(headerBox);
+    headerBox.innerHTML = headerHtmlStr || "";
+    var headerH = headerHtmlStr ? headerBox.getBoundingClientRect().height : 0;
+    headerBox.remove();
+
+    var measureBox = document.createElement("div");
+    measureBox.className = "bp-col";
+    measureBox.style.cssText = "position:fixed;left:-9999px;top:0;width:" + COL_W_PX + "px;visibility:hidden;pointer-events:none;";
+    document.body.appendChild(measureBox);
+    var heights = itemsHtml.map(function (html) {
+      measureBox.innerHTML = html;
+      return measureBox.getBoundingClientRect().height;
+    });
+    measureBox.remove();
+
+    var pages = [], idx = 0, n = itemsHtml.length, pageNum = 0;
+    while (idx < n) {
+      pageNum++;
+      var isFirstPage = pages.length === 0;
+      var avail = CONTENT_H_PX - (isFirstPage ? headerH : 0);
+      var budget = avail * 2;
+
+      var runEnd = idx, sum = 0;
+      while (runEnd < n) {
+        var h = heights[runEnd];
+        if (sum > 0 && sum + h > budget) break;
+        sum += h;
+        runEnd++;
+      }
+      if (runEnd === idx) runEnd = idx + 1;
+
+      var runIdx = [];
+      for (var k = idx; k < runEnd; k++) runIdx.push(k);
+      var runHeights = heights.slice(idx, runEnd);
+      var left, right, splitAt, colH, i;
+
+      if (settings.columnMode === "sequential") {
+        colH = 0; splitAt = runIdx.length;
+        for (i = 0; i < runIdx.length; i++) {
+          if (colH > 0 && colH + runHeights[i] > avail) { splitAt = i; break; }
+          colH += runHeights[i];
+        }
+      } else {
+        var total = runHeights.reduce(function (a, b) { return a + b; }, 0);
+        var half = total / 2;
+        colH = 0; splitAt = runIdx.length;
+        for (i = 0; i < runIdx.length; i++) {
+          if (colH + runHeights[i] > avail) { splitAt = i; break; }
+          if (colH > 0 && colH + runHeights[i] > half) { splitAt = i; break; }
+          colH += runHeights[i];
+        }
+      }
+      left = runIdx.slice(0, splitAt);
+      right = runIdx.slice(splitAt);
+
+      pages.push({ num: pageNum, left: left, right: right, hasHeader: isFirstPage });
+      idx = runEnd;
+    }
+    if (!pages.length) pages.push({ num: 1, left: [], right: [], hasHeader: true });
+    return pages;
+  }
+
+  function docxNoBorders() {
+    return {
+      top: { style: docx.BorderStyle.NONE },
+      bottom: { style: docx.BorderStyle.NONE },
+      left: { style: docx.BorderStyle.NONE },
+      right: { style: docx.BorderStyle.NONE },
+      insideHorizontal: { style: docx.BorderStyle.NONE },
+      insideVertical: { style: docx.BorderStyle.NONE }
+    };
+  }
+
+  function docxPageNumberAlign(pos) {
+    if (pos === "bottom-left") return docx.AlignmentType.LEFT;
+    if (pos === "bottom-right") return docx.AlignmentType.RIGHT;
+    return docx.AlignmentType.CENTER;
+  }
+
+  /* Content of ONE internal column (left or right half of a logical page) */
+  function docxColumnChildren(idxArr, questions) {
+    var children = [];
+    idxArr.forEach(function (qi) {
+      children = children.concat(docxQuestionBlock(qi + 1, questions[qi]));
+    });
+    if (!children.length) children.push(new docx.Paragraph({ text: "" }));
+    return children;
+  }
+
+  /* Content of ONE logical page = optional header + its own 2 columns + page no. */
+  function docxLogicalPageChildren(page, questions, headerChildren, pageNumberPos) {
+    if (!page) return [new docx.Paragraph({ text: "" })];
+    var children = [];
+    if (page.hasHeader) children = children.concat(headerChildren);
+    children.push(new docx.Table({
+      width: { size: 100, type: docx.WidthType.PERCENTAGE },
+      borders: docxNoBorders(),
+      rows: [new docx.TableRow({
+        children: [
+          new docx.TableCell({
+            width: { size: 50, type: docx.WidthType.PERCENTAGE },
+            margins: { right: 120 },
+            children: docxColumnChildren(page.left, questions)
+          }),
+          new docx.TableCell({
+            width: { size: 50, type: docx.WidthType.PERCENTAGE },
+            margins: { left: 120 },
+            borders: { left: { style: docx.BorderStyle.DASHED, size: 4, color: "CBD5E1" } },
+            children: docxColumnChildren(page.right, questions)
+          })
+        ]
+      })]
+    }));
+    children.push(new docx.Paragraph({
+      alignment: docxPageNumberAlign(pageNumberPos),
+      spacing: { before: 100 },
+      children: [new docx.TextRun({ text: "Page " + page.num, bold: true, color: "4A0E8F", size: 16 })]
+    }));
+    return children;
+  }
+
+  /* -------------------------------------------------------------------- *
    *  Booklet → Word (.docx)                                               *
-   *  Same question order + 2-column look as the print booklet, but as a  *
-   *  real, manually-editable Word file. Reuses the exact math/HTML→Word   *
-   *  helpers (htmlToDocxRuns / mathToWordHtml / docxQuestionBlock) that   *
-   *  the normal "Download Word" button already uses, defined in          *
-   *  qgen-app.js and loaded before this file — so MCQ option tables and   *
-   *  LaTeX rendering behave identically to the regular Word export.       *
+   *  Mirrors the real print imposition: one physical (landscape) Word     *
+   *  page = 2 logical booklet pages side by side (fold line between       *
+   *  them), each logical page split into its own 2 question columns —    *
+   *  same structure as "Landscape / Print View", but as a real,           *
+   *  manually-editable Word file (native paragraphs/tables, not an       *
+   *  image). Logical pages are kept in natural reading order (1, 2, 3…)   *
+   *  rather than the front/back fold order used for physical printing.    *
+   *  Reuses the exact math/HTML→Word helpers (htmlToDocxRuns /            *
+   *  mathToWordHtml / docxQuestionBlock) that the normal "Download Word"  *
+   *  button already uses, defined in qgen-app.js and loaded before this   *
+   *  file — so MCQ option tables and LaTeX rendering behave identically   *
+   *  to the regular Word export.                                          *
    * -------------------------------------------------------------------- */
   window.exportBookletToWord = async function () {
     var questions = collectQuestions();
@@ -471,29 +624,51 @@
       new docx.Paragraph({ children: [new docx.TextRun({ text: "Instructions: " + instructions, italics: true })], spacing: { after: 150 } })
     ];
 
-    var questionChildren = [];
-    questions.forEach(function (q, i) {
-      questionChildren = questionChildren.concat(docxQuestionBlock(i + 1, q));
-    });
+    var settings = getBookletSettings();
+    var itemsHtml = questionItemsHtml(questions);
+    var headerStr = headerHtml();
+    var logicalPages = buildLogicalPagesForWord(headerStr, itemsHtml, settings);
+
+    // pair logical pages 2-per-physical-sheet, in natural reading order
+    // (1&2, 3&4, …) — NOT the front/back fold order used for print/staple.
+    var sheetChildren = [];
+    for (var s = 0; s < logicalPages.length; s += 2) {
+      var leftPage = logicalPages[s];
+      var rightPage = logicalPages[s + 1] || null;
+
+      if (s > 0) sheetChildren.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
+
+      sheetChildren.push(new docx.Table({
+        width: { size: 100, type: docx.WidthType.PERCENTAGE },
+        borders: docxNoBorders(),
+        rows: [new docx.TableRow({
+          children: [
+            new docx.TableCell({
+              width: { size: 50, type: docx.WidthType.PERCENTAGE },
+              margins: { right: 200 },
+              children: docxLogicalPageChildren(leftPage, questions, headerChildren, settings.pageNumberPos)
+            }),
+            new docx.TableCell({
+              width: { size: 50, type: docx.WidthType.PERCENTAGE },
+              margins: { left: 200 },
+              borders: { left: { style: docx.BorderStyle.DASHED, size: 6, color: "94A3B8" } },
+              children: docxLogicalPageChildren(rightPage, questions, headerChildren, settings.pageNumberPos)
+            })
+          ]
+        })]
+      }));
+    }
 
     var doc = new docx.Document({
-      sections: [
-        {
-          // Header sits full-width on its own, then a continuous section
-          // break below switches into 2 columns for the questions — same
-          // trick used for newsletter-style layouts in Word.
-          properties: { page: { size: { orientation: docx.PageOrientation.LANDSCAPE } } },
-          children: headerChildren
+      sections: [{
+        properties: {
+          page: {
+            size: { orientation: docx.PageOrientation.LANDSCAPE },
+            margin: { top: 500, bottom: 500, left: 500, right: 500 }
+          }
         },
-        {
-          properties: {
-            page: { size: { orientation: docx.PageOrientation.LANDSCAPE } },
-            column: { count: 2, space: 480 },
-            type: docx.SectionType.CONTINUOUS
-          },
-          children: questionChildren
-        }
-      ]
+        children: sheetChildren
+      }]
     });
 
     var filename = "Booklet_" + (testNo || "Paper") + ".docx";
