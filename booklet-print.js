@@ -194,30 +194,30 @@
 
       // ---- Logical page preview: standalone cards, same proportions ----
       ".bp-logical-page{width:" + (CONTENT_W + MARGIN * 2 + GUTTER) + "mm;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.35);padding:" + MARGIN + "mm}",
-      ".bp-logical-label{font-size:10px;font-weight:800;color:#4a0e8f;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}",
+      ".bp-logical-label{font-size:12px;font-weight:800;color:#4a0e8f;text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}",
 
       ".bp-header-wrap{margin:-2px -2px 6px;border-radius:4px;overflow:hidden}",
       ".paper-header{background:linear-gradient(135deg,#1a0533,#2d0a5e 50%,#1a0533);padding:0}",
       ".paper-header-top{display:flex;align-items:center;justify-content:space-between;padding:6px 8px 4px;gap:6px}",
-      ".hbadge{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);color:#fff;font-size:7px;font-weight:700;padding:2px 6px;border-radius:3px;white-space:nowrap}",
-      ".htopic{color:#ffd700;font-size:8.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;text-align:center;flex:1}",
-      ".paper-header-meta{display:flex;align-items:center;justify-content:center;gap:8px;padding:3px 8px 5px;color:rgba(255,255,255,.88);font-size:7px;font-weight:500;border-top:1px solid rgba(255,255,255,.1)}",
+      ".hbadge{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);color:#fff;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:3px;white-space:nowrap}",
+      ".htopic{color:#ffd700;font-size:11.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;text-align:center;flex:1}",
+      ".paper-header-meta{display:flex;align-items:center;justify-content:center;gap:8px;padding:3px 8px 5px;color:rgba(255,255,255,.88);font-size:9.5px;font-weight:500;border-top:1px solid rgba(255,255,255,.1)}",
       ".sep{color:rgba(255,255,255,.3)}",
-      ".paper-instructions{background:#fffbeb;border-left:2px solid #f59e0b;padding:4px 6px;font-size:6.5px;color:#78350f;line-height:1.4}",
+      ".paper-instructions{background:#fffbeb;border-left:2px solid #f59e0b;padding:4px 6px;font-size:9px;color:#78350f;line-height:1.4}",
 
       ".bp-cols{display:flex;gap:" + COL_GAP + "mm;align-items:flex-start;height:100%}",
       ".bp-col{width:" + COL_W + "mm;flex:0 0 " + COL_W + "mm;overflow:hidden}",
       ".bp-col:not(:first-child){border-left:1px dashed #d1d5db;padding-left:" + (COL_GAP / 2) + "mm;margin-left:-" + (COL_GAP / 2) + "mm}",
-      ".bp-item{padding:3px 0;border-bottom:1px dashed #e2e8f0;break-inside:avoid;page-break-inside:avoid}",
+      ".bp-item{padding:4px 0;border-bottom:1px dashed #e2e8f0;break-inside:avoid;page-break-inside:avoid}",
       ".bp-item:last-child{border-bottom:none}",
-      ".bp-qhead{display:flex;gap:3px;font-size:7px;line-height:1.35;color:#111827}",
+      ".bp-qhead{display:flex;gap:4px;font-size:10px;line-height:1.4;color:#111827}",
       ".bp-num{font-weight:800;color:#4a0e8f;flex-shrink:0}",
-      ".bp-opts{display:flex;flex-direction:column;gap:1px;padding-left:9px;margin-top:1px}",
-      ".bp-opt{display:flex;gap:2px;font-size:6.5px;color:#1f2937;line-height:1.3}",
+      ".bp-opts{display:flex;flex-direction:column;gap:2px;padding-left:11px;margin-top:2px}",
+      ".bp-opt{display:flex;gap:3px;font-size:9.5px;color:#1f2937;line-height:1.35}",
       ".bp-opt-tag{font-weight:700;color:#4a0e8f;flex-shrink:0}",
-      ".bp-sub-badge{margin-left:9px;margin-top:1px;font-size:6.5px;color:#92400e;font-weight:600}",
+      ".bp-sub-badge{margin-left:11px;margin-top:2px;font-size:9.5px;color:#92400e;font-weight:600}",
 
-      ".bp-pagenum{position:absolute;left:0;right:0;bottom:1.5mm;font-size:7px;font-weight:800;color:#4a0e8f}",
+      ".bp-pagenum{position:absolute;left:0;right:0;bottom:1.5mm;font-size:9px;font-weight:800;color:#4a0e8f}",
       ".bp-pn-bottom-center{text-align:center}",
       ".bp-pn-bottom-left{text-align:left;padding-left:2mm}",
       ".bp-pn-bottom-right{text-align:right;padding-right:2mm}",
@@ -433,6 +433,96 @@
 
     return "<!DOCTYPE html><html><head>" + head + "</head><body>" + toolbar + body + script + "</body></html>";
   }
+
+  /* -------------------------------------------------------------------- *
+   *  Booklet → Word (.docx)                                               *
+   *  Same question order + 2-column look as the print booklet, but as a  *
+   *  real, manually-editable Word file. Reuses the exact math/HTML→Word   *
+   *  helpers (htmlToDocxRuns / mathToWordHtml / docxQuestionBlock) that   *
+   *  the normal "Download Word" button already uses, defined in          *
+   *  qgen-app.js and loaded before this file — so MCQ option tables and   *
+   *  LaTeX rendering behave identically to the regular Word export.       *
+   * -------------------------------------------------------------------- */
+  window.exportBookletToWord = async function () {
+    var questions = collectQuestions();
+    if (!questions.length) {
+      alert("Pehle paper mein kam se kam ek question add karein.");
+      return;
+    }
+    if (!window.docx && window.__ensureLib) {
+      try { await window.__ensureLib("docx"); } catch (e) {}
+    }
+    if (!window.docx || typeof docxQuestionBlock !== "function") {
+      alert("Word export library load nahi hui — internet check karke page reload karein.");
+      return;
+    }
+
+    var testNo = (document.getElementById("testNo") || {}).value || "";
+    var subject = (document.getElementById("subject") || {}).value || "";
+    var timeMin = (document.getElementById("timeMin") || {}).value || "";
+    var maxMarks = (document.getElementById("maxMarks") || {}).value || "";
+    var instructions = (document.getElementById("instructions") || {}).value || "";
+
+    var headerChildren = [
+      new docx.Paragraph({ text: ("TEST NO. " + testNo).toUpperCase(), heading: docx.HeadingLevel.HEADING1, alignment: docx.AlignmentType.CENTER }),
+      new docx.Paragraph({ text: subject.toUpperCase(), heading: docx.HeadingLevel.HEADING2, alignment: docx.AlignmentType.CENTER }),
+      new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, children: [new docx.TextRun({ text: "Time: " + timeMin + " min    |    MM: " + maxMarks })] }),
+      new docx.Paragraph({ border: { bottom: { color: "000000", space: 4, style: docx.BorderStyle.SINGLE, size: 6 } }, text: "" }),
+      new docx.Paragraph({ children: [new docx.TextRun({ text: "Instructions: " + instructions, italics: true })], spacing: { after: 150 } })
+    ];
+
+    var questionChildren = [];
+    questions.forEach(function (q, i) {
+      questionChildren = questionChildren.concat(docxQuestionBlock(i + 1, q));
+    });
+
+    var doc = new docx.Document({
+      sections: [
+        {
+          // Header sits full-width on its own, then a continuous section
+          // break below switches into 2 columns for the questions — same
+          // trick used for newsletter-style layouts in Word.
+          properties: { page: { size: { orientation: docx.PageOrientation.LANDSCAPE } } },
+          children: headerChildren
+        },
+        {
+          properties: {
+            page: { size: { orientation: docx.PageOrientation.LANDSCAPE } },
+            column: { count: 2, space: 480 },
+            type: docx.SectionType.CONTINUOUS
+          },
+          children: questionChildren
+        }
+      ]
+    });
+
+    var filename = "Booklet_" + (testNo || "Paper") + ".docx";
+    try {
+      var blob = await docx.Packer.toBlob(doc);
+      try {
+        var file = new File([blob], filename, { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: filename, text: "Booklet (Word file)" });
+          if (typeof toast === "function") toast("📄 Booklet Word (.docx) file share ho gayi!");
+          return;
+        }
+      } catch (shareErr) {
+        console.warn("Share failed, falling back to direct download:", shareErr);
+      }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      if (typeof toast === "function") toast("📄 Booklet Word (.docx) file download shuru ho gayi!");
+    } catch (err) {
+      console.error(err);
+      alert("Booklet Word file banane mein error: " + (err.message || err));
+    }
+  };
 
   /* -------------------------------------------------------------------- *
    *  Entry point                                                          *
