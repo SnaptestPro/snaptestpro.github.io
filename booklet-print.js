@@ -444,10 +444,26 @@
    *  NOTE: if you change the pagination logic in popupEngineSource, port  *
    *  the same change here so print and Word export stay in sync.         *
    * -------------------------------------------------------------------- */
+  // Word (.docx) has no way to clip a table cell to an exact height the way
+  // the print engine's CSS box can — if our height estimate runs even a
+  // little optimistic, the real .docx overflows past the intended page
+  // instead of being cropped. The estimate itself can never be pixel-exact
+  // for Word specifically, because Word renders question/option text with
+  // the WORD_BODY_SIZE compact font below (see exportBookletToWord) rather
+  // than through the same browser layout used to measure heights here, and
+  // native equation (fraction/radical) zones render at Word's own default
+  // math size no matter what font size we ask for. WORD_SAFETY_FACTOR trims
+  // the usable budget so a small estimation gap never turns into a question
+  // or the "Page N" label spilling onto the next sheet. Only the Word export
+  // uses this — the print/PDF popup's own buildLogicalPages() is unaffected
+  // and keeps using the full measured budget, since there the same CSS does
+  // both the measuring and the rendering, so it isn't a fit-guess.
+  var WORD_SAFETY_FACTOR = 0.88;
+
   function buildLogicalPagesForWord(headerHtmlStr, itemsHtml, settings) {
     var MM2PX = 3.7795275590551185;
     var CONTENT_W_PX = Math.floor(CONTENT_W * MM2PX);
-    var CONTENT_H_PX = Math.floor(CONTENT_H * MM2PX);
+    var CONTENT_H_PX = Math.floor(CONTENT_H * MM2PX) * WORD_SAFETY_FACTOR;
     var COL_W_PX = Math.floor(((CONTENT_W - COL_GAP * 1) / 2) * MM2PX);
 
     // make sure measurement uses the same fonts/spacing as the real print
@@ -539,18 +555,21 @@
     return docx.AlignmentType.CENTER;
   }
 
-  /* Content of ONE internal column (left or right half of a logical page) */
-  function docxColumnChildren(idxArr, questions) {
+  /* Content of ONE internal column (left or right half of a logical page).
+   * `runOpts` (size/font) is threaded down to docxQuestionBlock so the
+   * REAL rendered font matches what buildLogicalPagesForWord measured —
+   * see WORD_BODY_SIZE in exportBookletToWord for why this exists. */
+  function docxColumnChildren(idxArr, questions, runOpts) {
     var children = [];
     idxArr.forEach(function (qi) {
-      children = children.concat(docxQuestionBlock(qi + 1, questions[qi]));
+      children = children.concat(docxQuestionBlock(qi + 1, questions[qi], runOpts));
     });
     if (!children.length) children.push(new docx.Paragraph({ text: "" }));
     return children;
   }
 
   /* Content of ONE logical page = optional header + its own 2 columns + page no. */
-  function docxLogicalPageChildren(page, questions, headerChildren, pageNumberPos) {
+  function docxLogicalPageChildren(page, questions, headerChildren, pageNumberPos, runOpts) {
     if (!page) return [new docx.Paragraph({ text: "" })];
     var children = [];
     if (page.hasHeader) children = children.concat(headerChildren);
@@ -562,13 +581,13 @@
           new docx.TableCell({
             width: { size: 50, type: docx.WidthType.PERCENTAGE },
             margins: { right: 120 },
-            children: docxColumnChildren(page.left, questions)
+            children: docxColumnChildren(page.left, questions, runOpts)
           }),
           new docx.TableCell({
             width: { size: 50, type: docx.WidthType.PERCENTAGE },
             margins: { left: 120 },
             borders: { left: { style: docx.BorderStyle.DASHED, size: 4, color: "CBD5E1" } },
-            children: docxColumnChildren(page.right, questions)
+            children: docxColumnChildren(page.right, questions, runOpts)
           })
         ]
       })]
@@ -616,13 +635,28 @@
     var maxMarks = (document.getElementById("maxMarks") || {}).value || "";
     var instructions = (document.getElementById("instructions") || {}).value || "";
 
+    // Compact sizes (half-points) for the BOOKLET Word export only — chosen to
+    // match the small booklet-print CSS (stylesheet() above: .bp-qhead 10px,
+    // .bp-opt 9.5px, header ~9-11.5px) that buildLogicalPagesForWord() actually
+    // measures against. docx.HeadingLevel.HEADING1/HEADING2 (used before) pull
+    // in Word's built-in 16pt/13pt defaults — nearly double what was measured —
+    // which is why the header's own logical page (Page 1) was the one
+    // overflowing. The plain "Download Word" full-page export is untouched;
+    // docxQuestionBlock/docxOptionCell only apply a custom size when passed
+    // one, so it keeps its normal, larger, more readable font.
+    var WORD_TITLE_SIZE = 18; // 9pt  — Test No / Subject line
+    var WORD_META_SIZE = 15;  // 7.5pt — Time / MM line
+    var WORD_INSTR_SIZE = 14; // 7pt  — Instructions line
+    var WORD_BODY_SIZE = 16;  // 8pt  — question text + MCQ options
+
     var headerChildren = [
-      new docx.Paragraph({ text: ("TEST NO. " + testNo).toUpperCase(), heading: docx.HeadingLevel.HEADING1, alignment: docx.AlignmentType.CENTER }),
-      new docx.Paragraph({ text: subject.toUpperCase(), heading: docx.HeadingLevel.HEADING2, alignment: docx.AlignmentType.CENTER }),
-      new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, children: [new docx.TextRun({ text: "Time: " + timeMin + " min    |    MM: " + maxMarks })] }),
-      new docx.Paragraph({ border: { bottom: { color: "000000", space: 4, style: docx.BorderStyle.SINGLE, size: 6 } }, text: "" }),
-      new docx.Paragraph({ children: [new docx.TextRun({ text: "Instructions: " + instructions, italics: true })], spacing: { after: 150 } })
+      new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 20 }, children: [new docx.TextRun({ text: ("TEST NO. " + testNo).toUpperCase(), bold: true, size: WORD_TITLE_SIZE })] }),
+      new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 30 }, children: [new docx.TextRun({ text: subject.toUpperCase(), bold: true, size: WORD_TITLE_SIZE, color: "4A0E8F" })] }),
+      new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 40 }, children: [new docx.TextRun({ text: "Time: " + timeMin + " min    |    MM: " + maxMarks, size: WORD_META_SIZE })] }),
+      new docx.Paragraph({ border: { bottom: { color: "000000", space: 2, style: docx.BorderStyle.SINGLE, size: 4 } }, spacing: { after: 40 }, text: "" }),
+      new docx.Paragraph({ spacing: { after: 100 }, children: [new docx.TextRun({ text: "Instructions: " + instructions, italics: true, size: WORD_INSTR_SIZE })] })
     ];
+    var bodyRunOpts = { size: WORD_BODY_SIZE };
 
     var settings = getBookletSettings();
     var itemsHtml = questionItemsHtml(questions);
@@ -646,13 +680,13 @@
             new docx.TableCell({
               width: { size: 50, type: docx.WidthType.PERCENTAGE },
               margins: { right: 200 },
-              children: docxLogicalPageChildren(leftPage, questions, headerChildren, settings.pageNumberPos)
+              children: docxLogicalPageChildren(leftPage, questions, headerChildren, settings.pageNumberPos, bodyRunOpts)
             }),
             new docx.TableCell({
               width: { size: 50, type: docx.WidthType.PERCENTAGE },
               margins: { left: 200 },
               borders: { left: { style: docx.BorderStyle.DASHED, size: 6, color: "94A3B8" } },
-              children: docxLogicalPageChildren(rightPage, questions, headerChildren, settings.pageNumberPos)
+              children: docxLogicalPageChildren(rightPage, questions, headerChildren, settings.pageNumberPos, bodyRunOpts)
             })
           ]
         })]
