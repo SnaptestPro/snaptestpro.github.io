@@ -444,21 +444,33 @@
    *  NOTE: if you change the pagination logic in popupEngineSource, port  *
    *  the same change here so print and Word export stay in sync.         *
    * -------------------------------------------------------------------- */
-  // Word (.docx) has no way to clip a table cell to an exact height the way
-  // the print engine's CSS box can — if our height estimate runs even a
-  // little optimistic, the real .docx overflows past the intended page
-  // instead of being cropped. The estimate itself can never be pixel-exact
-  // for Word specifically, because Word renders question/option text with
-  // the WORD_BODY_SIZE compact font below (see exportBookletToWord) rather
-  // than through the same browser layout used to measure heights here, and
-  // native equation (fraction/radical) zones render at Word's own default
-  // math size no matter what font size we ask for. WORD_SAFETY_FACTOR trims
-  // the usable budget so a small estimation gap never turns into a question
-  // or the "Page N" label spilling onto the next sheet. Only the Word export
-  // uses this — the print/PDF popup's own buildLogicalPages() is unaffected
-  // and keeps using the full measured budget, since there the same CSS does
-  // both the measuring and the rendering, so it isn't a fit-guess.
-  var WORD_SAFETY_FACTOR = 0.88;
+  // Compact sizing for the Booklet WORD (.docx) export — separate from the
+  // shared print/PDF CSS in stylesheet() above (.bp-qhead/.bp-opt), which
+  // stays untouched so the on-screen/print booklet is unaffected.
+  //
+  // WORD_BODY_SIZE (10pt) is deliberately BIGGER than what .bp-qhead
+  // actually measures for pagination (10px ≈ 7.5pt) — v139 matched the two
+  // almost exactly (8pt) to keep the estimate accurate, but 8pt read too
+  // small on screen. Word has no way to clip a table cell to an exact
+  // height the way the print engine's CSS box can, so rendering bigger than
+  // what was measured means the usable budget must shrink by roughly that
+  // same ratio below, or content overflows past the intended page again.
+  //
+  // WORD_FIT_CUSHION is tighter than v139's flat 0.88: a real downloaded
+  // paper (Booklet_4, AP chapter, fraction-heavy) still orphaned a "Page 3"
+  // label onto an otherwise-blank sheet at the old matched-size + 0.88
+  // combination, because Word's native equation (fraction/radical) zones
+  // render at their own default size — we can't pass them a font size at
+  // all (docx.js MathRun takes plain text only) — so math-heavy questions
+  // run taller than the plain-text estimate regardless of WORD_BODY_SIZE.
+  var WORD_BODY_SIZE = 20;   // half-points = 10pt — question text + MCQ options
+  var WORD_TITLE_SIZE = 22;  // 11pt — Test No / Subject line
+  var WORD_META_SIZE = 18;   // 9pt  — Time / MM line
+  var WORD_INSTR_SIZE = 17;  // 8.5pt — Instructions line
+
+  var WORD_MEASURED_PT = 10 * 0.75;    // .bp-qhead's 10px, converted to the pt buildLogicalPagesForWord() effectively measures against
+  var WORD_FIT_CUSHION = 0.83;         // headroom for native math zones + any other residual mismatch (tightened after the Booklet_4 overflow — v139 used 0.88)
+  var WORD_SAFETY_FACTOR = (WORD_MEASURED_PT / (WORD_BODY_SIZE / 2)) * WORD_FIT_CUSHION;
 
   function buildLogicalPagesForWord(headerHtmlStr, itemsHtml, settings) {
     var MM2PX = 3.7795275590551185;
@@ -634,20 +646,6 @@
     var timeMin = (document.getElementById("timeMin") || {}).value || "";
     var maxMarks = (document.getElementById("maxMarks") || {}).value || "";
     var instructions = (document.getElementById("instructions") || {}).value || "";
-
-    // Compact sizes (half-points) for the BOOKLET Word export only — chosen to
-    // match the small booklet-print CSS (stylesheet() above: .bp-qhead 10px,
-    // .bp-opt 9.5px, header ~9-11.5px) that buildLogicalPagesForWord() actually
-    // measures against. docx.HeadingLevel.HEADING1/HEADING2 (used before) pull
-    // in Word's built-in 16pt/13pt defaults — nearly double what was measured —
-    // which is why the header's own logical page (Page 1) was the one
-    // overflowing. The plain "Download Word" full-page export is untouched;
-    // docxQuestionBlock/docxOptionCell only apply a custom size when passed
-    // one, so it keeps its normal, larger, more readable font.
-    var WORD_TITLE_SIZE = 18; // 9pt  — Test No / Subject line
-    var WORD_META_SIZE = 15;  // 7.5pt — Time / MM line
-    var WORD_INSTR_SIZE = 14; // 7pt  — Instructions line
-    var WORD_BODY_SIZE = 16;  // 8pt  — question text + MCQ options
 
     var headerChildren = [
       new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, spacing: { after: 20 }, children: [new docx.TextRun({ text: ("TEST NO. " + testNo).toUpperCase(), bold: true, size: WORD_TITLE_SIZE })] }),
