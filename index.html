@@ -1116,6 +1116,15 @@
         <!-- Create Test -->
         <div id="test-create-box" class="hidden">
           <button type="button" class="btn-secondary" onclick="backToTestsHub()" style="margin-bottom:12px;">⬅ Tests par wapas</button>
+        <!-- v141: Saved Drafts (Paper Generator + Test drafts) — yahin se Edit / Publish (Online Test) -->
+        <div id="create-drafts-card" class="card" style="margin-bottom:14px;">
+          <h3 class="section-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <span>📝 Saved Drafts <span id="create-drafts-count" style="font-size:.8rem;color:#6b7280;font-weight:600;"></span></span>
+          </h3>
+          <small style="color:#6b7280;font-size:.78rem;display:block;margin-bottom:8px;">Paper Generator ya "Save as Draft" se bane tests yahan dikhte hain. <b>Edit</b> se neeche form me khulega, <b>Online Test Banao</b> se students ke liye publish ho jayega.</small>
+          <div id="create-drafts-list" class="list-box"><p class="muted-text">Koi draft nahi hai.</p></div>
+          <div id="create-drafts-legacy" style="margin-top:10px;"></div>
+        </div>
         <form id="test-form" class="card">
           <h3 class="section-title">Create / Edit Test</h3>
           <div class="field-row"><label>Test Title</label><input id="test-title" type="text" required /></div>
@@ -2648,6 +2657,10 @@ window.autoFormatMathFields = autoFormatMathFields;
 
 function renderMathIn(el) {
   if (!el) return;
+  // Fast exit: is element me koi math delimiter hi nahi hai to KaTeX walk
+  // (aur KaTeX download) ki zaroorat nahi.
+  var _mt = el.textContent || "";
+  if (_mt.indexOf("\\(") < 0 && _mt.indexOf("\\[") < 0 && _mt.indexOf("$$") < 0) return;
   // On-demand load: KaTeX (~300KB) sirf pehli baar kisi Math question
   // dikhne par hi fetch hoti hai — page load par nahi.
   if (!window.renderMathInElement) {
@@ -3276,6 +3289,14 @@ async function confirmBulkUpload() {
   // check hai, ye yahan ek dusri safety-net hai — kabhi kisi ne seedha
   // confirmBulkUpload() call kar diya bina Preview ke to bhi bach jaaye).
   if (!classId) { alert('⚠️ Kripya Class chunein — kis Class ke liye ye questions hain, ye batana zaroori hai.'); return; }
+  // v141: institute ki allowed classes ke bahar upload mat hone do (upload ho jata tha, par bank me dikhta nahi tha)
+  try {
+    var _allowedCls = (typeof getCurrentAdminAllowedClasses === 'function') ? getCurrentAdminAllowedClasses() : null;
+    if (_allowedCls && _allowedCls.length && _allowedCls.indexOf(classId) < 0) {
+      alert('⚠️ "' + classId + '" aapke institute ke liye allowed nahi hai, isliye ye questions bank me dikhte nahi. Allowed classes: ' + _allowedCls.join(', ') + '. Owner se class enable karwayein ya sahi class chunein.');
+      return;
+    }
+  } catch (e) {}
   if (typeof saveCustomSubject === 'function' && subject) saveCustomSubject(subject);
   if (typeof saveCustomChapter === 'function' && subject && chapter) saveCustomChapter(subject, chapter);
 
@@ -3776,6 +3797,12 @@ function fillClassSelectOptions(sel, sel_val) {
     { id: "class_9", label: "Class 9" }, { id: "class_10", label: "Class 10" },
     { id: "class_11", label: "Class 11" }, { id: "class_12", label: "Class 12" }
   ];
+  // v141: sirf wahi Classes dikhao jo is institute ke liye allowed hain — warna question
+  // upload to ho jata tha par Question Bank me kabhi dikhta nahi tha (class filter hide kar deta hai).
+  try {
+    var _al = (typeof getCurrentAdminAllowedClasses === 'function') ? getCurrentAdminAllowedClasses() : null;
+    if (_al && _al.length) opts = opts.filter(function (c) { return _al.indexOf(c.id) >= 0 || c.id === sel_val; });
+  } catch (e) {}
   sel.innerHTML = '<option value="">-- Class chunein --</option>';
   opts.forEach(function (c) {
     var o = document.createElement('option');
