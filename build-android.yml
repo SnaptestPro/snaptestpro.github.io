@@ -1,0 +1,86 @@
+name: Build Android App
+
+# Web (Firebase Hosting / jo bhi abhi chal raha hai) is workflow se touch nahi hota.
+on:
+  workflow_dispatch:          # GitHub > Actions > "Build Android App" > Run workflow
+  push:
+    tags: ['app-v*']          # git tag app-v1.0.0 && git push --tags
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      APP_ID: ${{ vars.APP_ID || 'com.snaptestpro.app' }}
+      APP_NAME: ${{ vars.APP_NAME || 'SnapTest Pro' }}
+      APP_URL: ${{ vars.APP_URL }}
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: 1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Web files -> www/
+        run: node scripts/build-www.js
+
+      - name: Create Android project
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Keystore (agar secrets set hain)
+        id: ks
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+            echo "KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "Keystore secret nahi mila — sirf debug APK banega."
+          fi
+
+      - name: Permissions, icon, version
+        run: node scripts/android-prepare.js
+
+      - name: Build debug APK (install karke test karne ke liye)
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Build signed release APK + AAB (Play Store)
+        if: steps.ks.outputs.signed == 'true'
+        working-directory: android
+        run: ./gradlew assembleRelease bundleRelease --no-daemon
+
+      - name: Collect outputs
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/debug/app-debug.apk out/SnapTestPro-debug.apk
+          if [ -f android/app/build/outputs/apk/release/app-release.apk ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk out/SnapTestPro-release.apk
+            cp android/app/build/outputs/bundle/release/app-release.aab out/SnapTestPro-release.aab
+          fi
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SnapTestPro-android
+          path: out/*
+          retention-days: 30
