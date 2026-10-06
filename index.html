@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
+<!-- v144: Android APK (Capacitor WebView) detect — website par kuch nahi badalta, sirf app me install button/popup chhupte hain
+     aur Back button app ke andar peeche jata hai. -->
+<script>
+(function(){try{var ua=navigator.userAgent||"",c=window.Capacitor;
+ window.__IS_APP=!!((c&&typeof c.isNativePlatform==="function"&&c.isNativePlatform())||/SnapTestProApp/.test(ua)||/; wv\)/.test(ua));
+ if(window.__IS_APP)document.documentElement.classList.add("is-app");}catch(e){}})();
+</script>
+<script src="app-bridge.js"></script>
+<style>html.is-app #install-app-btn,html.is-app #app-install-modal{display:none!important}</style>
+
   <meta charset="UTF-8" />
   <meta name="google-site-verification" content="HtcxjavFdH_XaiWe2j2akgwavPfXS9z3yjA63h-n2U8" />
 
@@ -142,11 +152,11 @@
        wait nahi karta (already-loaded system font se turant dikhta
        hai, font/theme aane par seamlessly switch ho jaata hai). -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Cinzel:wght@700&display=swap" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="styles.css?v=9" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="styles.css?v=10" media="print" onload="this.media='all';window.__stylesReady=1" onerror="this.media='all';window.__stylesReady=1">
   <link rel="stylesheet" href="theme-picker.css" media="print" onload="this.media='all'">
   <noscript>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Cinzel:wght@700&display=swap">
-    <link rel="stylesheet" href="styles.css?v=9">
+    <link rel="stylesheet" href="styles.css?v=10">
     <link rel="stylesheet" href="theme-picker.css">
   </noscript>
   <!-- PERF FIX: yeh 3 CSS files sirf Admin/Owner-side panels
@@ -211,12 +221,22 @@
     // fixed-timer hai. Ab seedha turant (is inline script ke chalte
     // hi) apna 400ms ka timer shuru karta hai.
     (function () {
-      setTimeout(function () {
+      // v143: splash tab hi hatao jab styles.css load ho chuki ho (max 8s). Pehle sirf 400ms ka
+      // timer tha — slow load (app ya slow net) me splash hatne ke baad kuch second bina design ka
+      // plain text dikhta tha.
+      var t0 = Date.now();
+      function hideSplash() {
         var el = document.getElementById("app-splash-screen");
         if (!el) return;
         el.style.opacity = "0";
         setTimeout(function () { el.remove(); }, 500);
-      }, SPLASH_DURATION_MS);
+      }
+      function tick() {
+        var waited = Date.now() - t0;
+        if (waited >= SPLASH_DURATION_MS && (window.__stylesReady || waited >= 8000)) hideSplash();
+        else setTimeout(tick, 50);
+      }
+      setTimeout(tick, SPLASH_DURATION_MS);
     })();
   })();
 </script>
@@ -4503,7 +4523,8 @@ document.addEventListener('DOMContentLoaded',function(){
   const INSTALL_POPUP_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 ghante
 
   function isStandaloneMode() {
-    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+    return window.__IS_APP === true
+      || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
       || window.navigator.standalone === true; // iOS Safari ka apna flag
   }
 
