@@ -84,3 +84,31 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--sn-blue)
 .sn-gold{background:#fff7d6;border-color:#fde68a}
 .sn-banner{display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,#1e3a8a,#2563eb 65%,#3b82f6);color:#fff;border-radius:20px;padding:20px;margin-top:6px;font-size:1.15rem;font-weight:800;line-height:1.3}
 .sn-banner span{font-size:2.2rem}
+/* ===== v150: size/spacing polish, line-icons, overlap + oval-icon fixes ===== */
+:root{--snh:66px}
+#student-form{padding-bottom:calc(var(--snh) + 24px)!important}
+#sn-page{bottom:var(--snh)!important;padding:12px 14px 24px}
+#sn-nav{padding:5px 8px calc(5px + env(safe-area-inset-bottom,0px));background:#fff!important}
+#sn-nav button{font-size:.64rem;padding:6px 0;gap:3px}#sn-nav button svg{width:22px;height:22px}
+.sn-i svg{width:100%;height:100%}.sn-i{display:inline-flex;align-items:center;justify-content:center}
+#sn-top .ic{display:flex;width:34px;height:34px;align-items:center;justify-content:center;padding:0}#sn-top .ic svg{width:22px;height:22px}
+#sn-top .av{width:34px;height:34px}#sn-top .av svg{width:18px;height:18px}
+#sn-top .lg img{width:34px;height:34px}#sn-top .lg b{font-size:.98rem}#sn-top .lg small{font-size:.56rem}
+#student-dashboard-home .cd-hero{padding:14px 16px!important;min-height:0}.cd-hero h2 b{font-size:1.25rem}
+.cd-hero h2{font-size:1rem!important}.cd-hero p{font-size:.76rem!important}
+.cd-self-rank{padding:10px 14px!important;margin:10px 0 2px!important}.cd-self-rank .sn-r b{font-size:1.35rem}.cd-self-rank .sn-r small{font-size:.62rem}
+.cd-self-rank .sn-r .sn-i{width:30px;height:30px}
+.cd-card{min-height:104px!important;padding:12px!important}.cd-card-title{font-size:.86rem!important}.cd-card-sub{font-size:.66rem!important}
+.cd-icon-circle{width:36px!important;height:36px!important}.cd-icon-circle .sn-i{width:20px;height:20px}
+.cd-arrow-btn{width:24px!important;height:24px!important}
+#student-dashboard-home .cd-section-title:before{font-size:.95rem}
+.sn-quote{padding:10px 12px;font-size:.78rem}.sn-quote .sn-i{width:20px;height:20px;flex:none}
+/* More/Analysis: oval icon bug (flex:1 sab div par lag raha tha) */
+.sn-row div.i,.sn-tile div.i{flex:none!important;width:40px!important;height:40px!important;border-radius:50%}
+.sn-row div.i .sn-i,.sn-tile div.i .sn-i{width:20px;height:20px}
+.sn-row>div:not(.i){flex:1;min-width:0;font-size:.86rem}.sn-row small,.sn-tile small{font-size:.68rem}
+.sn-tile{padding:12px;min-height:96px}.sn-tile b{font-size:.86rem}
+#sn-page .ph b{font-size:1.1rem}#sn-page .ph button{display:flex;width:32px;height:32px;align-items:center;justify-content:center;padding:0}#sn-page .ph button svg{width:22px;height:22px}
+.sn-perf{padding:14px}.sn-perf b{font-size:.95rem}.sn-perf p{font-size:.7rem}
+.sn-ring{width:68px;height:68px;font-size:1.05rem}.sn-ring span{width:52px;height:52px}
+.sn-banner{font-size:1rem;padding:16px 18px}.sn-banner .sn-i{width:44px;height:44px;color:#fff}
