@@ -7,22 +7,28 @@
 (function () {
   "use strict";
   var ua = navigator.userAgent || "";
+  // IMPORTANT: Capacitor native plugin calls sirf MAIN frame se chalte hain (iframe se aaye calls chupchaap drop ho jaate hain).
+  // Paper Generator admin panel ke iframe me khulta hai, isliye hamesha sabse upar wali (top) window ka Capacitor use karo.
   function getCap() {
-    var w = [window]; try { if (window.parent && window.parent !== window) w.push(window.parent); } catch (e) {}
-    try { if (window.top) w.push(window.top); } catch (e) {}
+    var w = []; try { if (window.top) w.push(window.top); } catch (e) {}
+    try { if (window.parent && window.parent !== window.top) w.push(window.parent); } catch (e) {}
+    w.push(window);
     for (var i = 0; i < w.length; i++) { try { var c = w[i].Capacitor; if (c && typeof c.nativePromise === "function") return c; } catch (e) {} }
     return null;
+  }
+  function withTimeout(p, ms, label) {
+    return Promise.race([p, new Promise(function (_, rej) { setTimeout(function () { rej(new Error(label + " ka jawab nahi aaya (" + ms / 1000 + "s)")); }, ms); })]);
   }
   var isApp = !!(getCap() || /SnapTestProApp/.test(ua) || /; wv\)/.test(ua));
   window.__IS_APP = window.__IS_APP || isApp;
   if (!isApp) return;
   try { document.documentElement.classList.add("is-app"); } catch (e) {}
 
-  function toast(msg) {
+  function toast(msg, ms) {
     try {
       var b = document.createElement("div"); b.textContent = msg;
       b.style.cssText = "position:fixed;left:50%;bottom:30px;transform:translateX(-50%);background:#1e1b4b;color:#fff;padding:11px 20px;border-radius:24px;font-size:.85rem;z-index:2147483647;box-shadow:0 6px 18px rgba(0,0,0,.35);max-width:88vw;text-align:center;pointer-events:none;";
-      (document.body || document.documentElement).appendChild(b); setTimeout(function () { b.remove(); }, 2200);
+      (document.body || document.documentElement).appendChild(b); setTimeout(function () { b.remove(); }, ms || 2200);
     } catch (e) {}
   }
 
@@ -43,13 +49,13 @@
       toast("⏳ File taiyaar ho rahi hai...");
       var blob = await (await fetch(href)).blob();
       var data = await toBase64(blob);
-      var w = await C.nativePromise("Filesystem", "writeFile", { path: "exports/" + safe, data: data, directory: "CACHE", recursive: true });
-      await C.nativePromise("Share", "share", { title: safe, text: safe, url: w.uri, dialogTitle: "File save / share karein" });
+      var w = await withTimeout(C.nativePromise("Filesystem", "writeFile", { path: "exports/" + safe, data: data, directory: "CACHE", recursive: true }), 25000, "File save");
+      await withTimeout(C.nativePromise("Share", "share", { title: safe, text: safe, url: w.uri, dialogTitle: "File save / share karein" }), 600000, "Share");
     } catch (e) {
       var m = (e && (e.message || e.errorMessage)) || String(e);
       if (/cancel/i.test(m)) return;           // user ne share sheet band kar di
       console.error("native save failed", e);
-      toast("❌ File save nahi hui: " + m);
+      toast("❌ File save nahi hui: " + m, 6000);
     }
   }
   function isDl(a) {
