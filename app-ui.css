@@ -112,3 +112,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--sn-blue)
 .sn-perf{padding:14px}.sn-perf b{font-size:.95rem}.sn-perf p{font-size:.7rem}
 .sn-ring{width:68px;height:68px;font-size:1.05rem}.sn-ring span{width:52px;height:52px}
 .sn-banner{font-size:1rem;padding:16px 18px}.sn-banner .sn-i{width:44px;height:44px;color:#fff}
+
+/* v152: tap delay hatao + instant feel */
+html,body,button,a,input,select,label,[onclick]{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+button,.cd-card,.sn-tile,.sn-row,#sn-nav button{transition-duration:.08s!important}

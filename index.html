@@ -130,6 +130,10 @@
   <!-- Android/Chromium: purana tag hai lekin kuch launchers ab bhi
        isko dekhte hain — manifest.webmanifest ke saath extra safety -->
   <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
+  <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <!-- PERF FIX v127: styles.css (39 KiB) bhi ab non-render-blocking
@@ -171,7 +175,7 @@
   <link rel="stylesheet" href="creative-dashboard.css?v=1" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="exam-manager.css?v=1" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="id-card.css?v=2" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="app-ui.css?v=3" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="app-ui.css?v=4" media="print" onload="this.media='all'">
   <noscript>
     <link rel="stylesheet" href="creative-dashboard.css?v=1">
     <link rel="stylesheet" href="exam-manager.css?v=1">
