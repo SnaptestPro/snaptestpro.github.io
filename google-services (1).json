@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "572828202591",
+    "firebase_url": "https://the-vishnu-sharma-test-default-rtdb.firebaseio.com",
+    "project_id": "the-vishnu-sharma-test",
+    "storage_bucket": "the-vishnu-sharma-test.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:572828202591:android:c495446e02a8fd7bba8dea",
+        "android_client_info": {
+          "package_name": "com.snaptestpro.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "572828202591-m1qrrgn1q699c53vdit5ruqdg0q96oeh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC6BFpZz4UhaA2s9vQC0_O3NP0MU3eJBLQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "572828202591-m1qrrgn1q699c53vdit5ruqdg0q96oeh.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
