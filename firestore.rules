@@ -645,6 +645,20 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentSerialCounter']) &&
         request.resource.data.studentSerialCounter ==
           (('studentSerialCounter' in resource.data) ? resource.data.studentSerialCounter : 0) + 1;
+      // ── v155: Notifications (admin -> students) ───────────────────
+      // institutes/{id}/notifications/{nid}: students read karte hain
+      // (signed-in), sirf us institute ka admin likh/delete kar sakta hai.
+      // Update allowed nahi — isliye "Naya test" auto-notification
+      // (doc id t_<testId>) ek test ke liye sirf ek baar bani rehti hai.
+      match /notifications/{nid} {
+        allow read: if isSignedIn();
+        allow create: if isAdmin() && instituteId == adminInstituteId() &&
+          request.resource.data.keys().hasOnly(['type', 'testId', 'title', 'body', 'createdAt', 'createdBy']) &&
+          request.resource.data.title is string && request.resource.data.title.size() <= 100 &&
+          request.resource.data.body is string && request.resource.data.body.size() <= 500 &&
+          request.resource.data.createdAt == request.time;
+        allow delete: if isAdmin() && instituteId == adminInstituteId();
+      }
     }
 
     // ── Institute Join Code protection (v132) ──────────────────────

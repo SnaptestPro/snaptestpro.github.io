@@ -25,3 +25,12 @@ Files: app-ui.js, app-ui.css (?v=5), sw.js (cache v153), index.html (css version
 ## v154 — Real Notifications list (bell)
 - Bell ab Notifications page kholta hai; naya test publish hote hi entry judti hai (SavyaPush.notifyTestPublished hook), last 30 save.
 - Unread par bell pe laal dot, page khulne par read; trash icon se sab saaf; entry tap -> Tests tab.
+
+## v155 — Admin se Student notifications (in-app)
+- Data: institutes/{instituteId}/notifications/{id} {type, title, body, createdAt, createdBy, testId?}
+- admin-notify.js (naya): Admin dashboard par "🔔 Notification" card -> title+message bhejo, purani list, delete.
+  Naya test publish hote hi auto-notification (doc id t_<testId> => ek test ki ek hi baar).
+- app-ui.js: student bell ab server notifications padhta hai (limit 15, 60s throttle, app khulne/visible hone par),
+  unread dot, "clear" se purani hide.
+- firestore.rules: institutes/{id}/notifications ka naya match — **rules DEPLOY karna zaroori** (warna permission error).
+- Abhi band-app push (FCM) shamil NAHI hai — alag setup chahiye.

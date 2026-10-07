@@ -12,16 +12,36 @@
   function go(id) { try { typeof goStudentSection === "function" && goStudentSection(id); } catch (e) { console.warn(e); } window.scrollTo(0, 0); }
   function toast(m) { var b = document.createElement("div"); b.textContent = m; b.style.cssText = "position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#1e1b4b;color:#fff;padding:10px 18px;border-radius:22px;font-size:.82rem;z-index:99999;max-width:86vw;text-align:center"; document.body.appendChild(b); setTimeout(function () { b.remove(); }, 2200); }
   function mark(k) { document.querySelectorAll("#sn-nav button").forEach(function (b) { b.classList.toggle("on", b.dataset.k === (k === "help" || k === "about" ? "more" : k === "notifs" ? "home" : k)); }); }
-  function hidePage() { var p = $("sn-page"); p && (p.style.display = "none"); }
-  var APP_VER = "1.0 (build 154)", SUPPORT_PHONE = "9525208263", SUPPORT_EMAIL = "vishnu1234stm@gmail.com";
-  /* ---------- Notifications (bell) ---------- */
-  var NK = "sn_notifs";
-  function nGet() { try { return JSON.parse(localStorage.getItem(NK) || "[]"); } catch (e) { return []; } }
+  function hidePage() { var p = $("sn-page"); curPage = ""; p && (p.style.display = "none"); }
+  var APP_VER = "1.0 (build 155)", SUPPORT_PHONE = "9525208263", SUPPORT_EMAIL = "vishnu1234stm@gmail.com";
+  /* ---------- Notifications (bell) ----------
+     Local: is device par live-publish hook se. Server: institutes/{id}/notifications (admin ne bheji / naya test). */
+  var NK = "sn_notif_srv_local", SK = "sn_notif_srv", SEEN = "sn_notif_seen", CLR = "sn_notif_clear", SRV = [], lastFetch = 0, curPage = "";
+  function lsj(k, d) { try { return JSON.parse(localStorage.getItem(k) || "") || d; } catch (e) { return d; } }
+  function nGet() { return lsj(NK, []); }
   function nSet(a) { try { localStorage.setItem(NK, JSON.stringify(a.slice(0, 30))); } catch (e) {} }
+  SRV = lsj(SK, []);
   function esc(t) { return String(t == null ? "" : t).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function ago(t) { var m = Math.floor((Date.now() - t) / 60000); return m < 1 ? "Abhi" : m < 60 ? m + " min pehle" : m < 1440 ? Math.floor(m / 60) + " ghante pehle" : Math.floor(m / 1440) + " din pehle"; }
-  function nDot() { var d = document.querySelector("#sn-top .sn-dot"); d && (d.style.display = nGet().some(function (n) { return !n.r; }) ? "block" : "none"); }
-  function nAdd(title, body) { var a = nGet(); a.unshift({ t: title, b: body, ts: Date.now(), r: 0 }); nSet(a); nDot(); }
+  function nAll() {
+    var bodies = {}; SRV.forEach(function (n) { bodies[n.b] = 1; });
+    var clr = +localStorage.getItem(CLR) || 0;
+    return SRV.concat(nGet().filter(function (n) { return !bodies[n.b]; })).filter(function (n) { return n.ts > clr; }).sort(function (a, b) { return b.ts - a.ts; }).slice(0, 30);
+  }
+  function nDot() { var d = document.querySelector("#sn-top .sn-dot"), seen = +localStorage.getItem(SEEN) || 0; d && (d.style.display = nAll().some(function (n) { return n.ts > seen; }) ? "block" : "none"); }
+  function nAdd(title, body) { var a = nGet(); a.unshift({ t: title, b: body, ts: Date.now() }); nSet(a); nDot(); }
+  function nRefresh(force) {
+    var now = Date.now(); if (!force && now - lastFetch < 60000) return Promise.resolve();
+    var ss = null; try { ss = typeof getStudentSession === "function" ? getStudentSession() : null; } catch (e) {}
+    var vf = window.vishnuFirebase; if (!ss || !ss.instituteId || !vf || !vf.enabled || !vf.db) return Promise.resolve();
+    lastFetch = now;
+    return Promise.resolve(vf.authReady).catch(function () {}).then(function () {
+      return vf.db.collection("institutes").doc(ss.instituteId).collection("notifications").orderBy("createdAt", "desc").limit(15).get();
+    }).then(function (q) {
+      var a = []; q.forEach(function (d) { var x = d.data(); a.push({ id: d.id, t: x.title || "", b: x.body || "", ts: x.createdAt && x.createdAt.toMillis ? x.createdAt.toMillis() : Date.now() }); });
+      SRV = a; try { localStorage.setItem(SK, JSON.stringify(a)); } catch (e) {} nDot();
+    }).catch(function () { lastFetch = 0; });
+  }
   function me() { return window._selfRankStudent || null; }
   function pct() { var s = me(); return s && s.totalMaxScore ? Math.round(100 * s.totalScore / s.totalMaxScore) : null; }
 
@@ -43,10 +63,11 @@
       return '<div class="ph"><button data-a="menu">' + svg("menu") + '</button><b>More</b></div>' + r.map(function (x) { return '<button class="sn-row" data-id="' + x[4] + '"><div class="i" style="background:' + x[1] + '">' + E(x[0]) + "</div><div>" + x[2] + "<small>" + x[3] + "</small></div></button>"; }).join("") + '<div class="sn-banner"><div>Dream Big<br>Prepare Smart</div>' + svg("cap") + '</div>';
     },
     notifs: function () {
-      var a = nGet(); a.forEach(function (n) { n.r = 1; }); nSet(a); nDot();
+      var a = nAll(), mx = a.reduce(function (m, n) { return Math.max(m, n.ts); }, +localStorage.getItem(SEEN) || 0);
+      try { localStorage.setItem(SEEN, String(mx)); } catch (e) {} nDot();
       return '<div class="ph"><button type="button" data-a="back">' + svg("back") + '</button><b>Notifications</b>' + (a.length ? '<button type="button" data-a="clear" style="color:#ef4444">' + svg("trash") + "</button>" : "") + "</div>" +
-        (a.length ? a.map(function (n) { return '<button type="button" class="sn-row" data-id="student-form-fields-anchor"><div class="i" style="background:#fff0cc">' + E("🏆").replace(/#f59e0b/, "#f59e0b") + "</div><div>" + esc(n.t) + "<small>" + esc(n.b) + " • " + ago(n.ts) + "</small></div></button>"; }).join("") :
-          '<div class="sn-faq" style="text-align:center"><b>Abhi koi notification nahi hai</b><p>Naya test publish hote hi yahan dikhega.</p></div>');
+        (a.length ? a.map(function (n) { return '<button type="button" class="sn-row" data-id="student-form-fields-anchor"><div class="i" style="background:#fff0cc">' + E("🏆") + "</div><div>" + esc(n.t) + "<small>" + esc(n.b) + " • " + ago(n.ts) + "</small></div></button>"; }).join("") :
+          '<div class="sn-faq" style="text-align:center"><b>Abhi koi notification nahi hai</b><p>Naya test ya admin ka message yahan dikhega.</p></div>');
     },
     help: function () {
       var c = [["📞", "#dcfce7", "Call karein", SUPPORT_PHONE, "tel:" + SUPPORT_PHONE], ["💬", "#dcfce7", "WhatsApp karein", "Chat par turant madad", "https://wa.me/91" + SUPPORT_PHONE + "?text=" + encodeURIComponent("Namaste, mujhe SnapTestPro app mein madad chahiye.")], ["✉️", "#dbeafe", "Email karein", SUPPORT_EMAIL, "mailto:" + SUPPORT_EMAIL + "?subject=" + encodeURIComponent("SnapTestPro Support")]];
@@ -62,7 +83,7 @@
     }
   };
   function showPage(k, from) {
-    var p = $("sn-page"); p.innerHTML = PAGES[k](); p.style.display = "block"; p.scrollTop = 0; mark(k);
+    var p = $("sn-page"); curPage = k; p.innerHTML = PAGES[k](); p.style.display = "block"; p.scrollTop = 0; mark(k);
     p.querySelectorAll("button[data-id]").forEach(function (b) {
       b.type = "button";
       b.onclick = function (ev) {
@@ -76,7 +97,7 @@
     var bk = p.querySelector('[data-a="back"]');
     bk && (bk.type = "button", bk.onclick = function (ev) { ev.preventDefault(); if (from === "settings") { hidePage(); mark("home"); go("student-settings-card"); } else if (from === "home") { hidePage(); mark("home"); } else showPage("more"); });
     var cl = p.querySelector('[data-a="clear"]');
-    cl && (cl.type = "button", cl.onclick = function (ev) { ev.preventDefault(); nSet([]); showPage("notifs", "home"); });
+    cl && (cl.type = "button", cl.onclick = function (ev) { ev.preventDefault(); var mx = nAll().reduce(function (m, n) { return Math.max(m, n.ts); }, 0); try { localStorage.setItem(CLR, String(mx)); } catch (e) {} nDot(); showPage("notifs", "home"); });
   }
   window.snShowPage = showPage;
 
@@ -178,8 +199,10 @@
     top.innerHTML = '<button type="button" class="ic" data-a="m">' + svg("menu") + '</button><div class="lg"><img src="icon-512-maskable.png" alt=""><div><b>SnapTestPro</b><small>Smart Practice • Better Result</small></div></div><button type="button" class="ic" data-a="b" style="color:#f59e0b">' + svg("bell") + '</button><button type="button" class="av" data-a="u">' + svg("user") + '</button>';
     home.insertBefore(top, home.firstChild);
     top.querySelector('[data-a="m"]').onclick = function (ev) { ev.preventDefault(); showPage("more"); };
-    top.querySelector('[data-a="b"]').onclick = function (ev) { ev.preventDefault(); showPage("notifs", "home"); };
+    top.querySelector('[data-a="b"]').onclick = function (ev) { ev.preventDefault(); showPage("notifs", "home"); nRefresh(true).then(function () { curPage === "notifs" && showPage("notifs", "home"); }); };
     var bell = top.querySelector('[data-a="b"]'); bell.style.position = "relative"; bell.insertAdjacentHTML("beforeend", '<i class="sn-dot"></i>'); nDot();
+    setTimeout(function () { nRefresh(); }, 3000); setTimeout(function () { nRefresh(); }, 15000);
+    document.addEventListener("visibilitychange", function () { document.visibilityState === "visible" && nRefresh(); });
     // naya test publish hone par list me jodo (push-notifications.js ke hook se)
     if (window.SavyaPush && !window.SavyaPush.__sn) {
       var orig = window.SavyaPush.notifyTestPublished; window.SavyaPush.__sn = 1;
