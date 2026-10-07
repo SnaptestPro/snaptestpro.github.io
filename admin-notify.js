@@ -19,7 +19,7 @@
       var r = await orig.apply(this, arguments);
       try {
         var c = t && t.isDraft === false && col();
-        if (c) c.doc("t_" + id).set({ type: "test", testId: String(id), title: "Naya Test Publish Hua!", body: (t.title || "Ek naya test") + " ab available hai", createdAt: ts(), createdBy: email() }).catch(function () { /* pehle se bhej chuke hain (edit) — ignore */ });
+        if (c) c.doc("t_" + id).set({ type: "test", testId: String(id), title: "Naya Test Publish Hua!", body: (t.title || "Ek naya test") + " ab available hai", createdAt: ts(), createdBy: email() }).then(function () { window.SnapPush && window.SnapPush.send("t_" + id); }).catch(function () { /* pehle se bhej chuke hain (edit) — ignore */ });
       } catch (e) {}
       return r;
     };
@@ -54,7 +54,8 @@
     if (!c) return st("❌ Institute pehchaan nahi hua — admin dobara login karein.");
     if (!t || !b) return st("⚠️ Title aur message dono bharein.");
     var btn = $("an-send"); btn.disabled = true; st("⏳ Bhej rahe hain...");
-    c.add({ type: "admin", title: t, body: b, createdAt: ts(), createdBy: email() }).then(function () {
+    c.add({ type: "admin", title: t, body: b, createdAt: ts(), createdBy: email() }).then(function (ref) {
+      window.SnapPush && window.SnapPush.send(ref.id);
       $("an-title").value = ""; $("an-body").value = ""; st("✅ Bhej diya gaya!"); btn.disabled = false; loadList();
     }).catch(function (e) {
       btn.disabled = false;
