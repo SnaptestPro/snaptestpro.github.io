@@ -116,3 +116,27 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--sn-blue)
 /* v152: tap delay hatao + instant feel */
 html,body,button,a,input,select,label,[onclick]{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 button,.cd-card,.sn-tile,.sn-row,#sn-nav button{transition-duration:.08s!important}
+
+/* v153: Help/About pages + proper Settings */
+a.sn-row{text-decoration:none;color:inherit}
+#sn-page .sn-h,#sn-set .sn-h{font-weight:800;font-size:.9rem;color:var(--sn-ink);margin:16px 2px 8px}
+.sn-faq{background:#fff;border:1px solid var(--sn-line);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+.sn-faq b{font-size:.86rem;display:block}.sn-faq p{margin:4px 0 0;font-size:.76rem;color:var(--sn-mut);line-height:1.45}
+.sn-about{display:flex;flex-direction:column;align-items:center;gap:4px;background:#fff;border:1px solid var(--sn-line);border-radius:18px;padding:22px 14px;margin-bottom:12px}
+.sn-about img{width:72px;height:72px;border-radius:18px;margin-bottom:6px}.sn-about b{font-size:1.15rem}.sn-about small{color:var(--sn-mut)}.sn-about span{margin-top:6px;background:#eaf1ff;color:var(--sn-blue);font-weight:700;font-size:.72rem;padding:3px 12px;border-radius:999px}
+#sn-set{margin-top:16px;padding-top:6px;border-top:1px solid #e2e8f0}
+.sn-srow{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1px solid var(--sn-line);border-radius:14px;padding:10px 14px;margin-bottom:8px}
+.sn-srow>div:first-child{flex:1;min-width:0}.sn-srow b{font-size:.86rem;display:block}.sn-srow small{font-size:.7rem;color:var(--sn-mut);display:block}
+.sn-seg{display:flex;flex:none;background:#eef3ff;border-radius:999px;padding:3px}
+.sn-seg button{border:0;background:none;border-radius:999px;padding:6px 10px;font-size:.72rem;font-weight:700;color:var(--sn-mut);cursor:pointer}
+.sn-seg button.on{background:var(--sn-blue);color:#fff}
+.sn-sw{position:relative;width:46px;height:26px;flex:none}.sn-sw input{opacity:0;width:100%;height:100%;position:absolute;margin:0;cursor:pointer;z-index:1}
+.sn-sw i{position:absolute;inset:0;background:#cbd5e1;border-radius:999px;transition:background .15s}
+.sn-sw i:after{content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;background:#fff;border-radius:50%;transition:transform .15s}
+.sn-sw input:checked+i{background:var(--sn-blue)}.sn-sw input:checked+i:after{transform:translateX(20px)}
+#sn-set .sn-row{margin-bottom:8px}
+#student-settings-card #student-logout-btn{margin-top:18px;width:100%}
+
+/* v154: bell unread dot */
+#sn-top .sn-dot{display:none;position:absolute;top:4px;right:5px;width:9px;height:9px;border-radius:50%;background:#ef4444;border:2px solid #fff}
+#sn-page .ph button[data-a=clear]{margin-left:auto}
