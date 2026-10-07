@@ -1,7 +1,7 @@
 // Web files ko www/ me copy karta hai (sirf wahi jo app me chahiye). Repo ki root file change nahi hoti.
 const fs = require('fs'), path = require('path');
 const ROOT = path.join(__dirname, '..'), OUT = path.join(ROOT, 'www');
-const SKIP_DIR = new Set(['node_modules', 'android', 'www', 'scripts', '.git', '.github']);
+const SKIP_DIR = new Set(['node_modules', 'android', 'www', 'scripts', '.git', '.github', 'push-worker']);
 const SKIP_EXT = new Set(['.md', '.bat', '.keystore', '.jks', '.gs', '.apk', '.aab', '.zip']);
 const SKIP_FILES = new Set(['package.json', 'package-lock.json', 'capacitor.config.js', 'firebase.json',
   'firestore.rules', '_headers', 'sitemap.xml', 'robots.txt', 'OWNER_CLOUD_FUNCTIONS_optional.js', '.gitignore']);

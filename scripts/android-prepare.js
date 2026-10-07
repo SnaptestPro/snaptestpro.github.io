@@ -6,7 +6,7 @@ if (!fs.existsSync(A)) { console.error('android/ nahi mila — pehle `npx cap ad
 // 1) Manifest: camera (OMR scan) + mic nahi; camera hardware optional
 const mf = path.join(A, 'src/main/AndroidManifest.xml');
 let m = fs.readFileSync(mf, 'utf8');
-const perms = ['android.permission.INTERNET', 'android.permission.ACCESS_NETWORK_STATE', 'android.permission.CAMERA'];
+const perms = ['android.permission.INTERNET', 'android.permission.ACCESS_NETWORK_STATE', 'android.permission.CAMERA', 'android.permission.POST_NOTIFICATIONS'];
 const feats = ['<uses-feature android:name="android.hardware.camera" android:required="false" />',
                '<uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />'];
 let add = '';
