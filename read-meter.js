@@ -71,10 +71,12 @@
     var tot = rows.reduce(function (s, r) { return s + r[1].reads; }, 0);
     var h = '<div style="font-weight:700;margin-bottom:6px">📊 Firestore reads (is device par)</div><div style="font-size:.78rem;margin-bottom:8px">Shuru: ' + new Date(data.since).toLocaleString() + '<br><b>Total: ' + tot + '</b></div><table style="width:100%;font-size:.76rem;border-collapse:collapse"><tr style="text-align:left"><th>Collection</th><th>Total</th><th>get</th><th>live</th></tr>';
     rows.forEach(function (r) { h += '<tr style="border-top:1px solid #334155"><td style="word-break:break-all;padding:3px 4px 3px 0">' + r[0] + '</td><td>' + r[1].reads + '</td><td>' + r[1].get + '</td><td>' + r[1].live + '</td></tr>'; });
-    h += '</table><div style="margin-top:10px;display:flex;gap:8px"><button id="rm-reset" style="flex:1;padding:8px;border-radius:10px;border:0">Reset</button><button id="rm-close" style="flex:1;padding:8px;border-radius:10px;border:0">Band karein</button></div>';
+    h += '</table><div style="margin-top:10px;display:flex;gap:8px"><button id="rm-reset" style="flex:1;padding:8px;border-radius:10px;border:0">Reset</button><button id="rm-close" style="flex:1;padding:8px;border-radius:10px;border:0">Band karein</button></div><div style="margin-top:8px;display:flex;gap:8px"><button id="rm-bank" style="flex:1;padding:8px;border-radius:10px;border:0">🔄 Bank refresh</button><button id="rm-exp" style="flex:1;padding:8px;border-radius:10px;border:0">⬇️ Bank export</button></div>';
     ov.innerHTML = h;
     ov.querySelector("#rm-reset").onclick = function () { data = { since: Date.now(), cols: {} }; dirty = true; save(); render(); };
     ov.querySelector("#rm-close").onclick = function () { ov.style.display = "none"; };
+    ov.querySelector("#rm-bank").onclick = function () { if (window.refreshBankNow) { window.refreshBankNow(); alert("Bank live sync chalu — reads lagenge (ek baar)."); } };
+    ov.querySelector("#rm-exp").onclick = function () { window.exportBankJson && window.exportBankJson(); };
   }
   function ui() {
     if (!btn) {
