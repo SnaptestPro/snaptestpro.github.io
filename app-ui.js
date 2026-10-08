@@ -13,7 +13,7 @@
   function toast(m) { var b = document.createElement("div"); b.textContent = m; b.style.cssText = "position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#1e1b4b;color:#fff;padding:10px 18px;border-radius:22px;font-size:.82rem;z-index:99999;max-width:86vw;text-align:center"; document.body.appendChild(b); setTimeout(function () { b.remove(); }, 2200); }
   function mark(k) { document.querySelectorAll("#sn-nav button").forEach(function (b) { b.classList.toggle("on", b.dataset.k === (k === "help" || k === "about" ? "more" : k === "notifs" ? "home" : k)); }); }
   function hidePage() { var p = $("sn-page"); curPage = ""; p && (p.style.display = "none"); }
-  var APP_VER = "1.0 (build 155)", SUPPORT_PHONE = "9525208263", SUPPORT_EMAIL = "vishnu1234stm@gmail.com";
+  var __C = window.SNAP_CONFIG || {}, APP_VER = (__C.version || "1.0") + " (build " + (__C.build || "155") + ")", SUPPORT_PHONE = __C.supportPhone || "9525208263", SUPPORT_EMAIL = __C.supportEmail || "vishnu1234stm@gmail.com";
   /* ---------- Notifications (bell) ----------
      Local: is device par live-publish hook se. Server: institutes/{id}/notifications (admin ne bheji / naya test). */
   var NK = "sn_notif_srv_local", SK = "sn_notif_srv", SEEN = "sn_notif_seen", CLR = "sn_notif_clear", SRV = [], lastFetch = 0, curPage = "";
