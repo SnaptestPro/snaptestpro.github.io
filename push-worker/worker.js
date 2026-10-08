@@ -9,7 +9,7 @@
 const te = new TextEncoder(), td = new TextDecoder();
 const RS = { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' };
 const JWK_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
-const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' };
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Bank-Count' };
 
 const b64u = (buf) => { let s = ''; for (const c of new Uint8Array(buf)) s += String.fromCharCode(c); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
 const unb64u = (s) => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; const b = atob(s), o = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) o[i] = b.charCodeAt(i); return o; };
@@ -102,11 +102,60 @@ async function handle(request, env) {
   return { ok: true };
 }
 
+/* ---------- Question bank: admin ek baar publish kare, students Firestore ke bajay yahan se padhein (0 Firestore reads) ----------
+   Setup: Cloudflare > Workers & Pages > KV > Create namespace "snaptest-bank"; Worker > Settings > Bindings > Add > KV namespace,
+   Variable name: BANK_KV.   (Optional) Variable OWNER_EMAILS = "a@gmail.com,b@gmail.com" (legacy admin emails). */
+async function isAdminEmail(env, projectId, at, email) {
+  const url = 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/(default)/documents/admins/' + encodeURIComponent(email);
+  const r = await fetch(url, { headers: { Authorization: 'Bearer ' + at } });
+  let active = null;
+  if (r.ok) { const f = ((await r.json()).fields) || {}; if (f.active && 'booleanValue' in f.active) active = f.active.booleanValue; }
+  else if (r.status !== 404) throw new HttpErr(502, 'Admin check fail ' + r.status);
+  const owners = String(env.OWNER_EMAILS || 'vishnu1234stmp@gmail.com').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean);
+  return active === true || (owners.indexOf(email) >= 0 && active !== false);
+}
+
+async function handleBank(request, env, pathname) {
+  if (!env.BANK_KV) throw new HttpErr(500, 'BANK_KV binding set nahi hai');
+  if (request.method === 'GET' && pathname === '/bank/meta') {
+    const m = await env.BANK_KV.get('bank_meta');
+    return new Response(m || JSON.stringify({ exists: false }), { headers: { 'Content-Type': 'application/json', ...CORS } });
+  }
+  if (request.method === 'GET' && pathname === '/bank') {
+    const body = await env.BANK_KV.get('bank', { type: 'stream' });
+    if (!body) return json({ ok: false, error: 'bank abhi publish nahi hua' }, 404);
+    return new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300', ...CORS } });
+  }
+  if (request.method === 'PUT' && pathname === '/bank') {
+    if (!env.SERVICE_ACCOUNT_JSON) throw new HttpErr(500, 'SERVICE_ACCOUNT_JSON secret set nahi hai');
+    const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), projectId = env.PROJECT_ID || sa.project_id;
+    const auth = request.headers.get('Authorization') || '';
+    const user = await verifyIdToken(auth.replace(/^Bearer\s+/i, ''), projectId);
+    const email = String(user.email || '').toLowerCase();
+    if (!email) throw new HttpErr(403, 'Admin email login chahiye');
+    const at = await googleAccessToken(sa);
+    if (!(await isAdminEmail(env, projectId, at, email))) throw new HttpErr(403, 'Aap admin nahi hain');
+    const buf = await request.arrayBuffer();
+    if (buf.byteLength < 2 || buf.byteLength > 24 * 1024 * 1024) throw new HttpErr(413, 'Bank size galat (max 24MB)');
+    const u8 = new Uint8Array(buf); let end = u8.length - 1;
+    while (end > 0 && (u8[end] === 10 || u8[end] === 13 || u8[end] === 32)) end--;
+    if (u8[0] !== 91 || u8[end] !== 93) throw new HttpErr(400, 'Bank JSON array nahi hai');
+    await env.BANK_KV.put('bank', buf);
+    await env.BANK_KV.put('bank_meta', JSON.stringify({ exists: true, updatedAt: Date.now(), count: Number(request.headers.get('X-Bank-Count')) || 0, bytes: buf.byteLength, by: email }));
+    return json({ ok: true, bytes: buf.byteLength });
+  }
+  throw new HttpErr(404, 'Not found');
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-    if (request.method !== 'POST') return json({ ok: true, service: 'snaptestpro-push' });
-    try { return json(await handle(request, env)); }
+    const pathname = new URL(request.url).pathname.replace(/\/+$/, '') || '/';
+    try {
+      if (pathname === '/bank' || pathname === '/bank/meta') return await handleBank(request, env, pathname);
+      if (request.method !== 'POST') return json({ ok: true, service: 'snaptestpro-push' });
+      return json(await handle(request, env));
+    }
     catch (e) { return json({ ok: false, error: e.message || String(e) }, e.status || 500); }
   }
 };
