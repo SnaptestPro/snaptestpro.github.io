@@ -1,0 +1,34 @@
+name: Update notification (commit message se)
+
+# GitHub par file upload/commit karte waqt commit message me ye tag likho:
+#   [notify:admin]    -> sirf admin ke phone par notification
+#   [notify:student]  -> sirf students ke phone par
+#   [notify:all]      -> dono ko
+# Tag ke bina commit = koi notification nahi (har chhote badlav par spam na ho).
+# Notification ki line = commit message (tag hata kar).
+# Website update to apne-aap lag jaata hai; ye sirf logon ko batata hai.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    if: contains(github.event.head_commit.message, '[notify')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Push bhejo
+        env:
+          WORKER: ${{ vars.PUSH_WORKER_URL || 'https://cool-thunder-a280.vishnu1234stm.workers.dev' }}
+          SECRET: ${{ secrets.BROADCAST_SECRET }}
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          shopt -s nocasematch
+          if [[ ! "$MSG" =~ \[notify[:\ ]*(admin|student|students|all|both)\] ]]; then echo "tag samajh nahi aaya (admin/student/all)"; exit 0; fi
+          case "${BASH_REMATCH[1],,}" in admin) AUD=admin;; student|students) AUD=student;; *) AUD=both;; esac
+          LINE="$(printf '%s' "$MSG" | head -n1 | sed -E 's/\[notify[^]]*\]//Ig' | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')"
+          [ -z "$LINE" ] && LINE="App me naya update aaya hai."
+          if [ -z "$SECRET" ]; then echo "BROADCAST_SECRET secret set nahi hai"; exit 1; fi
+          sleep 60   # website update live ho jaye
+          jq -n --arg s "$SECRET" --arg a "$AUD" --arg b "$LINE" \
+            '{secret:$s,audience:$a,kind:"web",title:"SnapTest Pro — Naya update",body:$b}' \
+            | curl -fsS -X POST "$WORKER/broadcast" -H "Content-Type: text/plain" --data-binary @-

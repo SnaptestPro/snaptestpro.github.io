@@ -3,8 +3,25 @@ name: Build Android App
 # Web (Firebase Hosting / jo bhi abhi chal raha hai) is workflow se touch nahi hota.
 on:
   workflow_dispatch:          # GitHub > Actions > "Build Android App" > Run workflow
+    inputs:
+      audience:
+        description: "Naye APK ka push notification kise bheje?"
+        type: choice
+        default: both
+        options: [both, admin, student, none]
+      notes:
+        description: "Is APK me kya naya hai (dialog me dikhega)"
+        type: string
+        default: "App ka naya version aaya hai."
+      force:
+        description: "Zaroori update? (haan = purane app me 'Baad mein' button nahi)"
+        type: boolean
+        default: false
   push:
     tags: ['app-v*']          # git tag app-v1.0.0 && git push --tags
+
+permissions:
+  contents: write            # APK ko GitHub Release me daalne aur app-version.json commit karne ke liye
 
 jobs:
   android:
@@ -94,3 +111,51 @@ jobs:
           name: SnapTestPro-android
           path: out/*
           retention-days: 30
+
+      # ───────── AUTO-UPDATE: signed APK -> GitHub Release -> app-version.json -> push notification ─────────
+      # Sirf SIGNED (release) APK publish hota hai. Debug APK har build me alag key se sign hota hai, isliye wo purane app par install nahi ho sakta.
+      - name: Signed APK ko GitHub Release me publish karo
+        id: rel
+        if: steps.ks.outputs.signed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes || 'App ka naya version aaya hai.' }}
+        run: |
+          cp out/SnapTestPro-release.apk out/SnapTestPro.apk
+          gh release create "app-b${{ github.run_number }}" out/SnapTestPro.apk \
+            --title "SnapTest Pro ${VERSION_NAME}" --notes "$NOTES" --target "${{ github.sha }}"
+          echo "url=https://github.com/${{ github.repository }}/releases/download/app-b${{ github.run_number }}/SnapTestPro.apk" >> "$GITHUB_OUTPUT"
+
+      - name: app-version.json update (purane app naya APK dekh lenge)
+        if: steps.rel.outcome == 'success'
+        env:
+          APK_URL: ${{ steps.rel.outputs.url }}
+          NOTES: ${{ inputs.notes || 'App ka naya version aaya hai.' }}
+          FORCE: ${{ inputs.force || 'false' }}
+        run: |
+          git config user.name "snaptest-bot"
+          git config user.email "snaptest-bot@users.noreply.github.com"
+          git fetch origin main
+          git checkout -f -B main origin/main
+          node -e '
+            const fs=require("fs"),f="app-version.json";
+            let j={}; try{j=JSON.parse(fs.readFileSync(f,"utf8"))}catch(e){}
+            j.apk={build:Number(process.env.VERSION_CODE),name:process.env.VERSION_NAME,url:process.env.APK_URL,notes:process.env.NOTES,force:process.env.FORCE==="true"};
+            fs.writeFileSync(f,JSON.stringify(j,null,2)+"\n");'
+          git add app-version.json
+          git commit -m "app-version: build ${VERSION_CODE}" || echo "kuch badla nahi"
+          git push origin HEAD:main
+
+      - name: Admin / Student ko push notification (naya APK)
+        if: steps.rel.outcome == 'success' && (inputs.audience || 'both') != 'none'
+        env:
+          WORKER: ${{ vars.PUSH_WORKER_URL || 'https://cool-thunder-a280.vishnu1234stm.workers.dev' }}
+          SECRET: ${{ secrets.BROADCAST_SECRET }}
+          AUDIENCE: ${{ inputs.audience || 'both' }}
+          NOTES: ${{ inputs.notes || 'App ka naya version aaya hai.' }}
+        run: |
+          if [ -z "$SECRET" ]; then echo "BROADCAST_SECRET secret nahi mila — push nahi gaya (APK update phir bhi app khulne par dikhega)"; exit 0; fi
+          sleep 90   # app-version.json GitHub par live ho jaye, phir notification bhejo
+          jq -n --arg s "$SECRET" --arg a "$AUDIENCE" --arg b "$NOTES" \
+            '{secret:$s,audience:$a,kind:"apk",title:"SnapTest Pro — Naya APK aaya hai",body:$b}' \
+            | curl -fsS -X POST "$WORKER/broadcast" -H "Content-Type: text/plain" --data-binary @- || echo "push fail (worker deploy/secret check karein)"
