@@ -73,11 +73,12 @@
     rows.forEach(function (r) { h += '<tr style="border-top:1px solid #334155"><td style="word-break:break-all;padding:3px 4px 3px 0">' + r[0] + '</td><td>' + r[1].reads + '</td><td>' + r[1].get + '</td><td>' + r[1].live + '</td></tr>'; });
     var pi = null; try { pi = JSON.parse(localStorage.getItem("snap_bank_pub_info") || "null"); } catch (e) {}
     var pubTxt = pi ? (pi.ok ? "✅ " : "❌ ") + pi.msg + " (" + new Date(pi.ts).toLocaleString() + ")" : "abhi tak nahi hua";
-    h += '</table><div style="margin-top:8px;font-size:.76rem">Bank publish: ' + pubTxt + '</div><div style="margin-top:10px;display:flex;gap:8px"><button id="rm-reset" style="flex:1;padding:8px;border-radius:10px;border:0">Reset</button><button id="rm-close" style="flex:1;padding:8px;border-radius:10px;border:0">Band karein</button></div><div style="margin-top:8px;display:flex;gap:8px"><button id="rm-bank" style="flex:1;padding:8px;border-radius:10px;border:0">🔄 Bank refresh</button><button id="rm-exp" style="flex:1;padding:8px;border-radius:10px;border:0">⬇️ Bank export</button></div>';
+    h += '</table><div style="margin-top:8px;font-size:.76rem">Bank publish: ' + pubTxt + '</div><div style="margin-top:10px;display:flex;gap:8px"><button id="rm-reset" style="flex:1;padding:8px;border-radius:10px;border:0">Reset</button><button id="rm-close" style="flex:1;padding:8px;border-radius:10px;border:0">Band karein</button></div><div style="margin-top:8px;display:flex;gap:8px"><button id="rm-bank" style="flex:1;padding:8px;border-radius:10px;border:0">🔄 Bank refresh</button><button id="rm-exp" style="flex:1;padding:8px;border-radius:10px;border:0">⬇️ Bank export</button></div><div style="margin-top:8px"><button id="rm-pub" style="width:100%;padding:10px;border-radius:10px;border:0;background:#16a34a;color:#fff;font-weight:700">⬆️ Bank publish abhi karein</button></div>';
     ov.innerHTML = h;
     ov.querySelector("#rm-reset").onclick = function () { data = { since: Date.now(), cols: {} }; dirty = true; save(); render(); };
     ov.querySelector("#rm-close").onclick = function () { ov.style.display = "none"; };
     ov.querySelector("#rm-bank").onclick = function () { if (window.refreshBankNow) { window.refreshBankNow(); alert("Bank live sync chalu — reads lagenge (ek baar)."); } };
+    ov.querySelector("#rm-pub").onclick = function () { if (!window.publishBankManual) return alert("Available nahi"); this.textContent = "⏳ Ho raha hai..."; var b = this; window.publishBankManual().then(function (m) { b.textContent = "⬆️ Bank publish abhi karein"; alert(m); render(); }); };
     ov.querySelector("#rm-exp").onclick = function () { window.exportBankJson && window.exportBankJson(); };
   }
   function ui() {

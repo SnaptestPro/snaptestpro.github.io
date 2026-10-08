@@ -576,6 +576,7 @@ function _bankCheapLoad(){
     const a=typeof getAuth=="function"?getAuth():null,u=a&&a.currentUser,isAdminUser=!!(u&&!u.isAnonymous&&u.email);
     const fresh=Date.now()-(+localStorage.getItem("snap_bank_sync_ts")||0)<43200000;
     if(!questionBank||!questionBank.length){const j=JSON.parse(localStorage.getItem(BANK_CACHE_KEY)||"null");if(Array.isArray(j)&&j.length){questionBank=j;window.questionBank=j}}
+    if(isAdminUser)window._bankCheckPublished&&window._bankCheckPublished();
     if(fresh&&questionBank&&questionBank.length){_bankAfterCheapLoad();return true}
     const load=(url,o)=>fetch(url,o).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json()});
     let src=load(_bankWorkerUrl()+"/bank");
@@ -596,13 +597,28 @@ window.publishBankNow=async function(){
   try{
     const a=typeof getAuth=="function"?getAuth():null,u=a&&a.currentUser;
     if(!u||u.isAnonymous)return;
-    const arr=window.questionBank||[];if(!arr.length)return;
+    const arr=window.questionBank||[];if(!arr.length){info(!1,"bank abhi load nahi hua — Question Bank kholkar 10 second ruken");return}
     const t=await u.getIdToken();
     const r=await fetch(_bankWorkerUrl()+"/bank",{method:"PUT",headers:{"Content-Type":"text/plain","Authorization":"Bearer "+t,"X-Bank-Count":String(arr.length)},body:JSON.stringify(arr)});
     const j=await r.json().catch(()=>({}));
     if(r.ok&&j.ok){info(!0,arr.length+" questions publish ho gaye");try{localStorage.setItem("snap_bank_sync_ts",String(Date.now()))}catch(_e){}}
     else{info(!1,j.error||("HTTP "+r.status));window.__bankDirty=!0}
   }catch(e){info(!1,String(e&&e.message||e));window.__bankDirty=!0}
+};
+window._bankCheckPublished=function(){
+  if(window.__bankPubChecked)return;window.__bankPubChecked=!0;
+  fetch(_bankWorkerUrl()+"/bank/meta").then(r=>r.json()).then(j=>{
+    if(j&&j.exists===!1){
+      if(window.questionBank&&window.questionBank.length)window.publishBankNow();
+      else{window.__bankDirty=!0;window.__bankForce=!0;try{syncBank()}catch(_e){}}
+    }
+  }).catch(()=>{});
+};
+window.publishBankManual=async function(){
+  window.__bankPubChecked=!0;
+  if(!(window.questionBank&&window.questionBank.length)){window.__bankDirty=!0;window.__bankForce=!0;try{syncBank()}catch(_e){}return"Bank load ho raha hai — 1 minute baad dobara dabayein"}
+  await window.publishBankNow();
+  try{const i=JSON.parse(localStorage.getItem("snap_bank_pub_info")||"null");return i?((i.ok?"✅ ":"❌ ")+i.msg):"Publish nahi hua"}catch(_e){return"Publish nahi hua"}
 };
 window.__bankPublishSoon=function(){if(!window.__bankDirty)return;clearTimeout(window.__bankPubT);window.__bankPubT=setTimeout(()=>{window.__bankDirty=!1;window.publishBankNow&&window.publishBankNow()},45000)};
 window.refreshBankNow=function(){window.__bankForce=!0;try{syncBank()}catch(_e){}};

@@ -83,7 +83,8 @@
       done("App & Data",
         '<div class="asp-card"><b>Update check</b><p>Latest version laga hua hai ya nahi dekhein.</p><div class="asp-act"><button type="button" class="asp-btn" data-go="update">📈 Update check karein</button></div></div>' +
         '<div class="asp-card"><b>Cache saaf karke refresh</b><p>Kuch purana ya adhura dikhe to ye karein. Aapka login bana rahega.</p><div class="asp-act"><button type="button" class="asp-btn o" data-go="cache">⚙️ Cache saaf karein</button></div></div>' +
-        '<div class="asp-card"><b>Question Bank dobara load karein</b><p>Agar doosre admin ne questions jode hon aur yahan na dikhein to ye dabayein (Firestore reads lagenge).</p><div class="asp-act"><button type="button" class="asp-btn o" data-go="bank">🔄 Bank refresh</button></div></div>');
+        '<div class="asp-card"><b>Question Bank dobara load karein</b><p>Agar doosre admin ne questions jode hon aur yahan na dikhein to ye dabayein (Firestore reads lagenge).</p><div class="asp-act"><button type="button" class="asp-btn o" data-go="bank">🔄 Bank refresh</button></div></div>' +
+        '<div class="asp-card"><b>Bank students ke liye publish karein</b><p>Students ko bank Firestore ke bajay Cloudflare se milta hai (reads 0). Normally ye apne-aap hota hai; kabhi na ho to yahan dabayein.</p><div class="asp-act"><button type="button" class="asp-btn g" data-go="pub">⬆️ Bank publish karein</button></div></div>');
     },
     privacy: function (done) { done("Privacy & Terms", legal(true)); }
   };
@@ -117,6 +118,7 @@
     else if (g === "update") { toast("⏳ Update check ho raha hai..."); if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) navigator.serviceWorker.getRegistration().then(function (r) { if (!r) return toast("✅ Aap latest version par hain"); return r.update().then(function () { if (r.installing || r.waiting) { toast("⬆️ Naya version mil gaya — reload ho raha hai"); setTimeout(function () { location.reload(); }, 1200); } else toast("✅ Aap latest version par hain"); }); }).catch(function () { toast("Update check nahi ho paya"); }); else toast("✅ Aap latest version par hain"); }
     else if (g === "cache") { toast("⏳ Cache saaf ho raha hai..."); var keep = {}; try { Object.keys(localStorage).forEach(function (k2) { if (/session|auth|firebase|savya_student|admin/i.test(k2)) keep[k2] = localStorage.getItem(k2); }); } catch (e) {}
       Promise.resolve(window.caches && caches.keys ? caches.keys().then(function (ks) { return Promise.all(ks.map(function (k2) { return caches.delete(k2); })); }) : 0).then(function () { return navigator.serviceWorker && navigator.serviceWorker.getRegistrations ? navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.update(); })); }) : 0; }).catch(function () {}).then(function () { try { localStorage.removeItem("savya_bank_cache"); localStorage.removeItem("snap_bank_sync_ts"); } catch (e) {} setTimeout(function () { location.reload(); }, 600); }); }
+    else if (g === "pub") { toast("⏳ Publish ho raha hai..."); if (window.publishBankManual) window.publishBankManual().then(function (m) { toast(m); }); else toast("Available nahi"); }
     else if (g === "bank") { if (window.refreshBankNow) { window.refreshBankNow(); toast("🔄 Bank refresh chalu ho gaya"); } else toast("Bank refresh available nahi"); }
   });
 
