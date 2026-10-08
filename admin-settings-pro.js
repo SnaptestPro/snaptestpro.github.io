@@ -7,23 +7,69 @@
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   var digits = function (s) { return String(s || "").replace(/\D/g, "").slice(-10); };
 
+  var IC = {
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
+    bell: '<path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 8H4c0-1 2-2 2-8"/><path d="M10 21a2 2 0 0 0 4 0"/>',
+    phone: '<rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/>',
+    help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01"/>',
+    info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/>',
+    lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+    out: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+    chev: '<path d="M9 6l6 6-6 6"/>', back: '<path d="M15 6l-6 6 6 6"/>',
+    mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+    shield: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
+    build: '<path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6"/>',
+    hash: '<path d="M5 9h14M5 15h14M10 4L8 20M16 4l-2 16"/>',
+    pulse: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+    send: '<path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/>',
+    refresh: '<path d="M21 12a9 9 0 0 1-15 6.7L3 16M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M3 21v-5h5"/>',
+    trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+    db: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+    up: '<path d="M12 19V5M5 12l7-7 7 7"/>', dl: '<path d="M12 3v12M6 11l6 6 6-6M4 21h16"/>',
+    alert: '<path d="M12 3l10 18H2zM12 10v5M12 18h.01"/>',
+    idc: '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17c.8-2 5.2-2 6 0M14 9h4M14 13h4"/>'
+  };
+  var ico = function (n) { return '<svg class="asp-i" viewBox="0 0 24 24">' + (IC[n] || "") + "</svg>"; };
+  var TILE = { ind: "linear-gradient(135deg,#6366f1,#4338ca)", amb: "linear-gradient(135deg,#fbbf24,#ea580c)", tea: "linear-gradient(135deg,#2dd4bf,#0f766e)", blu: "linear-gradient(135deg,#60a5fa,#1d4ed8)", gry: "linear-gradient(135deg,#94a3b8,#475569)", pnk: "linear-gradient(135deg,#f472b6,#be185d)", red: "linear-gradient(135deg,#f87171,#b91c1c)" };
+
   function css() {
     if ($("asp-css")) return;
     var st = document.createElement("style"); st.id = "asp-css";
     st.textContent =
-      ".asp-wrap{margin-bottom:12px}.asp-h{font-weight:800;font-size:1.05rem;margin:2px 0 8px;color:var(--text,#0f172a)}" +
-      ".asp-row{display:flex;align-items:center;gap:12px;width:100%;background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:12px 14px;margin-bottom:8px;text-align:left;cursor:pointer;font:inherit;color:#0f172a}" +
-      ".asp-row:active{transform:scale(.99)}.asp-ic{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.15rem;flex:none}" +
-      ".asp-tx{flex:1;min-width:0}.asp-tx b{display:block;font-size:.95rem}.asp-tx small{display:block;color:#64748b;font-size:.78rem;margin-top:1px}.asp-ch{color:#94a3b8;font-size:1.2rem}" +
-      "#asp-page{position:fixed;inset:0;z-index:99990;background:#f8fafc;overflow:auto;display:none;-webkit-overflow-scrolling:touch}" +
-      "#asp-page .asp-top{position:sticky;top:0;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:10px;padding:12px 14px;z-index:2}" +
-      "#asp-page .asp-top button{border:0;background:#eef2ff;border-radius:10px;width:38px;height:38px;font-size:1.1rem;cursor:pointer}" +
-      "#asp-page .asp-body{padding:14px;max-width:640px;margin:0 auto}.asp-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:14px;margin-bottom:10px}" +
-      ".asp-card p{margin:6px 0 0;color:#475569;font-size:.88rem;line-height:1.5}.asp-kv{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed #e2e8f0;font-size:.88rem}.asp-kv:last-child{border:0}.asp-kv span{color:#64748b}.asp-kv b{text-align:right;word-break:break-all}" +
-      ".asp-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.asp-btn{flex:1;min-width:120px;text-align:center;text-decoration:none;border:0;border-radius:12px;padding:11px 12px;font-weight:700;font-size:.9rem;cursor:pointer;background:#4f46e5;color:#fff}.asp-btn.g{background:#16a34a}.asp-btn.o{background:#eef2ff;color:#3730a3}.asp-btn.r{background:#fee2e2;color:#b91c1c}" +
-      ".asp-ok{color:#15803d;font-weight:700}.asp-bad{color:#b91c1c;font-weight:700}" +
-      "body.dark-mode .asp-row,body.dark-mode .asp-card,[data-theme=dark] .asp-row,[data-theme=dark] .asp-card{background:#1e293b;color:#e2e8f0;border-color:#334155}" +
-      "body.dark-mode #asp-page,[data-theme=dark] #asp-page{background:#0f172a;color:#e2e8f0}body.dark-mode #asp-page .asp-top,[data-theme=dark] #asp-page .asp-top{background:#1e293b;border-color:#334155}";
+      ".asp-wrap{margin-bottom:14px}.asp-i{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}" +
+      ".asp-hero{background:linear-gradient(135deg,#1e1b4b,#3730a3 60%,#4f46e5);border-radius:20px;padding:16px;color:#fff;display:flex;gap:14px;align-items:center;box-shadow:0 10px 22px rgba(49,46,129,.3);position:relative;overflow:hidden;margin-bottom:4px}" +
+      ".asp-hero:after{content:'';position:absolute;right:-30px;top:-30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.07)}" +
+      ".asp-av{width:60px;height:60px;border-radius:50%;border:3px solid #fbbf24;background:#fff;display:flex;align-items:center;justify-content:center;color:#312e81;font-weight:800;font-size:1.3rem;flex:none}" +
+      ".asp-hero b{font-size:1.05rem;display:block;position:relative}.asp-hero small{font-size:.76rem;opacity:.85;display:block;margin-top:2px;position:relative}" +
+      ".asp-pill{display:inline-flex;align-items:center;gap:5px;font-size:.7rem;font-weight:700;padding:3px 9px;border-radius:99px;margin-top:7px;background:#dcfce7;color:#15803d;position:relative}.asp-pill.r{background:#fee2e2;color:#b91c1c}.asp-pill i{width:7px;height:7px;border-radius:50%;background:currentColor;display:block}" +
+      ".asp-sec{font-size:.68rem;font-weight:800;color:#94a3b8;letter-spacing:.09em;margin:16px 4px 7px}" +
+      ".asp-grp{background:#fff;border-radius:18px;box-shadow:0 2px 10px rgba(15,23,42,.07);overflow:hidden}" +
+      ".asp-row{display:flex;align-items:center;gap:13px;width:100%;background:#fff;border:0;border-bottom:1px solid #f1f5f9;border-radius:0;padding:12px 14px;margin:0;text-align:left;cursor:pointer;font:inherit;color:#0f172a}.asp-row:last-child{border-bottom:0}" +
+      ".asp-row:active{background:#f8fafc}.asp-ic{width:42px;height:42px;border-radius:13px;display:flex;align-items:center;justify-content:center;flex:none;color:#fff}" +
+      ".asp-tx{flex:1;min-width:0}.asp-tx b{display:block;font-size:.93rem}.asp-tx small{display:block;color:#64748b;font-size:.76rem;margin-top:2px}.asp-ch{color:#cbd5e1;display:flex}.asp-ch .asp-i{width:18px;height:18px}" +
+      ".asp-logout{margin-top:16px;border:1px solid #fecaca!important;border-radius:16px!important}" +
+      "#asp-page{position:fixed;inset:0;z-index:99990;background:#f4f6fc;overflow:auto;display:none;-webkit-overflow-scrolling:touch}" +
+      "#asp-page .asp-top{position:sticky;top:0;background:linear-gradient(135deg,#1e1b4b,#312e81);color:#fff;display:flex;align-items:center;gap:12px;padding:14px;z-index:2}" +
+      "#asp-page .asp-top button{border:0;background:rgba(255,255,255,.15);color:#fff;border-radius:11px;width:38px;height:38px;cursor:pointer;display:flex;align-items:center;justify-content:center}" +
+      "#asp-page .asp-top b{font-size:1.05rem;display:block}#asp-page .asp-top small{display:block;font-size:.7rem;opacity:.7;margin-top:1px}" +
+      "#asp-page .asp-body{padding:14px;max-width:640px;margin:0 auto}.asp-card{background:#fff;border-radius:18px;box-shadow:0 2px 10px rgba(15,23,42,.07);padding:15px;margin-bottom:12px}" +
+      ".asp-card p{margin:6px 0 0;color:#64748b;font-size:.84rem;line-height:1.5}.asp-card h4{margin:0;font-size:.92rem;font-weight:800;display:flex;align-items:center;gap:8px}.asp-ctr{text-align:center}" +
+      ".asp-kv{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #f1f5f9}.asp-kv:last-child{border:0;padding-bottom:0}.asp-kv.f{padding-top:10px}" +
+      ".asp-kvi{width:34px;height:34px;border-radius:10px;background:#eef2ff;color:#4338ca;display:flex;align-items:center;justify-content:center;flex:none}.asp-kvi .asp-i{width:17px;height:17px}" +
+      ".asp-kv>div>span:first-child{display:block;font-size:.72rem;color:#94a3b8;font-weight:600}.asp-kv b{display:block;font-size:.88rem;margin-top:1px;word-break:break-all}" +
+      ".asp-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.asp-btn{flex:1;min-width:120px;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;border:0;border-radius:13px;padding:12px;font-weight:700;font-size:.9rem;cursor:pointer;background:linear-gradient(135deg,#f97316,#c2410c);color:#fff;box-shadow:0 6px 14px rgba(234,88,12,.3)}.asp-btn .asp-i{width:18px;height:18px}" +
+      ".asp-btn.g{background:linear-gradient(135deg,#22c55e,#15803d);box-shadow:0 6px 14px rgba(22,163,74,.28)}.asp-btn.o{background:#eef2ff;color:#3730a3;box-shadow:none}.asp-btn.r{background:#fee2e2;color:#b91c1c;box-shadow:none}" +
+      ".asp-ok{color:#15803d;font-weight:700}.asp-bad{color:#b91c1c;font-weight:700}.asp-h{font-weight:800;font-size:1.05rem;margin:2px 0 8px;color:var(--text,#0f172a)}" +
+      ".asp-bell{width:74px;height:74px;border-radius:50%;margin:4px auto 14px;background:linear-gradient(135deg,#fbbf24,#ea580c);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 0 0 8px #ffedd5,0 0 0 16px #fff7ed}.asp-bell .asp-i{width:34px;height:34px}" +
+      ".asp-stat{display:flex;align-items:center;justify-content:space-between;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:13px;padding:11px 13px;margin-top:12px;font-size:.85rem;font-weight:700}.asp-stat .l{display:flex;align-items:center;gap:10px}.asp-stat .asp-pill{margin:0}" +
+      ".asp-ping{width:10px;height:10px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 5px rgba(34,197,94,.25)}.asp-stat.bad{background:#fef2f2;border-color:#fecaca}.asp-stat.bad .asp-ping{background:#ef4444;box-shadow:0 0 0 5px rgba(239,68,68,.2)}.asp-stat.wait{background:#f8fafc;border-color:#e2e8f0}.asp-stat.wait .asp-ping{background:#94a3b8;box-shadow:0 0 0 5px rgba(148,163,184,.2)}" +
+      ".asp-note{display:flex;gap:10px;background:#fff7ed;border:1px solid #fed7aa;border-radius:13px;padding:11px 12px;margin-top:12px;font-size:.78rem;color:#9a3412;line-height:1.5}.asp-note .asp-i{width:18px;height:18px;margin-top:1px}" +
+      ".asp-ver{display:flex;align-items:center;gap:14px}.asp-ver img{width:54px;height:54px;border-radius:15px}.asp-sep{height:1px;background:#f1f5f9;margin:14px 0}" +
+      ".asp-line{display:flex;align-items:flex-start;gap:12px}.asp-line .asp-tx p{margin-top:3px}.asp-mini{font-size:.76rem;font-weight:700;padding:9px 14px;border-radius:10px;white-space:nowrap;align-self:center;border:0;cursor:pointer;background:#eef2ff;color:#3730a3}.asp-mini.g{background:#16a34a;color:#fff}" +
+      ".asp-tag{font-size:.66rem;font-weight:700;color:#64748b;background:#f1f5f9;padding:2px 8px;border-radius:6px;margin-top:6px;display:inline-block}" +
+      "body.dark-mode .asp-row,body.dark-mode .asp-card,body.dark-mode .asp-grp,[data-theme=dark] .asp-row,[data-theme=dark] .asp-card,[data-theme=dark] .asp-grp{background:#1e293b;color:#e2e8f0;border-color:#334155}" +
+      "body.dark-mode .asp-card p,[data-theme=dark] .asp-card p{color:#94a3b8}body.dark-mode .asp-kvi,[data-theme=dark] .asp-kvi{background:#334155;color:#a5b4fc}body.dark-mode .asp-btn.o,[data-theme=dark] .asp-btn.o,body.dark-mode .asp-mini,[data-theme=dark] .asp-mini{background:#334155;color:#c7d2fe}" +
+      "body.dark-mode #asp-page,[data-theme=dark] #asp-page{background:#0f172a;color:#e2e8f0}";
     document.head.appendChild(st);
   }
 
@@ -44,22 +90,25 @@
     profile: function (done) {
       var u = user() || {}, id = instId();
       loadInst().then(function (i) {
-        done("Profile & Institute",
-          '<div class="asp-card">' +
-          kv("Admin Email", u.email || "—") + kv("Email verified", u.emailVerified ? '<span class="asp-ok">✅ Haan</span>' : '<span class="asp-bad">⚠️ Nahi</span>') +
-          kv("Institute", esc(i.name || "—")) + kv("Institute ID", esc(id || "—")) +
-          kv("Status", i.active === false ? '<span class="asp-bad">Deactivated</span>' : '<span class="asp-ok">Active</span>') +
-          '</div><div class="asp-card"><b>ID Card / Logo</b><p>Apna photo, naam aur institute logo neeche ke "Aapka ID Card" section me badlein.</p><div class="asp-act"><button type="button" class="asp-btn o" data-go="idcard">ID Card par jaayein</button></div></div>');
+        var nm = esc(i.name || "—"), act = i.active === false;
+        done("Profile & Institute", "Aapki aur institute ki details",
+          '<div class="asp-card asp-ctr" style="padding:20px 15px"><div class="asp-av" style="margin:0 auto;width:78px;height:78px;font-size:1.7rem">' + esc(initials(i.name || u.email)) + '</div>' +
+          '<div style="font-size:1.1rem;font-weight:800;margin-top:10px">' + nm + '</div><div style="font-size:.78rem;color:#64748b;margin-top:2px">Admin' + (u.email ? " • " + esc(u.email) : "") + '</div>' +
+          '<span class="asp-pill' + (act ? " r" : "") + '"><i></i>' + (act ? "Deactivated" : "Active") + '</span></div>' +
+          '<div class="asp-card"><h4>' + ico("user") + ' Account Details</h4>' + kv("Admin Email", esc(u.email || "—"), "mail", 1) + kv("Email verified", u.emailVerified ? '<span class="asp-ok">Haan, verified</span>' : '<span class="asp-bad">Nahi</span>', "shield") + '</div>' +
+          '<div class="asp-card"><h4>' + ico("build") + ' Institute Details</h4>' + kv("Institute", nm, "build", 1) + kv("Institute ID", esc(id || "—"), "hash") + kv("Status", act ? '<span class="asp-bad">Deactivated</span>' : '<span class="asp-ok">Active</span>', "pulse") + '</div>' +
+          '<div class="asp-card"><div class="asp-line"><div class="asp-ic" style="background:' + TILE.amb + '">' + ico("idc") + '</div><div class="asp-tx"><b>ID Card / Logo</b><p>Photo, naam aur institute logo badlein.</p></div></div><div class="asp-act"><button type="button" class="asp-btn o" data-go="idcard">ID Card par jaayein ' + ico("chev") + '</button></div></div>');
       });
     },
     notif: function (done) {
       var url = "https://cool-thunder-a280.vishnu1234stm.workers.dev";
-      done("Notifications",
-        '<div class="asp-card"><b>Students ko notification</b><p>App band hone par bhi students ke phone par aati hai (free push system).</p>' +
-        '<div class="asp-act"><button type="button" class="asp-btn g" data-go="sendnotif">🔔 Notification bhejein</button></div></div>' +
-        '<div class="asp-card"><b>Push service status</b><div class="asp-kv"><span>Server</span><b id="asp-push-st">Check ho raha hai…</b></div>' +
-        '<p>Agar ❌ dikhe to Owner se contact karein. Students ko notification tabhi milegi jab unhone naya app install karke ek baar login kiya ho aur permission Allow ki ho.</p></div>');
-      fetch(url, { method: "GET" }).then(function (r) { return r.json(); }).then(function (j) { var e = $("asp-push-st"); if (e) e.innerHTML = j && j.ok ? '<span class="asp-ok">✅ Chalu hai</span>' : '<span class="asp-bad">❌ Jawab galat</span>'; }).catch(function () { var e = $("asp-push-st"); if (e) e.innerHTML = '<span class="asp-bad">❌ Connect nahi hua</span>'; });
+      done("Notifications", "Students ko push bhejein",
+        '<div class="asp-card asp-ctr" style="padding:20px 15px"><div class="asp-bell">' + ico("bell") + '</div><div style="font-size:1rem;font-weight:800">Students ko notification</div><p>App band hone par bhi students ke phone par aati hai (free push system).</p>' +
+        '<div class="asp-act"><button type="button" class="asp-btn" data-go="sendnotif">' + ico("send") + ' Notification bhejein</button></div></div>' +
+        '<div class="asp-card"><h4>' + ico("pulse") + ' Push service status</h4><div class="asp-stat wait" id="asp-push-box"><div class="l"><span class="asp-ping"></span>Server</div><span id="asp-push-st" style="font-size:.78rem;color:#64748b">Check ho raha hai…</span></div>' +
+        '<div class="asp-note">' + ico("alert") + '<div>Agar status ❌ dikhe to Owner se contact karein. Students ko notification tabhi milegi jab unhone naya app install karke ek baar login kiya ho aur permission Allow ki ho.</div></div></div>');
+      var setSt = function (ok, txt) { var b = $("asp-push-box"), e = $("asp-push-st"); if (!b || !e) return; b.className = "asp-stat" + (ok ? "" : " bad"); e.className = "asp-pill" + (ok ? "" : " r"); e.removeAttribute("style"); e.innerHTML = "<i></i>" + txt; };
+      fetch(url, { method: "GET" }).then(function (r) { return r.json(); }).then(function (j) { setSt(j && j.ok, j && j.ok ? "Chalu hai" : "Jawab galat"); }).catch(function () { setSt(false, "Connect nahi hua"); });
     },
     help: function (done) {
       var c = C(), ph = digits(c.supportPhone), wa = digits(c.supportWhatsapp || c.supportPhone), em = c.supportEmail || "";
@@ -68,25 +117,28 @@
       if (wa) acts += '<a class="asp-btn g" target="_blank" rel="noopener" href="https://wa.me/91' + wa + '?text=' + encodeURIComponent("Namaste, SnapTestPro Admin se madad chahiye.") + '">💬 WhatsApp</a>';
       if (em) acts += '<a class="asp-btn o" href="mailto:' + esc(em) + '?subject=' + encodeURIComponent("SnapTestPro Admin Support") + '">✉️ Email</a>';
       var faqs = (c.adminFaqs || []).map(function (f) { return '<div class="asp-card"><b>' + esc(f[0]) + '</b><p>' + esc(f[1]) + '</p></div>'; }).join("");
-      done("Help & Support",
+      done("Help & Support", "Humse sampark karein",
         '<div class="asp-card"><b>Koi problem hai?</b><p>Owner / Developer se seedha contact karein.' + (c.supportHours ? "<br>🕒 " + esc(c.supportHours) : "") + '</p>' +
         (acts ? '<div class="asp-act">' + acts + '</div>' : "") + '</div>' + (faqs ? '<div class="asp-h" style="margin-top:14px">Aam sawal</div>' + faqs : ""));
     },
     about: function (done) {
       var c = C();
-      done("About App",
+      done("About App", "App ki jaankari",
         '<div class="asp-card" style="text-align:center"><img src="icon-512-maskable.png" alt="" style="width:76px;height:76px;border-radius:18px"><div style="font-weight:800;font-size:1.2rem;margin-top:8px">' + esc(c.appName || "SnapTestPro") + '</div><p>' + esc(c.tagline || "") + '</p></div>' +
         '<div class="asp-card">' + kv("Version", esc((c.version || "") + (c.build ? " (build " + esc(c.build) + ")" : ""))) + (c.ownerName ? kv("Developer / Owner", esc(c.ownerName)) : "") + (c.website ? kv("Website", esc(c.website)) : "") + '</div>' +
         legal());
     },
     data: function (done) {
-      done("App & Data",
-        '<div class="asp-card"><b>Update check</b><p>Latest version laga hua hai ya nahi dekhein.</p><div class="asp-act"><button type="button" class="asp-btn" data-go="update">📈 Update check karein</button></div></div>' +
-        '<div class="asp-card"><b>Cache saaf karke refresh</b><p>Kuch purana ya adhura dikhe to ye karein. Aapka login bana rahega.</p><div class="asp-act"><button type="button" class="asp-btn o" data-go="cache">⚙️ Cache saaf karein</button></div></div>' +
-        '<div class="asp-card"><b>Question Bank dobara load karein</b><p>Agar doosre admin ne questions jode hon aur yahan na dikhein to ye dabayein (Firestore reads lagenge).</p><div class="asp-act"><button type="button" class="asp-btn o" data-go="bank">🔄 Bank refresh</button></div></div>' +
-        '<div class="asp-card"><b>Bank students ke liye publish karein</b><p>Students ko bank Firestore ke bajay Cloudflare se milta hai (reads 0). Normally ye apne-aap hota hai; kabhi na ho to yahan dabayein.</p><div class="asp-act"><button type="button" class="asp-btn g" data-go="pub">⬆️ Bank publish karein</button></div></div>');
+      var c = C();
+      done("App & Data", "Update, cache aur question bank",
+        '<div class="asp-card"><div class="asp-ver"><img src="icon-512-maskable.png" alt=""><div><b style="font-size:1rem">' + esc(c.appName || "SnapTest Pro") + '</b><div style="font-size:.76rem;color:#64748b;margin-top:2px">' + esc(c.tagline || "") + '</div><span class="asp-pill"><i></i>Version ' + esc((c.version || "") + (c.build ? " (" + c.build + ")" : "")) + '</span></div></div></div>' +
+        '<div class="asp-card"><div class="asp-line"><div class="asp-ic" style="background:' + TILE.ind + '">' + ico("dl") + '</div><div class="asp-tx"><b>Update check</b><p>Latest version laga hai ya nahi dekhein.</p></div></div><div class="asp-act"><button type="button" class="asp-btn" data-go="update">' + ico("refresh") + ' Update check karein</button></div>' +
+        '<div class="asp-sep"></div><div class="asp-line"><div class="asp-ic" style="background:' + TILE.tea + '">' + ico("trash") + '</div><div class="asp-tx"><b>Cache saaf karke refresh</b><p>Kuch purana ya adhura dikhe to ye karein. Aapka login bana rahega.</p></div></div><div class="asp-act"><button type="button" class="asp-btn o" data-go="cache">' + ico("trash") + ' Cache saaf karein</button></div></div>' +
+        '<div class="asp-card"><h4>' + ico("db") + ' Question Bank</h4>' +
+        '<div class="asp-line" style="margin-top:12px"><div class="asp-tx"><b>Bank dobara load karein</b><p>Doosre admin ne questions jode hon aur yahan na dikhein to dabayein.</p><span class="asp-tag">Firestore reads lagenge</span></div><button type="button" class="asp-mini" data-go="bank">Refresh</button></div>' +
+        '<div class="asp-sep"></div><div class="asp-line"><div class="asp-tx"><b>Bank students ke liye publish</b><p>Students ko bank Cloudflare se milta hai (reads 0). Normally ye apne-aap hota hai; kabhi na ho to yahan dabayein.</p><span class="asp-tag">Reads: 0</span></div><button type="button" class="asp-mini g" data-go="pub">Publish</button></div></div>');
     },
-    privacy: function (done) { done("Privacy & Terms", legal(true)); }
+    privacy: function (done) { done("Privacy & Terms", "Aapke data ke baare me", legal(true)); }
   };
   function legal(only) {
     var c = C(), a = "";
@@ -95,15 +147,16 @@
     var txt = '<div class="asp-card"><b>Aapka data</b><p>Students ka naam, mobile, results aur tests sirf aapke institute ke liye hain aur Firebase (Google) par surakshit rakhe jaate hain. Kisi doosre institute ko ye data nahi dikhta.</p>' + (a ? '<div class="asp-act">' + a + '</div>' : "") + '</div>';
     return only || a ? txt : "";
   }
-  function kv(k, v) { return '<div class="asp-kv"><span>' + k + '</span><b>' + v + '</b></div>'; }
+  function kv(k, v, ic, first) { return '<div class="asp-kv' + (first ? " f" : "") + '">' + (ic ? '<div class="asp-kvi">' + ico(ic) + "</div>" : "") + '<div style="flex:1;min-width:0"><span>' + k + '</span><b>' + v + "</b></div></div>"; }
+  function initials(n) { var p = String(n || "A").replace(/@.*/, "").trim().split(/\s+/); return ((p[0] || "A")[0] + (p[1] ? p[1][0] : "")).toUpperCase(); }
 
   /* ---------- page shell ---------- */
   function openPage(key) {
     var f = pages[key]; if (!f) return;
     var pg = $("asp-page");
     if (!pg) { pg = document.createElement("div"); pg.id = "asp-page"; document.body.appendChild(pg); }
-    pg.style.display = "block"; pg.innerHTML = '<div class="asp-top"><button type="button" data-go="back">←</button><b>…</b></div><div class="asp-body"></div>';
-    f(function (title, html) { if (pg.style.display === "none") return; pg.querySelector(".asp-top b").textContent = title; pg.querySelector(".asp-body").innerHTML = html; });
+    pg.style.display = "block"; pg.innerHTML = '<div class="asp-top"><button type="button" data-go="back">' + ico("back") + '</button><div><b>…</b><small></small></div></div><div class="asp-body"></div>';
+    f(function (title, sub, html) { if (pg.style.display === "none") return; pg.querySelector(".asp-top b").textContent = title; pg.querySelector(".asp-top small").textContent = sub || ""; pg.querySelector(".asp-body").innerHTML = html; });
   }
   function closePage() { var pg = $("asp-page"); if (pg) pg.style.display = "none"; }
 
@@ -123,22 +176,20 @@
   });
 
   /* ---------- menu inject ---------- */
-  function row(ic, bg, t, s, k) { return '<button type="button" class="asp-row" data-asp="' + k + '"><span class="asp-ic" style="background:' + bg + '">' + ic + '</span><span class="asp-tx"><b>' + t + '</b><small>' + s + '</small></span><span class="asp-ch">›</span></button>'; }
+  function row(ic, bg, t, s, k) { return '<button type="button" class="asp-row" data-asp="' + k + '"><span class="asp-ic" style="background:' + TILE[bg] + '">' + ico(ic) + '</span><span class="asp-tx"><b>' + t + '</b><small>' + s + '</small></span><span class="asp-ch">' + ico("chev") + '</span></button>'; }
   function mount() {
     try {
       var box = $("settings-box"); if (!box) return; css();
       var m = $("asp-menu");
       if (!m) {
         m = document.createElement("div"); m.id = "asp-menu"; m.className = "asp-wrap";
-        m.innerHTML = '<div class="asp-h">⚙️ Settings</div>' +
-          row("👤", "#e0e7ff", "Profile & Institute", "Email, institute, status", "profile") +
-          row("🔔", "#fef3c7", "Notifications", "Students ko push bhejna, status", "notif") +
-          row("📱", "#d9f7f3", "App & Data", "Update, cache, bank refresh", "data") +
-          row("🎧", "#dbeafe", "Help & Support", "Call / WhatsApp / Email, FAQ", "help") +
-          row("ℹ️", "#e5e7eb", "About App", "Version " + esc((C().version || "") + (C().build ? " (" + C().build + ")" : "")), "about") +
-          row("🔒", "#fce7f3", "Privacy & Terms", "Aapke data ke baare me", "privacy") +
-          '<button type="button" class="asp-row" id="asp-logout" style="border-color:#fecaca"><span class="asp-ic" style="background:#fee2e2">🚪</span><span class="asp-tx"><b style="color:#b91c1c">Logout</b><small>Is device se admin logout</small></span></button>';
+        m.innerHTML = '<div class="asp-hero"><div class="asp-av" id="asp-hero-av">' + esc(initials((user() || {}).email)) + '</div><div><b id="asp-hero-nm">Admin</b><small id="asp-hero-sub">' + esc((user() || {}).email || "Admin") + '</small><span class="asp-pill" id="asp-hero-st"><i></i>Institute Active</span></div></div>' +
+          '<div class="asp-sec">ACCOUNT</div><div class="asp-grp">' + row("user", "ind", "Profile & Institute", "Email, institute, status", "profile") + '</div>' +
+          '<div class="asp-sec">MANAGE</div><div class="asp-grp">' + row("bell", "amb", "Notifications", "Students ko push bhejna, status", "notif") + row("phone", "tea", "App & Data", "Update, cache, bank refresh", "data") + '</div>' +
+          '<div class="asp-sec">SUPPORT</div><div class="asp-grp">' + row("help", "blu", "Help & Support", "Call / WhatsApp / Email, FAQ", "help") + row("info", "gry", "About App", "Version " + esc((C().version || "") + (C().build ? " (" + C().build + ")" : "")), "about") + row("lock", "pnk", "Privacy & Terms", "Aapke data ke baare me", "privacy") + '</div>' +
+          '<button type="button" class="asp-row asp-logout" id="asp-logout"><span class="asp-ic" style="background:' + TILE.red + '">' + ico("out") + '</span><span class="asp-tx"><b style="color:#b91c1c">Logout</b><small>Is device se admin logout</small></span></button>';
         var first = box.querySelector(".card"); if (first && first.nextSibling) box.insertBefore(m, first.nextSibling); else box.insertBefore(m, box.firstChild);
+        loadInst().then(function (i) { var n = $("asp-hero-nm"); if (!n || !i) return; if (i.name) { n.textContent = i.name; $("asp-hero-av").textContent = initials(i.name); } var st = $("asp-hero-st"); if (st && i.active === false) { st.className = "asp-pill r"; st.innerHTML = "<i></i>Deactivated"; } });
         $("asp-logout").addEventListener("click", function () { var b = $("admin-logout-btn"); if (b) b.click(); else toast("Logout button nahi mila"); });
       }
     } catch (e) { console.warn("[asp] mount fail", e); }
