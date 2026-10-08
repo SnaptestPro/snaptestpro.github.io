@@ -27,10 +27,13 @@
     db: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
     up: '<path d="M12 19V5M5 12l7-7 7 7"/>', dl: '<path d="M12 3v12M6 11l6 6 6-6M4 21h16"/>',
     alert: '<path d="M12 3l10 18H2zM12 10v5M12 18h.01"/>',
+    key: '<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3M14 9l2 2"/>',
+    palette: '<path d="M12 3a9 9 0 1 0 0 18c1.5 0 2-1 1.5-2-.5-1 0-2 1.5-2H17a4 4 0 0 0 4-4c0-5-4-10-9-10z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>',
+    crown: '<path d="M3 8l4 4 5-7 5 7 4-4-2 11H5z"/>',
     idc: '<rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17c.8-2 5.2-2 6 0M14 9h4M14 13h4"/>'
   };
   var ico = function (n) { return '<svg class="asp-i" viewBox="0 0 24 24">' + (IC[n] || "") + "</svg>"; };
-  var TILE = { ind: "linear-gradient(135deg,#6366f1,#4338ca)", amb: "linear-gradient(135deg,#fbbf24,#ea580c)", tea: "linear-gradient(135deg,#2dd4bf,#0f766e)", blu: "linear-gradient(135deg,#60a5fa,#1d4ed8)", gry: "linear-gradient(135deg,#94a3b8,#475569)", pnk: "linear-gradient(135deg,#f472b6,#be185d)", red: "linear-gradient(135deg,#f87171,#b91c1c)" };
+  var TILE = { pur: "linear-gradient(135deg,#c084fc,#7e22ce)", orc: "linear-gradient(135deg,#fb923c,#c2410c)", idg: "linear-gradient(135deg,#818cf8,#3730a3)", ind: "linear-gradient(135deg,#6366f1,#4338ca)", amb: "linear-gradient(135deg,#fbbf24,#ea580c)", tea: "linear-gradient(135deg,#2dd4bf,#0f766e)", blu: "linear-gradient(135deg,#60a5fa,#1d4ed8)", gry: "linear-gradient(135deg,#94a3b8,#475569)", pnk: "linear-gradient(135deg,#f472b6,#be185d)", red: "linear-gradient(135deg,#f87171,#b91c1c)" };
 
   function css() {
     if ($("asp-css")) return;
@@ -67,6 +70,13 @@
       ".asp-ver{display:flex;align-items:center;gap:14px}.asp-ver img{width:54px;height:54px;border-radius:15px}.asp-sep{height:1px;background:#f1f5f9;margin:14px 0}" +
       ".asp-line{display:flex;align-items:flex-start;gap:12px}.asp-line .asp-tx p{margin-top:3px}.asp-mini{font-size:.76rem;font-weight:700;padding:9px 14px;border-radius:10px;white-space:nowrap;align-self:center;border:0;cursor:pointer;background:#eef2ff;color:#3730a3}.asp-mini.g{background:#16a34a;color:#fff}" +
       ".asp-tag{font-size:.66rem;font-weight:700;color:#64748b;background:#f1f5f9;padding:2px 8px;border-radius:6px;margin-top:6px;display:inline-block}" +
+      "#settings-box>*:not(#asp-menu){display:none!important}" +
+      ".asp-big{width:62px;height:62px;border-radius:50%;margin:0 auto 8px;background:linear-gradient(135deg,#4ade80,#15803d);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 7px #dcfce7,0 0 0 14px #f0fdf4}.asp-big.off{background:linear-gradient(135deg,#94a3b8,#475569);box-shadow:0 0 0 7px #f1f5f9,0 0 0 14px #f8fafc}.asp-big .asp-i{width:28px;height:28px}" +
+      ".asp-code{display:inline-block;background:#f1f5f9;border:1.5px dashed #94a3b8;border-radius:10px;padding:7px 16px;font-weight:800;letter-spacing:.18em;font-size:1rem;margin-top:6px;color:#1e1b4b}" +
+      ".asp-lbl{font-size:.68rem;font-weight:800;color:#c2410c;letter-spacing:.06em;margin:14px 0 6px}" +
+      "#asp-page #institute-joincode-input{width:100%;box-sizing:border-box;border:1.5px solid #e2e8f0;background:#f8fafc;border-radius:12px;padding:12px 13px;font-size:.95rem;letter-spacing:.05em;text-transform:uppercase;color:#0f172a;margin:0}" +
+      "#asp-page #seed-questions-btn{display:flex;align-items:center;justify-content:center;width:100%;margin:12px 0 0;border:0;border-radius:13px;padding:12px;font-weight:700;font-size:.88rem;color:#fff;cursor:pointer;background:linear-gradient(135deg,#3b82f6,#1d4ed8)!important;box-shadow:0 6px 14px rgba(37,99,235,.3)}" +
+      "#asp-page #admin-idcard-outer{margin:0}#asp-page #admin-institute-logo-status{margin:8px 0 0;font-size:.78rem;color:#64748b}" +
       "body.dark-mode .asp-row,body.dark-mode .asp-card,body.dark-mode .asp-grp,[data-theme=dark] .asp-row,[data-theme=dark] .asp-card,[data-theme=dark] .asp-grp{background:#1e293b;color:#e2e8f0;border-color:#334155}" +
       "body.dark-mode .asp-card p,[data-theme=dark] .asp-card p{color:#94a3b8}body.dark-mode .asp-kvi,[data-theme=dark] .asp-kvi{background:#334155;color:#a5b4fc}body.dark-mode .asp-btn.o,[data-theme=dark] .asp-btn.o,body.dark-mode .asp-mini,[data-theme=dark] .asp-mini{background:#334155;color:#c7d2fe}" +
       "body.dark-mode #asp-page,[data-theme=dark] #asp-page{background:#0f172a;color:#e2e8f0}";
@@ -95,9 +105,10 @@
           '<div class="asp-card asp-ctr" style="padding:20px 15px"><div class="asp-av" style="margin:0 auto;width:78px;height:78px;font-size:1.7rem">' + esc(initials(i.name || u.email)) + '</div>' +
           '<div style="font-size:1.1rem;font-weight:800;margin-top:10px">' + nm + '</div><div style="font-size:.78rem;color:#64748b;margin-top:2px">Admin' + (u.email ? " • " + esc(u.email) : "") + '</div>' +
           '<span class="asp-pill' + (act ? " r" : "") + '"><i></i>' + (act ? "Deactivated" : "Active") + '</span></div>' +
+          '<div class="asp-card" style="padding:13px"><h4>' + ico("idc") + ' Aapka ID Card</h4><p style="margin:5px 0 11px">Logo par click karke institute ka logo lagayein — turant sabhi students ke ID Card par bhi dikhega. Photo aur Naam par click/✏️ se apni details set karein.</p><div data-borrow="admin-idcard-outer,admin-institute-logo-status"></div></div>' +
           '<div class="asp-card"><h4>' + ico("user") + ' Account Details</h4>' + kv("Admin Email", esc(u.email || "—"), "mail", 1) + kv("Email verified", u.emailVerified ? '<span class="asp-ok">Haan, verified</span>' : '<span class="asp-bad">Nahi</span>', "shield") + '</div>' +
           '<div class="asp-card"><h4>' + ico("build") + ' Institute Details</h4>' + kv("Institute", nm, "build", 1) + kv("Institute ID", esc(id || "—"), "hash") + kv("Status", act ? '<span class="asp-bad">Deactivated</span>' : '<span class="asp-ok">Active</span>', "pulse") + '</div>' +
-          '<div class="asp-card"><div class="asp-line"><div class="asp-ic" style="background:' + TILE.amb + '">' + ico("idc") + '</div><div class="asp-tx"><b>ID Card / Logo</b><p>Photo, naam aur institute logo badlein.</p></div></div><div class="asp-act"><button type="button" class="asp-btn o" data-go="idcard">ID Card par jaayein ' + ico("chev") + '</button></div></div>');
+          '');
       });
     },
     notif: function (done) {
@@ -136,10 +147,48 @@
         '<div class="asp-sep"></div><div class="asp-line"><div class="asp-ic" style="background:' + TILE.tea + '">' + ico("trash") + '</div><div class="asp-tx"><b>Cache saaf karke refresh</b><p>Kuch purana ya adhura dikhe to ye karein. Aapka login bana rahega.</p></div></div><div class="asp-act"><button type="button" class="asp-btn o" data-go="cache">' + ico("trash") + ' Cache saaf karein</button></div></div>' +
         '<div class="asp-card"><h4>' + ico("db") + ' Question Bank</h4>' +
         '<div class="asp-line" style="margin-top:12px"><div class="asp-tx"><b>Bank dobara load karein</b><p>Doosre admin ne questions jode hon aur yahan na dikhein to dabayein.</p><span class="asp-tag">Firestore reads lagenge</span></div><button type="button" class="asp-mini" data-go="bank">Refresh</button></div>' +
-        '<div class="asp-sep"></div><div class="asp-line"><div class="asp-tx"><b>Bank students ke liye publish</b><p>Students ko bank Cloudflare se milta hai (reads 0). Normally ye apne-aap hota hai; kabhi na ho to yahan dabayein.</p><span class="asp-tag">Reads: 0</span></div><button type="button" class="asp-mini g" data-go="pub">Publish</button></div></div>');
+        '<div class="asp-sep"></div><div class="asp-line"><div class="asp-tx"><b>Bank students ke liye publish</b><p>Students ko bank Cloudflare se milta hai (reads 0). Normally ye apne-aap hota hai; kabhi na ho to yahan dabayein.</p><span class="asp-tag">Reads: 0</span></div><button type="button" class="asp-mini g" data-go="pub">Publish</button></div>' +
+        '<div class="asp-sep"></div><div><b style="font-size:.88rem">Seed All Questions</b><p>Pehli baar click karo — sare subjects (Math &amp; History) ke questions Firebase mein save/update ho jayenge.</p><span class="asp-tag">Sirf pehli baar</span><div data-borrow="seed-questions-btn"></div></div></div>');
+    },
+    joincode: function (done) {
+      if (typeof window.loadInstituteJoinCodeStatus === "function") { try { window.loadInstituteJoinCodeStatus(); } catch (e) {} }
+      done("Institute Join Code", "Student registration ki suraksha",
+        '<div class="asp-card asp-ctr" style="padding:20px 15px"><div class="asp-big" id="asp-jc-ic">' + ico("shield") + '</div><div id="asp-jc-t" style="font-size:1rem;font-weight:800;margin-top:12px">Check ho raha hai…</div><p id="asp-jc-p" style="display:none">Abhi ka code</p><span class="asp-code" id="asp-jc-code" style="display:none"></span></div>' +
+        '<div class="asp-card"><h4>' + ico("key") + ' Naya code set / badlein</h4><div class="asp-lbl">NAYA CODE</div><div data-borrow="institute-joincode-input"></div>' +
+        '<div class="asp-act" style="flex-direction:column"><button type="button" class="asp-btn" data-go="jcsave">' + ico("db") + ' Code Save Karein</button><button type="button" class="asp-btn r" data-go="jcoff">' + ico("alert") + ' Protection Hatayein</button></div></div>' +
+        '<div class="asp-note">' + ico("alert") + '<div>Naye students ko registration ke waqt ye code dena hoga — isse koi bhi bina permission ke aapke institute mein register nahi kar payega. Ye code sirf apne asli students ko hi dein.</div></div>' +
+        '<div style="display:none" data-borrow="institute-joincode-status" data-after="jc"></div>');
+    },
+    pwd: function (done) {
+      done("Admin Password", "Password aur recovery",
+        '<div class="asp-card asp-ctr" style="padding:20px 15px"><div class="asp-bell" style="background:linear-gradient(135deg,#fb923c,#c2410c);box-shadow:0 0 0 8px #ffedd5,0 0 0 16px #fff7ed">' + ico("lock") + '</div><div style="font-size:1rem;font-weight:800">Aapka password surakshit hai</div><p>Password Firebase mein save hota hai, isliye har device par same rahega.</p></div>' +
+        '<div class="asp-grp">' + row2("refresh", "orc", "Change Password", "Naya password set karein", "pw") + row2("info", "blu", "Recovery Info", "Password bhool jaayein to kaise milega", "rec") + '</div>' +
+        '<button type="button" class="asp-row asp-logout" data-go="lo" style="margin-top:14px"><span class="asp-ic" style="background:' + TILE.red + '">' + ico("out") + '</span><span class="asp-tx"><b style="color:#b91c1c">Admin Logout</b><small>Is device se admin logout</small></span></button>');
     },
     privacy: function (done) { done("Privacy & Terms", "Aapke data ke baare me", legal(true)); }
   };
+  function row2(ic, bg, t, sub, go) { return '<button type="button" class="asp-row" data-go="' + go + '"><span class="asp-ic" style="background:' + TILE[bg] + '">' + ico(ic) + '</span><span class="asp-tx"><b>' + t + '</b><small>' + sub + '</small></span><span class="asp-ch">' + ico("chev") + '</span></button>'; }
+  /* purane elements (ID Card, join-code box, seed button) ko naye page me "udhaar" lete hain — original id/handlers waise hi rehte hain */
+  var borrowed = [];
+  function borrow(host) {
+    String(host.getAttribute("data-borrow")).split(",").forEach(function (id) {
+      var n = $(id); if (!n || n.parentNode === host) return;
+      borrowed.push({ n: n, p: n.parentNode, nx: n.nextSibling }); host.appendChild(n);
+    });
+  }
+  function giveBack() {
+    while (borrowed.length) { var b = borrowed.pop(); try { if (b.nx && b.nx.parentNode === b.p) b.p.insertBefore(b.n, b.nx); else b.p.appendChild(b.n); } catch (e) {} }
+    if (jcObs) { jcObs.disconnect(); jcObs = null; }
+  }
+  var jcObs = null;
+  function jcInfo(el) { var t = (el && el.textContent) || "", on = /ON/i.test(t) && !/OFF|band|nahi/i.test(t), m = t.match(/code\s*:\s*([A-Za-z0-9_-]+)/i); return { on: on, code: m ? m[1].toUpperCase() : "", loading: /loading/i.test(t) || !t.trim() }; }
+  function jcPaint() {
+    var el = $("institute-joincode-status"), i = jcInfo(el), ic = $("asp-jc-ic"), t = $("asp-jc-t"), p = $("asp-jc-p"), c = $("asp-jc-code"); if (!ic || !t) return;
+    if (i.loading) { t.textContent = "Check ho raha hai…"; return; }
+    ic.className = "asp-big" + (i.on ? "" : " off"); t.textContent = i.on ? "Protection ON" : "Protection OFF";
+    p.style.display = c.style.display = i.on && i.code ? "" : "none"; c.textContent = i.code;
+  }
+  function jcMenuSub() { var e = $("asp-jc-sub"); if (!e) return; var i = jcInfo($("institute-joincode-status")); e.textContent = i.loading ? "Student registration ki suraksha" : (i.on ? "Protection ON" + (i.code ? " • " + i.code : "") : "Protection OFF"); }
   function legal(only) {
     var c = C(), a = "";
     if (c.privacyUrl) a += '<a class="asp-btn o" target="_blank" rel="noopener" href="' + esc(c.privacyUrl) + '">🔒 Privacy Policy</a>';
@@ -152,13 +201,17 @@
 
   /* ---------- page shell ---------- */
   function openPage(key) {
+    if (key === "theme") { try { window.ThemeManager && ThemeManager.togglePicker(); } catch (e) {} return; }
+    if (key === "owner") { try { if (typeof window.__openOwnerPanelSafe === "function") window.__openOwnerPanelSafe(); else toast("Owner Panel available nahi"); } catch (e) {} return; }
     var f = pages[key]; if (!f) return;
+    giveBack();
     var pg = $("asp-page");
     if (!pg) { pg = document.createElement("div"); pg.id = "asp-page"; document.body.appendChild(pg); }
     pg.style.display = "block"; pg.innerHTML = '<div class="asp-top"><button type="button" data-go="back">' + ico("back") + '</button><div><b>…</b><small></small></div></div><div class="asp-body"></div>';
-    f(function (title, sub, html) { if (pg.style.display === "none") return; pg.querySelector(".asp-top b").textContent = title; pg.querySelector(".asp-top small").textContent = sub || ""; pg.querySelector(".asp-body").innerHTML = html; });
+    f(function (title, sub, html) { if (pg.style.display === "none") return; pg.querySelector(".asp-top b").textContent = title; pg.querySelector(".asp-top small").textContent = sub || ""; pg.querySelector(".asp-body").innerHTML = html;
+      Array.prototype.forEach.call(pg.querySelectorAll("[data-borrow]"), function (h) { borrow(h); if (h.getAttribute("data-after") === "jc") { var el = $("institute-joincode-status"); jcPaint(); if (el && window.MutationObserver) { jcObs = new MutationObserver(function () { jcPaint(); jcMenuSub(); }); jcObs.observe(el, { childList: true, characterData: true, subtree: true }); } } }); });
   }
-  function closePage() { var pg = $("asp-page"); if (pg) pg.style.display = "none"; }
+  function closePage() { var pg = $("asp-page"); if (pg) pg.style.display = "none"; giveBack(); }
 
   document.addEventListener("click", function (ev) {
     var t = ev.target.closest ? ev.target.closest("[data-asp],[data-go]") : null; if (!t) return;
@@ -168,6 +221,11 @@
     ev.preventDefault();
     if (g === "idcard") { closePage(); var el = $("admin-idcard-outer"); el && el.scrollIntoView({ behavior: "smooth", block: "center" }); }
     else if (g === "sendnotif") { closePage(); var card = document.querySelector('[onclick*="an-open"],[data-an],#an-open-btn') || document.querySelector('[id^="an-"]'); if (typeof goAdmin === "function") { try { backToAdminDashboard(); } catch (e) {} } toast("Dashboard par '🔔 Notification' card dabayein"); }
+    else if (g === "jcsave") { if (typeof window.saveInstituteJoinCode === "function") window.saveInstituteJoinCode(); else toast("Available nahi"); }
+    else if (g === "jcoff") { if (typeof window.disableInstituteJoinCode === "function") window.disableInstituteJoinCode(); else toast("Available nahi"); }
+    else if (g === "pw") { var b1 = $("change-admin-password-btn"); b1 ? b1.click() : toast("Button nahi mila"); }
+    else if (g === "rec") { var b2 = $("set-recovery-btn"); b2 ? b2.click() : toast("Button nahi mila"); }
+    else if (g === "lo") { var b3 = $("admin-logout-btn"); b3 ? b3.click() : toast("Logout button nahi mila"); }
     else if (g === "update") { toast("⏳ Update check ho raha hai..."); if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) navigator.serviceWorker.getRegistration().then(function (r) { if (!r) return toast("✅ Aap latest version par hain"); return r.update().then(function () { if (r.installing || r.waiting) { toast("⬆️ Naya version mil gaya — reload ho raha hai"); setTimeout(function () { location.reload(); }, 1200); } else toast("✅ Aap latest version par hain"); }); }).catch(function () { toast("Update check nahi ho paya"); }); else toast("✅ Aap latest version par hain"); }
     else if (g === "cache") { toast("⏳ Cache saaf ho raha hai..."); var keep = {}; try { Object.keys(localStorage).forEach(function (k2) { if (/session|auth|firebase|savya_student|admin/i.test(k2)) keep[k2] = localStorage.getItem(k2); }); } catch (e) {}
       Promise.resolve(window.caches && caches.keys ? caches.keys().then(function (ks) { return Promise.all(ks.map(function (k2) { return caches.delete(k2); })); }) : 0).then(function () { return navigator.serviceWorker && navigator.serviceWorker.getRegistrations ? navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.update(); })); }) : 0; }).catch(function () {}).then(function () { try { localStorage.removeItem("savya_bank_cache"); localStorage.removeItem("snap_bank_sync_ts"); } catch (e) {} setTimeout(function () { location.reload(); }, 600); }); }
@@ -184,11 +242,13 @@
       if (!m) {
         m = document.createElement("div"); m.id = "asp-menu"; m.className = "asp-wrap";
         m.innerHTML = '<div class="asp-hero"><div class="asp-av" id="asp-hero-av">' + esc(initials((user() || {}).email)) + '</div><div><b id="asp-hero-nm">Admin</b><small id="asp-hero-sub">' + esc((user() || {}).email || "Admin") + '</small><span class="asp-pill" id="asp-hero-st"><i></i>Institute Active</span></div></div>' +
-          '<div class="asp-sec">ACCOUNT</div><div class="asp-grp">' + row("user", "ind", "Profile & Institute", "Email, institute, status", "profile") + '</div>' +
-          '<div class="asp-sec">MANAGE</div><div class="asp-grp">' + row("bell", "amb", "Notifications", "Students ko push bhejna, status", "notif") + row("phone", "tea", "App & Data", "Update, cache, bank refresh", "data") + '</div>' +
-          '<div class="asp-sec">SUPPORT</div><div class="asp-grp">' + row("help", "blu", "Help & Support", "Call / WhatsApp / Email, FAQ", "help") + row("info", "gry", "About App", "Version " + esc((C().version || "") + (C().build ? " (" + C().build + ")" : "")), "about") + row("lock", "pnk", "Privacy & Terms", "Aapke data ke baare me", "privacy") + '</div>' +
-          '<button type="button" class="asp-row asp-logout" id="asp-logout"><span class="asp-ic" style="background:' + TILE.red + '">' + ico("out") + '</span><span class="asp-tx"><b style="color:#b91c1c">Logout</b><small>Is device se admin logout</small></span></button>';
+          '<div class="asp-sec">ACCOUNT</div><div class="asp-grp">' + row("user", "ind", "Profile & Institute", "ID Card, email, institute, status", "profile") + row("key", "tea", "Institute Join Code", "Student registration ki suraksha", "joincode").replace("<small>", '<small id="asp-jc-sub">') + row("lock", "orc", "Admin Password", "Change password, recovery info", "pwd") + '</div>' +
+          '<div class="asp-sec">MANAGE</div><div class="asp-grp">' + row("bell", "amb", "Notifications", "Students ko push bhejna, status", "notif") + row("phone", "idg", "App & Data", "Update, cache, bank, seed", "data") + row("palette", "pur", "App Theme", "100+ themes mein se chunein", "theme") + '</div>' +
+          '<div class="asp-sec">SUPPORT</div><div class="asp-grp">' + row("help", "blu", "Help & Support", "Call / WhatsApp / Email, FAQ", "help") + row("info", "gry", "About App", "Version " + esc((C().version || "") + (C().build ? " (" + C().build + ")" : "")), "about") + row("shield", "pnk", "Privacy & Terms", "Aapke data ke baare me", "privacy") + '</div>' +
+          '<div class="asp-sec">OWNER</div><div class="asp-grp">' + row("crown", "ind", "Owner Panel", "Har institute ka admin manage karein", "owner") + '</div>' +
+          '<button type="button" class="asp-row asp-logout" id="asp-logout"><span class="asp-ic" style="background:' + TILE.red + '">' + ico("out") + '</span><span class="asp-tx"><b style="color:#b91c1c">Admin Logout</b><small>Is device se admin logout</small></span></button>';
         var first = box.querySelector(".card"); if (first && first.nextSibling) box.insertBefore(m, first.nextSibling); else box.insertBefore(m, box.firstChild);
+        try { var jcEl = $("institute-joincode-status"); if (jcEl && window.MutationObserver) new MutationObserver(jcMenuSub).observe(jcEl, { childList: true, characterData: true, subtree: true }); jcMenuSub(); } catch (e) {}
         loadInst().then(function (i) { var n = $("asp-hero-nm"); if (!n || !i) return; if (i.name) { n.textContent = i.name; $("asp-hero-av").textContent = initials(i.name); } var st = $("asp-hero-st"); if (st && i.active === false) { st.className = "asp-pill r"; st.innerHTML = "<i></i>Deactivated"; } });
         $("asp-logout").addEventListener("click", function () { var b = $("admin-logout-btn"); if (b) b.click(); else toast("Logout button nahi mila"); });
       }
