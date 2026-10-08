@@ -41,24 +41,37 @@
   /* ---------- Student (sirf Android app) ---------- */
   if (!getCap() || window.top !== window) return;
   var busy = false, lastErr = "", noInst = false;
+  function haveList() { try { var v = localStorage.getItem(SUB_KEY) || ""; if (!v) return []; return v.charAt(0) === "[" ? JSON.parse(v) : [v]; } catch (e) { return []; } }
   async function sync() {
     if (busy) return; busy = true;
     try {
       var s = typeof getStudentSession === "function" ? getStudentSession() : null;
       if (s && !s.instituteId && !noInst) { noInst = true; toast("⚠️ Push: aapke account me institute ID nahi mila"); }
-      var want = s && s.instituteId && !localStorage.getItem(OPT_OUT) ? topicFor(s.instituteId) : "";
-      var have = localStorage.getItem(SUB_KEY) || "";
-      if (want === have) return;
-      if (have) { try { await native("unsubscribeFromTopic", { topic: have }); } catch (e) {} localStorage.removeItem(SUB_KEY); }
-      if (want) {
+      var admin = false;
+      try { var a = typeof getAuth === "function" ? getAuth() : null; admin = !!(a && a.currentUser && a.currentUser.email && typeof getCurrentAdminInstituteId === "function" && getCurrentAdminInstituteId()); } catch (e) {}
+      var wants = [];
+      if (!localStorage.getItem(OPT_OUT)) {
+        if (s && s.instituteId) { wants.push(topicFor(s.instituteId)); wants.push("app_student"); }   // institute notices + app update (students)
+        if (admin) wants.push("app_admin");                                                        // app update (admin)
+      }
+      var have = haveList();
+      var rm = have.filter(function (t) { return wants.indexOf(t) < 0; }), add = wants.filter(function (t) { return have.indexOf(t) < 0; });
+      if (!rm.length && !add.length) return;
+      for (var i = 0; i < rm.length; i++) { try { await native("unsubscribeFromTopic", { topic: rm[i] }); } catch (e) {} have = have.filter(function (t) { return t !== rm[i]; }); }
+      if (add.length) {
         var p = await native("checkPermissions");
         if (p.receive !== "granted") { p = await native("requestPermissions"); }
-        if (p.receive !== "granted") { if (lastErr !== "perm") { lastErr = "perm"; toast("⚠️ Notification permission nahi mili — phone Settings me Allow karein"); } return; }
-        await native("subscribeToTopic", { topic: want });
-        localStorage.setItem(SUB_KEY, want); lastErr = ""; toast("🔔 Push chalu ho gaya");
+        if (p.receive !== "granted") { localStorage.setItem(SUB_KEY, JSON.stringify(have)); if (lastErr !== "perm") { lastErr = "perm"; toast("⚠️ Notification permission nahi mili — phone Settings me Allow karein"); } return; }
+        var first = !have.length;
+        for (var j = 0; j < add.length; j++) { await native("subscribeToTopic", { topic: add[j] }); have.push(add[j]); }
+        lastErr = ""; if (first) toast("🔔 Push chalu ho gaya");
       }
+      localStorage.setItem(SUB_KEY, JSON.stringify(have));
     } catch (e) { var m = String((e && (e.message || e.errorMessage)) || e); console.warn("[SnapPush] sync", m); if (lastErr !== m) { lastErr = m; toast("❌ Push setup error: " + m.slice(0, 120)); } }
     finally { busy = false; }
   }
+  /* Heads-up (pop-up) notification channel — notification ab sirf tray me chupke nahi, screen par bhi dikhti hai.
+     Purane app me channel na ho to Android khud default channel par bhej deta hai (kuch toot-ta nahi). */
+  setTimeout(function () { native("createChannel", { id: "snap_updates", name: "Tests & Updates", description: "Naya test, result aur app update", importance: 4, visibility: 1, vibration: true, lights: true }).catch(function () {}); }, 1500);
   setTimeout(sync, 2500); setInterval(sync, 5000);
 })();

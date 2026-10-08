@@ -142,6 +142,7 @@
     data: function (done) {
       var c = C();
       done("App & Data", "Update, cache aur question bank",
+        apkCard() +
         '<div class="asp-card"><div class="asp-ver"><img src="icon-512-maskable.png" alt=""><div><b style="font-size:1rem">' + esc(c.appName || "SnapTest Pro") + '</b><div style="font-size:.76rem;color:#64748b;margin-top:2px">' + esc(c.tagline || "") + '</div><span class="asp-pill"><i></i>Version ' + esc((c.version || "") + (c.build ? " (" + c.build + ")" : "")) + '</span></div></div></div>' +
         '<div class="asp-card"><div class="asp-line"><div class="asp-ic" style="background:' + TILE.ind + '">' + ico("dl") + '</div><div class="asp-tx"><b>Update check</b><p>Latest version laga hai ya nahi dekhein.</p></div></div><div class="asp-act"><button type="button" class="asp-btn" data-go="update">' + ico("refresh") + ' Update check karein</button></div>' +
         '<div class="asp-sep"></div><div class="asp-line"><div class="asp-ic" style="background:' + TILE.tea + '">' + ico("trash") + '</div><div class="asp-tx"><b>Cache saaf karke refresh</b><p>Kuch purana ya adhura dikhe to ye karein. Aapka login bana rahega.</p></div></div><div class="asp-act"><button type="button" class="asp-btn o" data-go="cache">' + ico("trash") + ' Cache saaf karein</button></div></div>' +
@@ -167,6 +168,11 @@
     },
     privacy: function (done) { done("Privacy & Terms", "Aapke data ke baare me", legal(true)); }
   };
+  function apkState() { var u = window.SnapAppUpdate; return u && u.state && u.state.available ? u.state : null; }
+  function apkCard() {
+    var st = apkState(); if (!st) return "";
+    return '<div class="asp-card" style="border:1.5px solid #fdba74;background:linear-gradient(135deg,#fff7ed,#fff)"><div class="asp-line"><div class="asp-ic" style="background:' + TILE.amb + '">' + ico("dl") + '</div><div class="asp-tx"><b>Naya APK aaya hai' + (st.name ? " (" + esc(st.name) + ")" : "") + '</b><p>' + esc(st.notes || "App ka naya version taiyaar hai.") + '</p></div></div><div class="asp-act"><button type="button" class="asp-btn" data-go="apkdl">' + ico("dl") + ' Download &amp; Update karein</button></div></div>';
+  }
   function row2(ic, bg, t, sub, go) { return '<button type="button" class="asp-row" data-go="' + go + '"><span class="asp-ic" style="background:' + TILE[bg] + '">' + ico(ic) + '</span><span class="asp-tx"><b>' + t + '</b><small>' + sub + '</small></span><span class="asp-ch">' + ico("chev") + '</span></button>'; }
   /* purane elements (ID Card, join-code box, seed button) ko naye page me "udhaar" lete hain — original id/handlers waise hi rehte hain */
   var borrowed = [];
@@ -226,7 +232,10 @@
     else if (g === "pw") { var b1 = $("change-admin-password-btn"); b1 ? b1.click() : toast("Button nahi mila"); }
     else if (g === "rec") { var b2 = $("set-recovery-btn"); b2 ? b2.click() : toast("Button nahi mila"); }
     else if (g === "lo") { var b3 = $("admin-logout-btn"); b3 ? b3.click() : toast("Logout button nahi mila"); }
-    else if (g === "update") { toast("⏳ Update check ho raha hai..."); if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) navigator.serviceWorker.getRegistration().then(function (r) { if (!r) return toast("✅ Aap latest version par hain"); return r.update().then(function () { if (r.installing || r.waiting) { toast("⬆️ Naya version mil gaya — reload ho raha hai"); setTimeout(function () { location.reload(); }, 1200); } else toast("✅ Aap latest version par hain"); }); }).catch(function () { toast("Update check nahi ho paya"); }); else toast("✅ Aap latest version par hain"); }
+    else if (g === "update") { toast("⏳ Update check ho raha hai...");
+      var webCheck = function () { if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) navigator.serviceWorker.getRegistration().then(function (r) { if (!r) return toast("✅ Aap latest version par hain"); return r.update().then(function () { if (r.installing || r.waiting) { toast("⬆️ Naya version mil gaya — reload ho raha hai"); setTimeout(function () { location.reload(); }, 1200); } else toast("✅ Aap latest version par hain"); }); }).catch(function () { toast("Update check nahi ho paya"); }); else toast("✅ Aap latest version par hain"); };
+      if (window.SnapAppUpdate && SnapAppUpdate.check) SnapAppUpdate.check({ manual: true }).then(function (st) { if (st && st.available) toast("📲 Naya APK mila — download karein", 5000); else webCheck(); }, webCheck); else webCheck(); }
+    else if (g === "apkdl") { if (window.SnapAppUpdate) SnapAppUpdate.show(); }
     else if (g === "cache") { toast("⏳ Cache saaf ho raha hai..."); var keep = {}; try { Object.keys(localStorage).forEach(function (k2) { if (/session|auth|firebase|savya_student|admin/i.test(k2)) keep[k2] = localStorage.getItem(k2); }); } catch (e) {}
       Promise.resolve(window.caches && caches.keys ? caches.keys().then(function (ks) { return Promise.all(ks.map(function (k2) { return caches.delete(k2); })); }) : 0).then(function () { return navigator.serviceWorker && navigator.serviceWorker.getRegistrations ? navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.update(); })); }) : 0; }).catch(function () {}).then(function () { try { localStorage.removeItem("savya_bank_cache"); localStorage.removeItem("snap_bank_sync_ts"); } catch (e) {} setTimeout(function () { location.reload(); }, 600); }); }
     else if (g === "pub") { toast("⏳ Publish ho raha hai..."); if (window.publishBankManual) window.publishBankManual().then(function (m) { toast(m); }); else toast("Available nahi"); }
@@ -243,11 +252,12 @@
         m = document.createElement("div"); m.id = "asp-menu"; m.className = "asp-wrap";
         m.innerHTML = '<div class="asp-hero"><div class="asp-av" id="asp-hero-av">' + esc(initials((user() || {}).email)) + '</div><div><b id="asp-hero-nm">Admin</b><small id="asp-hero-sub">' + esc((user() || {}).email || "Admin") + '</small><span class="asp-pill" id="asp-hero-st"><i></i>Institute Active</span></div></div>' +
           '<div class="asp-sec">ACCOUNT</div><div class="asp-grp">' + row("user", "ind", "Profile & Institute", "ID Card, email, institute, status", "profile") + row("key", "tea", "Institute Join Code", "Student registration ki suraksha", "joincode").replace("<small>", '<small id="asp-jc-sub">') + row("lock", "orc", "Admin Password", "Change password, recovery info", "pwd") + '</div>' +
-          '<div class="asp-sec">MANAGE</div><div class="asp-grp">' + row("bell", "amb", "Notifications", "Students ko push bhejna, status", "notif") + row("phone", "idg", "App & Data", "Update, cache, bank, seed", "data") + row("palette", "pur", "App Theme", "100+ themes mein se chunein", "theme") + '</div>' +
+          '<div class="asp-sec">MANAGE</div><div class="asp-grp">' + row("bell", "amb", "Notifications", "Students ko push bhejna, status", "notif") + row("phone", "idg", "App & Data", apkState() ? "Naya APK aaya hai — update karein" : "Update, cache, bank, seed", "data").replace("<small>", '<small id="asp-data-sub">') + row("palette", "pur", "App Theme", "100+ themes mein se chunein", "theme") + '</div>' +
           '<div class="asp-sec">SUPPORT</div><div class="asp-grp">' + row("help", "blu", "Help & Support", "Call / WhatsApp / Email, FAQ", "help") + row("info", "gry", "About App", "Version " + esc((C().version || "") + (C().build ? " (" + C().build + ")" : "")), "about") + row("shield", "pnk", "Privacy & Terms", "Aapke data ke baare me", "privacy") + '</div>' +
           '<div class="asp-sec">OWNER</div><div class="asp-grp">' + row("crown", "ind", "Owner Panel", "Har institute ka admin manage karein", "owner") + '</div>' +
           '<button type="button" class="asp-row asp-logout" id="asp-logout"><span class="asp-ic" style="background:' + TILE.red + '">' + ico("out") + '</span><span class="asp-tx"><b style="color:#b91c1c">Admin Logout</b><small>Is device se admin logout</small></span></button>';
         var first = box.querySelector(".card"); if (first && first.nextSibling) box.insertBefore(m, first.nextSibling); else box.insertBefore(m, box.firstChild);
+        try { window.addEventListener("snap-apk-update", function () { var e = $("asp-data-sub"); if (e) e.textContent = apkState() ? "Naya APK aaya hai — update karein" : "Update, cache, bank, seed"; }); } catch (e) {}
         try { var jcEl = $("institute-joincode-status"); if (jcEl && window.MutationObserver) new MutationObserver(jcMenuSub).observe(jcEl, { childList: true, characterData: true, subtree: true }); jcMenuSub(); } catch (e) {}
         loadInst().then(function (i) { var n = $("asp-hero-nm"); if (!n || !i) return; if (i.name) { n.textContent = i.name; $("asp-hero-av").textContent = initials(i.name); } var st = $("asp-hero-st"); if (st && i.active === false) { st.className = "asp-pill r"; st.innerHTML = "<i></i>Deactivated"; } });
         $("asp-logout").addEventListener("click", function () { var b = $("admin-logout-btn"); if (b) b.click(); else toast("Logout button nahi mila"); });

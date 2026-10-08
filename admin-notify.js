@@ -11,20 +11,44 @@
   function email() { try { var a = typeof getAuth === "function" ? getAuth() : null; return (a && a.currentUser && a.currentUser.email) || ""; } catch (e) { return ""; } }
   function ago(ms) { var m = Math.floor((Date.now() - ms) / 60000); return m < 1 ? "Abhi" : m < 60 ? m + " min pehle" : m < 1440 ? Math.floor(m / 60) + " ghante pehle" : Math.floor(m / 1440) + " din pehle"; }
 
-  // 1) Naya test publish hote hi auto-notification (ek test ke liye sirf ek baar: doc id = t_<testId>)
+  // 1) Naya test live hote hi auto-notification (ek test ke liye sirf ek baar: doc id = t_<testId>; rules me update band hai)
+  //    Notification jaati hai jab: (a) draft "Publish" hua, (b) "Create Test" form se bilkul naya test bana (isDraft set hi nahi hota),
+  //    (c) koi draft form se live save hua.  Jaise-ke-taise live test EDIT karne par nahi jaati.
+  function whenTxt(t) {
+    try { var ms = t && t.startTime ? Date.parse(t.startTime) : 0;
+      if (ms && ms > Date.now() + 60000) return new Date(ms).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }); } catch (e) {}
+    return "";
+  }
   function hookSave() {
     if (typeof window.saveTestOnline !== "function" || window.saveTestOnline.__an) return;
     var orig = window.saveTestOnline;
     var w = async function (id, t) {
+      var prev = null; try { prev = window.tests ? window.tests[id] : null; } catch (e) {}      // save se PEHLE ki haalat
       var r = await orig.apply(this, arguments);
       try {
-        var c = t && t.isDraft === false && col();
-        if (c) c.doc("t_" + id).set({ type: "test", testId: String(id), title: "Naya Test Publish Hua!", body: (t.title || "Ek naya test") + " ab available hai", createdAt: ts(), createdBy: email() }).then(function () { window.SnapPush && window.SnapPush.send("t_" + id); }).catch(function () { /* pehle se bhej chuke hain (edit) — ignore */ });
+        var live = !!t && t.isDraft !== true, fresh = !prev || !!prev.isDraft;
+        var c = live && (t.isDraft === false || fresh) && col();
+        if (c) {
+          var at = whenTxt(t), nm = t.title || "Ek naya test";
+          c.doc("t_" + id).set({ type: "test", testId: String(id), title: at ? "Naya Test Schedule Hua!" : "Naya Test Publish Hua!", body: at ? nm + " — " + at + " se shuru hoga" : nm + " ab available hai", createdAt: ts(), createdBy: email() }).then(function () { window.SnapPush && window.SnapPush.send("t_" + id); }).catch(function () { /* pehle se bhej chuke hain (edit) — ignore */ });
+        }
       } catch (e) {}
       return r;
     };
     w.__an = 1; window.saveTestOnline = w;
   }
+
+  // 1b) Exam Manager me exam "Publish" hote hi students ko notification (exam-manager.js yahi function bulata hai)
+  window.SnapNotifyAuto = {
+    examPublished: function (id, ex) {
+      try {
+        var c = col(); if (!c || !id) return;
+        var nm = (ex && ex.examName) || "Exam", cl = ex && ex.className ? " (" + ex.className + ")" : "";
+        c.doc("e_" + id).set({ type: "exam", title: "Exam Result Publish Hua", body: nm + cl + " ka result ab dekh sakte hain", createdAt: ts(), createdBy: email() })
+          .then(function () { window.SnapPush && window.SnapPush.send("e_" + id); }).catch(function () { /* pehle bhej chuke hain — ignore */ });
+      } catch (e) {}
+    }
+  };
 
   // 2) Overlay: notification likhna + purani list
   function build() {

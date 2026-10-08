@@ -96,7 +96,7 @@ async function handle(request, env) {
       topic,
       notification: { title: s('title').slice(0, 100) || 'SnapTest Pro', body: s('body').slice(0, 300) },
       data: { instituteId, notifId, type: s('type') || 'admin' },
-      android: { priority: 'HIGH', ttl: '86400s', notification: { sound: 'default' } }
+      android: { priority: 'HIGH', ttl: '86400s', notification: { sound: 'default', channel_id: 'snap_updates' } }
     } })
   });
   if (!fr.ok) throw new HttpErr(502, 'FCM fail ' + fr.status + ' ' + (await fr.text()).slice(0, 200));
@@ -151,12 +151,39 @@ async function handleBank(request, env, pathname) {
   throw new HttpErr(404, 'Not found');
 }
 
+/* ---------- App update broadcast: GitHub Actions -> admin / student phones (FCM topics app_admin, app_student) ----------
+   Secret: BROADCAST_SECRET (Cloudflare Worker > Settings > Variables and Secrets) — wahi GitHub repo secret me bhi. */
+async function handleBroadcast(request, env) {
+  if (request.method !== 'POST') throw new HttpErr(405, 'POST chahiye');
+  if (!env.BROADCAST_SECRET) throw new HttpErr(500, 'BROADCAST_SECRET set nahi hai');
+  if (!env.SERVICE_ACCOUNT_JSON) throw new HttpErr(500, 'SERVICE_ACCOUNT_JSON secret set nahi hai');
+  let req; try { req = JSON.parse(await request.text()); } catch (e) { throw new HttpErr(400, 'Bad JSON'); }
+  const a = te.encode(String(req.secret || '')), b = te.encode(String(env.BROADCAST_SECRET));
+  let diff = a.length ^ b.length; for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a[i] || 0) ^ (b[i] || 0);
+  if (diff !== 0) throw new HttpErr(403, 'Secret galat hai');
+  const aud = String(req.audience || 'both').toLowerCase();
+  const topics = aud === 'admin' ? ['app_admin'] : aud === 'student' ? ['app_student'] : ['app_admin', 'app_student'];
+  const title = String(req.title || 'SnapTest Pro').slice(0, 100), body = String(req.body || 'App me naya update aaya hai.').slice(0, 300);
+  const kind = req.kind === 'apk' ? 'apk' : 'web';
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), projectId = env.PROJECT_ID || sa.project_id, at = await googleAccessToken(sa);
+  for (const topic of topics) {
+    const fr = await fetch('https://fcm.googleapis.com/v1/projects/' + projectId + '/messages:send', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: { topic, notification: { title, body }, data: { type: 'app_update', kind, audience: aud },
+        android: { priority: 'HIGH', ttl: '86400s', notification: { sound: 'default', channel_id: 'snap_updates' } } } })
+    });
+    if (!fr.ok) throw new HttpErr(502, 'FCM fail ' + fr.status + ' ' + (await fr.text()).slice(0, 200));
+  }
+  return { ok: true, sent: topics };
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const pathname = new URL(request.url).pathname.replace(/\/+$/, '') || '/';
     try {
       if (pathname === '/bank' || pathname === '/bank/meta') return await handleBank(request, env, pathname);
+      if (pathname === '/broadcast') return json(await handleBroadcast(request, env));
       if (request.method !== 'POST') return json({ ok: true, service: 'snaptestpro-push' });
       return json(await handle(request, env));
     }
