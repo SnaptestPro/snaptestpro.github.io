@@ -143,15 +143,20 @@
       if (a === "theme") { window.ThemeManager && ThemeManager.togglePicker(); }
       else if (a === "help" || a === "about") { window.snShowPage(a, "settings"); }
       else if (a === "update") {
-        if (!navigator.serviceWorker) return toast("Is device par update check available nahi hai.");
+        var webCheck = function () {
+          if (!navigator.serviceWorker) return toast("Is device par update check available nahi hai.");
+          navigator.serviceWorker.getRegistration().then(function (r) {
+            if (!r) return toast("✅ Aap latest version par hain");
+            return r.update().then(function () {
+              if (r.installing || r.waiting) { toast("⬆️ Naya version mil gaya — reload ho raha hai"); setTimeout(function () { location.reload(); }, 1200); }
+              else toast("✅ Aap latest version par hain");
+            });
+          }).catch(function () { toast("Update check nahi ho paya — internet check karein."); });
+        };
         toast("⏳ Update check ho raha hai...");
-        navigator.serviceWorker.getRegistration().then(function (r) {
-          if (!r) return toast("✅ Aap latest version par hain");
-          return r.update().then(function () {
-            if (r.installing || r.waiting) { toast("⬆️ Naya version mil gaya — reload ho raha hai"); setTimeout(function () { location.reload(); }, 1200); }
-            else toast("✅ Aap latest version par hain");
-          });
-        }).catch(function () { toast("Update check nahi ho paya — internet check karein."); });
+        /* pehle naya APK check (sirf Android app me), phir website update */
+        if (window.SnapAppUpdate && SnapAppUpdate.check) SnapAppUpdate.check({ manual: true }).then(function (st) { if (st && st.available) toast("📲 Naya APK mila — download karein", 5000); else webCheck(); }, webCheck);
+        else webCheck();
       }
       else if (a === "cache") {
         if (!confirm("Cache saaf karke app refresh karein? Aapka login bana rahega.")) return;

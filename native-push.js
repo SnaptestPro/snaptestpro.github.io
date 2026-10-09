@@ -24,8 +24,18 @@
   function native(method, opts) { var C = getCap(); return C ? C.nativePromise("FirebaseMessaging", method, opts || {}) : Promise.reject(new Error("no plugin")); }
 
   /* ---------- Admin: Worker ko bulao ---------- */
+  var PQ = "snap_push_queue_v1";
+  function pqGet() { try { return JSON.parse(localStorage.getItem(PQ) || "[]") || []; } catch (e) { return []; } }
+  function pqAdd(id) { try { var q = pqGet(); if (q.indexOf(id) < 0) q.push(id); localStorage.setItem(PQ, JSON.stringify(q)); } catch (e) {} }
+  function pqFlush() {
+    if (navigator.onLine === false) return;
+    var q = pqGet(); if (!q.length) return;
+    try { localStorage.setItem(PQ, "[]"); } catch (e) {}
+    q.reduce(function (p, id) { return p.then(function () { return send(id); }); }, Promise.resolve());
+  }
   function send(notifId) {
     try {
+      if (notifId && navigator.onLine === false) { pqAdd(String(notifId)); toast("📴 Offline — push internet aate hi apne-aap chala jaayega"); return Promise.resolve(false); }
       var a = typeof getAuth === "function" ? getAuth() : null, u = a && a.currentUser;
       var inst = typeof getCurrentAdminInstituteId === "function" ? getCurrentAdminInstituteId() : null;
       if (!u || !inst || !notifId || /YOUR-SUBDOMAIN/.test(PUSH_WORKER_URL)) { toast("⚠️ Push nahi gaya: " + (!u ? "admin email login nahi hai" : !inst ? "institute id nahi mila" : "Worker URL set nahi")); return Promise.resolve(false); }
@@ -33,10 +43,12 @@
         return fetch(PUSH_WORKER_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ idToken: t, instituteId: inst, notifId: String(notifId) }) });
       }).then(function (r) { return r.json(); }).then(function (j) {
         if (!j.ok) { console.warn("[SnapPush] push fail:", j.error); toast("❌ Push fail: " + j.error); } else toast("📲 Push bhej diya gaya"); return !!j.ok;
-      }).catch(function (e) { console.warn("[SnapPush] push error", e); toast("❌ Worker tak nahi pahunch paaye: " + ((e && e.message) || e)); return false; });
+      }).catch(function (e) { console.warn("[SnapPush] push error", e); if (navigator.onLine === false) { pqAdd(String(notifId)); return false; } toast("❌ Worker tak nahi pahunch paaye: " + ((e && e.message) || e)); return false; });
     } catch (e) { return Promise.resolve(false); }
   }
   window.SnapPush = { send: send };
+  window.addEventListener("snap-synced", function () { setTimeout(pqFlush, 600); });     // offline badlav online save hone ke BAAD hi push (worker doc dekhta hai)
+  setTimeout(pqFlush, 6000);
 
   /* ---------- Student (sirf Android app) ---------- */
   if (!getCap() || window.top !== window) return;
@@ -73,5 +85,60 @@
   /* Heads-up (pop-up) notification channel — notification ab sirf tray me chupke nahi, screen par bhi dikhti hai.
      Purane app me channel na ho to Android khud default channel par bhej deta hai (kuch toot-ta nahi). */
   setTimeout(function () { native("createChannel", { id: "snap_updates", name: "Tests & Updates", description: "Naya test, result aur app update", importance: 4, visibility: 1, vibration: true, lights: true }).catch(function () {}); }, 1500);
+
+  /* ---------- App KHULA ho tab bhi notification dikhana (Android foreground me system notification nahi dikhata) ---------- */
+  var seenMsg = {};
+  function examBusy() {
+    try {
+      var vis = function (el) { if (!el || el.classList.contains("hidden")) return false; var cs = getComputedStyle(el); return cs.display !== "none" && cs.visibility !== "hidden"; };
+      if (vis(document.getElementById("exam-screen")) && typeof current !== "undefined" && current && current.test) return true;
+      return vis(document.getElementById("solution-screen"));
+    } catch (e) { return false; }
+  }
+  function esc(x) { return String(x == null ? "" : x).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function refreshBell() { try { document.dispatchEvent(new Event("visibilitychange")); } catch (e) {} }   // student ki bell list server se turant refresh
+  function route(d) {
+    d = d || {};
+    try {
+      if (d.type === "app_update") {
+        if (d.kind === "apk") { window.SnapAppUpdate && SnapAppUpdate.check({ manual: true }); }
+        else if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) navigator.serviceWorker.getRegistration().then(function (r) { r && r.update(); });
+        return;
+      }
+      if (typeof getStudentSession === "function" && getStudentSession() && typeof window.snShowPage === "function") { refreshBell(); window.snShowPage("notifs", "home"); }
+    } catch (e) {}
+  }
+  function banner(title, body, data) {
+    try {
+      var old = document.getElementById("snp-banner"); if (old) old.remove();
+      var b = document.createElement("div"); b.id = "snp-banner";
+      b.style.cssText = "position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:12px;right:12px;margin:0 auto;max-width:420px;z-index:2147483200;background:linear-gradient(135deg,#1e1b4b,#3730a3);color:#fff;border-radius:16px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start;box-shadow:0 12px 28px rgba(15,23,42,.45);font-family:Inter,'Segoe UI',Arial,sans-serif;transform:translateY(-130%);transition:transform .28s ease;cursor:pointer";
+      b.innerHTML = '<div style="width:36px;height:36px;border-radius:11px;background:linear-gradient(135deg,#fbbf24,#ea580c);display:flex;align-items:center;justify-content:center;flex:none"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 8H4c0-1 2-2 2-8"/><path d="M10 21a2 2 0 0 0 4 0"/></svg></div><div style="min-width:0"><div style="font-weight:800;font-size:.9rem;line-height:1.3">' + esc(title || "SnapTest Pro") + '</div><div style="font-size:.8rem;opacity:.9;margin-top:2px;line-height:1.4">' + esc(body || "") + "</div></div>";
+      var close = function () { b.style.transform = "translateY(-130%)"; setTimeout(function () { b.remove(); }, 320); };
+      b.onclick = function () { close(); route(data); };
+      document.body.appendChild(b); requestAnimationFrame(function () { b.style.transform = "translateY(0)"; }); setTimeout(close, 7500);
+    } catch (e) {}
+  }
+  function onForeground(ev) {
+    var n = (ev && ev.notification) || {}, d = n.data || {}, key = d.notifId || ((n.title || "") + "|" + (n.body || ""));
+    var now = Date.now(); if (seenMsg[key] && now - seenMsg[key] < 20000) return; seenMsg[key] = now;
+    if (d.type === "app_update") { if (d.kind === "apk") { window.SnapAppUpdate && SnapAppUpdate.check({}); } else if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) navigator.serviceWorker.getRegistration().then(function (r) { r && r.update(); }); }
+    else refreshBell();
+    if (examBusy()) return;                                                       // exam ke beech banner nahi (bell me aa jaata hai)
+    var show = function () { banner(n.title, n.body, d); };
+    if (d.type === "test") setTimeout(function () { if (!document.getElementById("savya-push-banner")) show(); }, 1500);   // purana local banner pehle se dikha ho to dobara nahi
+    else show();
+  }
+  function attachForeground() {
+    var tries = 0;
+    (function go() {
+      var C = getCap();
+      if (!C || typeof C.nativeCallback !== "function") { if (++tries < 40) setTimeout(go, 250); return; }
+      try { C.nativeCallback("FirebaseMessaging", "addListener", { eventName: "notificationReceived" }, onForeground); } catch (e) { console.warn("[SnapPush] fg listener", e); }
+      try { C.nativeCallback("FirebaseMessaging", "addListener", { eventName: "notificationActionPerformed" }, function (ev) { var d = (ev && ev.notification && ev.notification.data) || {}; setTimeout(function () { route(d); }, 900); }); } catch (e) { console.warn("[SnapPush] tap listener", e); }
+    })();
+  }
+  attachForeground();
+
   setTimeout(sync, 2500); setInterval(sync, 5000);
 })();
