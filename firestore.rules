@@ -645,6 +645,48 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentSerialCounter']) &&
         request.resource.data.studentSerialCounter ==
           (('studentSerialCounter' in resource.data) ? resource.data.studentSerialCounter : 0) + 1;
+      // ── v157: BATCH MANAGEMENT SYSTEM ─────────────────────────────
+      // institutes/{id}/batches/{batchId}  (+ items, members, auditLogs)
+      // WRITE: sirf us institute ka admin (instituteId == adminInstituteId()),
+      //        aur doc ke andar instituteId bhi wahi hona zaroori.
+      // READ : admin (apna institute) ya signed-in user SIRF published doc.
+      //        Draft/unpublished content students ko server-side se nahi milta.
+      // ⚠️ Students anonymous-auth hain, isliye "student X batch Y ka member hai"
+      //    rules me verify nahi ho sakta (app ka purana design) — batch/item IDs
+      //    random hain aur sirf published content readable hai.
+      match /batches/{batchId} {
+        allow read: if isSignedIn() && (resource.data.published == true ||
+          (isAdmin() && instituteId == adminInstituteId()));
+        allow create: if isAdmin() && instituteId == adminInstituteId() &&
+          request.resource.data.instituteId == instituteId &&
+          request.resource.data.name is string && request.resource.data.name.size() <= 120;
+        allow update: if isAdmin() && instituteId == adminInstituteId() &&
+          request.resource.data.instituteId == instituteId;
+        allow delete: if isAdmin() && instituteId == adminInstituteId();
+
+        match /items/{itemId} {
+          allow read: if isSignedIn() && (resource.data.published == true ||
+            (isAdmin() && instituteId == adminInstituteId()));
+          allow create, update: if isAdmin() && instituteId == adminInstituteId() &&
+            request.resource.data.instituteId == instituteId &&
+            request.resource.data.batchId == batchId &&
+            request.resource.data.title is string && request.resource.data.title.size() <= 200 &&
+            (!('url' in request.resource.data) || request.resource.data.url == '' ||
+              request.resource.data.url.matches('^https://.*'));
+          allow delete: if isAdmin() && instituteId == adminInstituteId();
+        }
+        match /members/{mobile} {
+          allow get: if isSignedIn();
+          allow list: if isAdmin() && instituteId == adminInstituteId();
+          allow create, update: if isAdmin() && instituteId == adminInstituteId() && studentBelongsToAdmin(mobile);
+          allow delete: if isAdmin() && instituteId == adminInstituteId();
+        }
+      }
+      match /auditLogs/{logId} {
+        allow read: if isAdmin() && instituteId == adminInstituteId();
+        allow create: if isAdmin() && instituteId == adminInstituteId();
+      }
+
       // ── v155: Notifications (admin -> students) ───────────────────
       // institutes/{id}/notifications/{nid}: students read karte hain
       // (signed-in), sirf us institute ka admin likh/delete kar sakta hai.
