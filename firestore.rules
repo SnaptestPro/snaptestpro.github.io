@@ -672,8 +672,36 @@ service cloud.firestore {
             request.resource.data.batchId == batchId &&
             request.resource.data.title is string && request.resource.data.title.size() <= 200 &&
             (!('url' in request.resource.data) || request.resource.data.url == '' ||
-              request.resource.data.url.matches('^https://.*'));
+              request.resource.data.url.matches('^https://.*')) &&
+            (!('liveUrl' in request.resource.data) || request.resource.data.liveUrl.matches('^https://.*'));
+          // liveUrl (doosri app ka live link) bhi sirf https
+          // (admin ne Go Live par daala; End Class par hat jaata hai)
+
           allow delete: if isAdmin() && instituteId == adminInstituteId();
+        }
+        // Uploaded files (Storage band ho to Firestore chunks, max ~4MB)
+        match /files/{fid} {
+          allow read: if isSignedIn();
+          allow write: if isAdmin() && instituteId == adminInstituteId();
+          match /parts/{pid} {
+            allow read: if isSignedIn();
+            allow write: if isAdmin() && instituteId == adminInstituteId() &&
+              (request.method == 'delete' || request.resource.data.data.size() <= 700000);
+          }
+        }
+        // Student enrollment request: student sirf apni (doc id = mobile) pending request bana sakta hai;
+        // approve/reject/delete sirf admin.
+        match /requests/{mobile} {
+          allow get: if isSignedIn();
+          allow list: if isAdmin() && instituteId == adminInstituteId();
+          allow create: if isSignedIn() &&
+            request.resource.data.keys().hasOnly(['mobile', 'name', 'status', 'createdAt']) &&
+            request.resource.data.mobile == mobile && request.resource.data.status == 'pending' &&
+            request.resource.data.name is string && request.resource.data.name.size() <= 80 &&
+            request.resource.data.createdAt == request.time &&
+            get(/databases/$(database)/documents/institutes/$(instituteId)/batches/$(batchId)).data.published == true &&
+            get(/databases/$(database)/documents/institutes/$(instituteId)/batches/$(batchId)).data.get('enrollment', 'request') != 'closed';
+          allow update, delete: if isAdmin() && instituteId == adminInstituteId();
         }
         match /members/{mobile} {
           allow get: if isSignedIn();

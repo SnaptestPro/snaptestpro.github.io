@@ -1,0 +1,14 @@
+rules_version = '2';
+// Firebase Console -> Storage -> Rules -> paste -> Publish
+// Batch files: padh sirf signed-in; likh/delete sirf email-login wale admin (anonymous students nahi).
+// Note: Storage rules Firestore se institute match nahi kar sakte — isliye path me instituteId rakha hai
+// aur download link random token wala hota hai.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /batches/{inst}/{batch}/{file} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.token.email != null && request.resource.size < 50 * 1024 * 1024;
+      allow delete: if request.auth != null && request.auth.token.email != null;
+    }
+  }
+}

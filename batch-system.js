@@ -29,14 +29,76 @@
     if (/\.(pdf|pptx?|docx?|xlsx?)(\?|$)/i.test(u)) return { t: "frame", u: "https://docs.google.com/viewer?embedded=true&url=" + encodeURIComponent(u) };
     return { t: "link", u: u };
   }
-  function viewer(title, url) {
-    var e = embed(url), v = document.createElement("div"); v.className = "bm-viewer";
-    v.innerHTML = '<div class="vt"><b>' + esc(title) + '</b><button data-o>Open ↗</button><button data-x>✕</button></div>' +
+  function viewer(title, url, o) {
+    o = o || {}; var e = url.indexOf("blob:") === 0 ? (/pdf|image/.test(o.mime || "") ? { t: "frame", u: url } : /video/.test(o.mime || "") ? { t: "video", u: url } : { t: "link", u: url }) : embed(url), v = document.createElement("div"); v.className = "bm-viewer";
+    v.innerHTML = '<div class="vt"><b>' + esc(title) + '</b><button data-d>⬇</button><button data-o>Open ↗</button><button data-x>✕</button></div>' +
       (e.t === "video" ? '<video controls autoplay playsinline src="' + esc(e.u) + '"></video>' : e.t === "frame" ? '<iframe allow="autoplay; fullscreen" allowfullscreen src="' + esc(e.u) + '"></iframe>' :
-        '<div style="color:#fff;padding:24px;text-align:center">Is link ka preview in-app nahi ho sakta.<br><br><a style="color:#93c5fd" target="_blank" rel="noopener" href="' + esc(url) + '">Browser me kholein</a></div>');
+        '<div style="color:#fff;padding:24px;text-align:center">Is file ka preview in-app nahi ho sakta (PPT/DOC jaisi files).<br><br>Upar <b>⬇</b> se download karke apne phone ki app me kholein.</div>');
+    v.querySelector("[data-x]").onclick = function () { v.remove(); };
+    v.querySelector("[data-o]").onclick = function () { window.open(url, "_blank", "noopener"); };
+    v.querySelector("[data-d]").onclick = function () { var a = document.createElement("a"); a.href = url; a.download = o.name || title; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); a.remove(); };
+    document.body.appendChild(v);
+  }
+  function liveViewer(title, url) {
+    var v = document.createElement("div"); v.className = "bm-viewer";
+    v.innerHTML = '<div class="vt"><b>🔴 ' + esc(title) + '</b><button data-o>Browser me kholein ↗</button><button data-x>Leave</button></div><iframe allow="camera; microphone; display-capture; autoplay; fullscreen; clipboard-write" src="' + esc(url) + '"></iframe>';
     v.querySelector("[data-x]").onclick = function () { v.remove(); };
     v.querySelector("[data-o]").onclick = function () { window.open(url, "_blank", "noopener"); };
     document.body.appendChild(v);
+  }
+  /* live join: mode "inapp" = app ke andar (Jitsi iframe), "external" = doosri app ka link (Zoom/Meet/YouTube...) */
+  function joinLive(it, name) {
+    if (it.mode === "external") { if (!it.liveUrl) return toast("Live link abhi available nahi hai"); window.open(it.liveUrl, "_blank", "noopener"); return; }
+    if (!it.liveRoom) return toast("Class abhi live nahi hai");
+    var s = (typeof getStudentSession === "function" && getStudentSession()) || {}, u = liveUrl(it.liveRoom, name || s.name || "Student");
+    CFG.liveEmbed === false ? window.open(u, "_blank", "noopener") : liveViewer(it.title, u);
+  }
+  function hasFile(i) { return !!(i.url || i.fileId); }
+  /* ---- direct upload: Firebase Storage (ON ho to) warna Firestore chunks (max 4MB) ---- */
+  var CH = 600000, MAXCH = 4 * 1024 * 1024;
+  function storage() { var v = window.vishnuFirebase; return v && v.storage; }
+  function b64(buf) { var s = "", a = new Uint8Array(buf), k = 0x8000; for (var i = 0; i < a.length; i += k) s += String.fromCharCode.apply(null, a.subarray(i, i + k)); return btoa(s); }
+  function uploadFile(file, inst, batchId, prog) {
+    var safe = file.name.replace(/[^\w.\-]+/g, "_"), path = "batches/" + inst + "/" + batchId + "/" + Date.now() + "_" + safe, st = storage();
+    function viaChunks() {
+      if (file.size > MAXCH) return Promise.reject(new Error("Firebase Storage ON nahi hai — bina Storage ke file 4MB tak hi upload hoti hai. Badi file ke liye link use karein ya Storage ON karein."));
+      return file.arrayBuffer().then(function (buf) {
+        var d = b64(buf), n = Math.ceil(d.length / CH) || 1, fref = bref(inst, batchId).collection("files").doc();
+        return fref.set({ instituteId: inst, name: file.name, type: file.type || "", size: file.size, chunks: n, createdAt: FV().serverTimestamp() }).then(function () {
+          var p = Promise.resolve();
+          for (var i = 0; i < n; i++) (function (i) { p = p.then(function () { prog && prog(Math.round(100 * i / n)); return fref.collection("parts").doc(String(i)).set({ i: i, data: d.slice(i * CH, (i + 1) * CH) }); }); })(i);
+          return p;
+        }).then(function () { return { fileId: fref.id, fileName: file.name, fileType: file.type || "", fileSize: file.size }; });
+      });
+    }
+    if (!st) return viaChunks();
+    try { st.setMaxUploadRetryTime && st.setMaxUploadRetryTime(15000); } catch (e) {}
+    return new Promise(function (res, rej) {
+      var task; try { task = st.ref(path).put(file, file.type ? { contentType: file.type } : undefined); } catch (e) { return rej(e); }
+      task.on("state_changed", function (x) { prog && prog(Math.round(100 * x.bytesTransferred / x.totalBytes)); }, rej, function () { task.snapshot.ref.getDownloadURL().then(function (u) { res({ url: u, storagePath: path, fileName: file.name, fileType: file.type || "", fileSize: file.size }); }, rej); });
+    }).catch(function (e) { console.warn("Storage upload fail — chunk fallback", e); return viaChunks(); });
+  }
+  function loadChunked(inst, batchId, fileId) {
+    var fr = bref(inst, batchId).collection("files").doc(fileId);
+    return fr.get().then(function (d) {
+      if (!d.exists) throw new Error("File nahi mili");
+      var m = d.data();
+      return fr.collection("parts").orderBy("i").get().then(function (q) {
+        if (q.size !== m.chunks) throw new Error("File adhoori hai");
+        var arr = q.docs.map(function (x) { var bin = atob(x.data().data), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; });
+        return { blob: new Blob(arr, { type: m.type || "application/octet-stream" }), name: m.name, type: m.type || "" };
+      });
+    });
+  }
+  function openItem(it, inst) {
+    if (it.fileId) { toast("File load ho rahi hai…"); return loadChunked(inst, it.batchId, it.fileId).then(function (f) { viewer(it.title, URL.createObjectURL(f.blob), { mime: f.type, name: f.name }); }).catch(function (e) { toast("File nahi khuli: " + (e.message || e.code)); }); }
+    viewer(it.title, it.url, { name: it.fileName });
+  }
+  function deleteFileOf(it) {
+    try {
+      if (it.storagePath && storage()) storage().ref(it.storagePath).delete().catch(function () {});
+      if (it.fileId) { var fr = bref(A.inst, it.batchId).collection("files").doc(it.fileId); fr.collection("parts").get().then(function (q) { var wb = DB().batch(); q.docs.forEach(function (d) { wb.delete(d.ref); }); wb.delete(fr); return wb.commit(); }).catch(function () {}); }
+    } catch (e) {}
   }
   function bref(inst, id) { var c = DB().collection("institutes").doc(inst).collection("batches"); return id ? c.doc(id) : c; }
   function stBadge(it) {
@@ -66,6 +128,9 @@
     return authReady().then(function () { return bref(A.inst).get(); }).then(function (q) {
       A.batches = q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); A.items = {};
       return Promise.all(A.batches.map(function (b) { return bref(A.inst, b.id).collection("items").get().then(function (s) { A.items[b.id] = s.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); }); }));
+    }).then(function () {
+      A.reqs = [];
+      return Promise.all(A.batches.map(function (b) { return bref(A.inst, b.id).collection("requests").get().then(function (q) { q.docs.forEach(function (d) { var x = d.data(); if (x.status === "pending") A.reqs.push({ batchId: b.id, mobile: d.id, name: x.name, createdAt: x.createdAt }); }); }).catch(function () {}); }));
     });
   }
   var NAV = [["dash", "🏠", "Dashboard"], ["batches", "🎓", "Batch Management"], ["class", "🔴", "Live Classes"], ["recording", "🎬", "Recorded Lectures"], ["note", "📄", "Notes & Study Material"], ["ppt", "📊", "PPT / Presentations"], ["tests", "📝", "Tests & Assignments"], ["students", "👥", "Students"], ["announcement", "📢", "Announcements"]];
@@ -83,6 +148,7 @@
   function adminGo(v) {
     A.view = v; var t = (NAV.filter(function (n) { return n[0] === v; })[0] || [0, 0, "Dashboard"])[2];
     $("#bm-title").textContent = t; $("#bm-topact").innerHTML = "";
+    var sb = $('#bm-admin .bm-nav[data-v="students"]'); sb && (sb.innerHTML = "<span>👥</span>Students" + (A.reqs && A.reqs.length ? ' <span class="bm-badge o">' + A.reqs.length + "</span>" : ""));
     document.querySelectorAll("#bm-admin .bm-nav").forEach(function (b) { b.classList.toggle("on", b.dataset.v === v); });
     var m = $("#bm-main");
     ({ dash: vDash, batches: vBatches, students: vStudents, tests: vTests })[v] ? ({ dash: vDash, batches: vBatches, students: vStudents, tests: vTests })[v](m) : vItems(m, v);
@@ -110,14 +176,14 @@
       var v = vals[f.k] == null ? "" : vals[f.k], id = 'bmf_' + f.k, inp;
       if (f.t === "select") inp = '<select id="' + id + '">' + f.o.map(function (o) { var ov = Array.isArray(o) ? o[0] : o, ol = Array.isArray(o) ? o[1] : o; return '<option value="' + esc(ov) + '"' + (String(v) === String(ov) ? " selected" : "") + '>' + esc(ol) + '</option>'; }).join("") + '</select>';
       else if (f.t === "textarea") inp = '<textarea id="' + id + '" rows="3">' + esc(v) + '</textarea>';
-      else inp = '<input id="' + id + '" type="' + (f.t || "text") + '" value="' + esc(v) + '" placeholder="' + esc(f.p || "") + '">';
+      else if (f.t === "file") inp = '<input id="' + id + '" type="file" accept="' + esc(f.acc || "") + '">'; else inp = '<input id="' + id + '" type="' + (f.t || "text") + '" value="' + esc(v) + '" placeholder="' + esc(f.p || "") + '">';
       return '<label>' + esc(f.l) + (f.r ? " *" : "") + '</label>' + inp + (f.h ? '<div class="bm-note">' + f.h + '</div>' : "");
     }).join("") + '<div class="acts"><button class="bm-btn sec" data-c>Cancel</button><button class="bm-btn" data-s>Save</button></div></div></div>';
     document.body.appendChild(md);
     md.querySelector("[data-c]").onclick = function () { md.remove(); };
     md.querySelector("[data-s]").onclick = function () {
       var out = {}, bad = "";
-      fields.forEach(function (f) { var v = md.querySelector("#bmf_" + f.k).value.trim(); out[f.k] = v; if (f.r && !v && !bad) bad = f.l + " zaroori hai"; });
+      fields.forEach(function (f) { var el = md.querySelector("#bmf_" + f.k); if (f.t === "file") { out[f.k] = (el.files && el.files[0]) || null; return; } var v = el.value.trim(); out[f.k] = v; if (f.r && !v && !bad) bad = f.l + " zaroori hai"; });
       if (bad) return toast(bad);
       var btn = md.querySelector("[data-s]"); btn.disabled = true;
       Promise.resolve(save(out)).then(function (ok) { ok === false ? (btn.disabled = false) : md.remove(); }).catch(function (e) { console.warn(e); btn.disabled = false; toast("Save nahi hua: " + (e.code || e.message)); });
@@ -140,17 +206,17 @@
     m.querySelectorAll("[data-a]").forEach(function (b) { b.onclick = function () { batchAct(b.dataset.a, b.dataset.id); }; });
   }
   function batchForm(b) {
-    var v = b ? Object.assign({}, b, { subjectsTxt: subjOf(b).join(", "), teachersTxt: (b.teachers || []).join(", "), sd: b.startDate || "", ed: b.endDate || "" }) : { status: "active", type: "hybrid", sd: "", ed: "" };
+    var v = b ? Object.assign({}, b, { subjectsTxt: subjOf(b).join(", "), teachersTxt: (b.teachers || []).join(", "), sd: b.startDate || "", ed: b.endDate || "" }) : { status: "active", type: "hybrid", enrollment: "request", sd: "", ed: "" };
     form(b ? "Edit Batch" : "Create New Batch", [
       { k: "name", l: "Batch Name", r: 1, p: "Class 10th - Board 2026" }, { k: "code", l: "Batch Code", p: "C10-B26" },
       { k: "classLabel", l: "Class / Grade", t: "select", o: CLASSES }, { k: "subjectsTxt", l: "Subjects (comma se alag)", r: 1, p: "Maths, Science, SST" },
       { k: "desc", l: "Description", t: "textarea" }, { k: "teachersTxt", l: "Teachers (naam, comma se alag)", p: "Vikash Sir, Pooja Ma'am" },
       { k: "sd", l: "Start Date", t: "date", r: 1 }, { k: "ed", l: "End Date", t: "date", r: 1 },
       { k: "type", l: "Batch Type", t: "select", o: [["live", "Live Batch"], ["recorded", "Recorded Batch"], ["hybrid", "Hybrid (Live + Recorded)"]] },
-      { k: "limit", l: "Enrollment Limit (khaali = unlimited)", t: "number" }, { k: "status", l: "Status", t: "select", o: ["active", "inactive", "upcoming"] }
+      { k: "enrollment", l: "Student Enrollment", t: "select", o: [["request", "Students request bhej sakte hain (admin approve karega)"], ["closed", "Band — sirf admin enroll kare"]] }, { k: "limit", l: "Enrollment Limit (khaali = unlimited)", t: "number" }, { k: "status", l: "Status", t: "select", o: ["active", "inactive", "upcoming"] }
     ], v, function (o) {
       if (o.ed < o.sd) { toast("End Date, Start Date se pehle nahi ho sakti"); return false; }
-      var data = { name: o.name, code: o.code, classLabel: o.classLabel, subjects: o.subjectsTxt.split(",").map(function (x) { return x.trim(); }).filter(Boolean), desc: o.desc, teachers: o.teachersTxt.split(",").map(function (x) { return x.trim(); }).filter(Boolean), startDate: o.sd, endDate: o.ed, type: o.type, limit: o.limit ? Math.max(1, +o.limit) : 0, status: o.status, published: o.status !== "inactive", instituteId: A.inst, updatedAt: FV().serverTimestamp() };
+      var data = { name: o.name, code: o.code, classLabel: o.classLabel, subjects: o.subjectsTxt.split(",").map(function (x) { return x.trim(); }).filter(Boolean), desc: o.desc, teachers: o.teachersTxt.split(",").map(function (x) { return x.trim(); }).filter(Boolean), startDate: o.sd, endDate: o.ed, type: o.type, enrollment: o.enrollment || "request", limit: o.limit ? Math.max(1, +o.limit) : 0, status: o.status, published: o.status !== "inactive", instituteId: A.inst, updatedAt: FV().serverTimestamp() };
       var p = b ? bref(A.inst, b.id).update(data) : bref(A.inst).add(Object.assign(data, { enrolledCount: 0, createdAt: FV().serverTimestamp(), createdBy: adminEmail() }));
       return p.then(function () { audit(b ? "batch.update" : "batch.create", b ? b.id : data.name); toast("✅ Batch save ho gaya"); return loadAll().then(function () { adminGo("batches"); }); });
     });
@@ -191,7 +257,7 @@
       if (i.status === "live") h += a("rejoin", "Rejoin") + a("end", "■ End Class", "red");
       if (i.status === "upcoming") h += a("cancel", "Cancel");
     }
-    if (i.url) h += a("view", "View");
+    if (hasFile(i)) h += a("view", "View");
     if (i.kind === "recording") {
       if (i.status === "ready" || i.status === "unpublished") h += a("pub", "Publish", "");
       if (i.status === "published") h += a("unpub", "Unpublish");
@@ -201,28 +267,39 @@
     return h + a("edit", "Edit") + a("del", "Delete", "red");
   }
   function itemForm(v, it) {
-    var kind = it ? it.kind : KIND_OF[v][0], bs = A.batches.map(function (b) { return [b.id, b.name]; });
-    var f = [{ k: "batchId", l: "Batch", t: "select", o: bs, r: 1 }, { k: "title", l: kind === "announcement" ? "Title" : "Title", r: 1 }];
+    var kind = it ? it.kind : KIND_OF[v][0], bs = A.batches.map(function (b) { return [b.id, b.name]; }), upl = kind === "note" || kind === "material" || kind === "ppt" || kind === "recording";
+    var f = [{ k: "batchId", l: "Batch", t: "select", o: bs, r: 1 }, { k: "title", l: "Title", r: 1 }];
     if (kind === "note" || kind === "material") f.push({ k: "cat", l: "Type", t: "select", o: NOTE_TYPES.map(function (x) { return x[0]; }) });
     if (kind !== "announcement") f.push({ k: "subject", l: "Subject" }, { k: "chapter", l: "Chapter" });
     f.push({ k: "desc", l: kind === "announcement" ? "Message" : "Description", t: "textarea", r: kind === "announcement" });
-    if (kind === "class") f.push({ k: "dt", l: "Date & Time", t: "datetime-local", r: 1 }, { k: "durationMin", l: "Duration (minutes)", t: "number" }, { k: "teacher", l: "Teacher" });
-    if (kind === "recording") f.push({ k: "durationMin", l: "Duration (minutes)", t: "number" }, { k: "teacher", l: "Teacher" }, { k: "url", l: "Recording Link (https)", h: "YouTube unlisted / Google Drive (share: anyone with link) / direct .mp4" });
-    if (kind === "note" || kind === "material" || kind === "ppt") f.push({ k: "url", l: "File Link (https)", r: 1, h: "Google Drive (anyone with link) ya direct PDF/PPT URL. File Firebase me store nahi hoti — sirf link." });
-    var vals = it ? Object.assign({}, it, { dt: it.scheduledAt ? new Date(ms(it.scheduledAt) - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 16) : "" }) : { batchId: A.f.batch || (A.batches[0] || {}).id, cat: "Notes" };
+    if (kind === "class") f.push({ k: "mode", l: "Live kaise hogi?", t: "select", o: [["inapp", "Meri app ke andar (Jitsi live)"], ["external", "Doosri app ka link (Zoom / Google Meet / YouTube Live)"]], h: "Doosri app chunne par 'Go Live' dabate waqt aap uska link daalenge — link pehle se student ko nahi dikhta." }, { k: "dt", l: "Date & Time", t: "datetime-local", r: 1 }, { k: "durationMin", l: "Duration (minutes)", t: "number" }, { k: "teacher", l: "Teacher" });
+    if (kind === "recording") f.push({ k: "durationMin", l: "Duration (minutes)", t: "number" }, { k: "teacher", l: "Teacher" });
+    if (upl) f.push({ k: "file", l: it && (it.fileName || hasFile(it)) ? "Nayi File Upload (purani replace hogi)" : "File Upload", t: "file", acc: kind === "recording" ? "video/*" : ".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png", h: "Phone/computer se seedhe upload. Firebase Storage ON ho to 50MB tak, warna 4MB tak." }, { k: "url", l: "YA Link (https)", h: "Google Drive (anyone with link) / YouTube / direct URL. Upload ya link — dono me se ek." + (it && it.fileName ? "<br>Abhi: " + esc(it.fileName) : "") });
+    var vals = it ? Object.assign({ mode: "inapp" }, it, { dt: it.scheduledAt ? new Date(ms(it.scheduledAt) - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 16) : "" }) : { batchId: A.f.batch || (A.batches[0] || {}).id, cat: "Notes", mode: "inapp" };
     form((it ? "Edit " : "Add ") + kind, f, vals, function (o) {
       if (o.url && !okUrl(o.url)) { toast("Link https:// se shuru hona chahiye"); return false; }
+      if (o.file && o.file.size > 52428800) { toast("File 50MB se badi hai"); return false; }
       if (kind === "class" && !it && new Date(o.dt).getTime() < Date.now() - 36e5) { toast("Past ka time schedule nahi ho sakta"); return false; }
-      var data = { batchId: o.batchId, instituteId: A.inst, kind: kind, title: o.title, desc: o.desc || "", subject: o.subject || "", chapter: o.chapter || "", updatedAt: FV().serverTimestamp() };
-      if (kind === "note" || kind === "material") { data.cat = o.cat; data.kind = NOTE_TYPES.filter(function (x) { return x[0] === o.cat; })[0][1]; }
-      if (o.url !== undefined) data.url = o.url;
-      if (kind === "class") { data.scheduledAt = firebase.firestore.Timestamp.fromDate(new Date(o.dt)); data.durationMin = +o.durationMin || 60; data.teacher = o.teacher || ""; if (!it) { data.status = "upcoming"; data.published = true; } }
-      if (kind === "recording") { data.durationMin = +o.durationMin || 0; data.teacher = o.teacher || ""; if (o.url && (!it || it.status === "processing" || it.status === "failed")) data.status = "ready"; if (!it) { data.status = o.url ? "ready" : "processing"; data.published = false; } }
-      if (kind === "announcement" && !it) data.published = true;
-      if (!it && kind !== "class" && kind !== "recording" && kind !== "announcement") data.published = false;
-      var col = bref(A.inst, o.batchId).collection("items");
-      var p = it ? bref(A.inst, it.batchId).collection("items").doc(it.id).update(data) : col.add(Object.assign(data, { createdAt: FV().serverTimestamp(), createdBy: adminEmail() }));
-      return p.then(function () { audit("item." + (it ? "update" : "create"), kind); toast("✅ Save ho gaya"); return loadAll().then(function () { adminGo(v); }); });
+      if ((kind === "note" || kind === "material" || kind === "ppt") && !o.file && !o.url && !(it && hasFile(it))) { toast("File upload karein ya link daalein"); return false; }
+      var up = Promise.resolve(null);
+      if (o.file) { toast("⏳ Upload ho raha hai… (band na karein)"); up = uploadFile(o.file, A.inst, o.batchId, function (p) { var b = $(".bm-sheet [data-s]"); b && (b.textContent = "Upload " + p + "%"); }); }
+      return up.then(function (fi) {
+        var data = { batchId: o.batchId, instituteId: A.inst, kind: kind, title: o.title, desc: o.desc || "", subject: o.subject || "", chapter: o.chapter || "", updatedAt: FV().serverTimestamp() };
+        if (kind === "note" || kind === "material") { data.cat = o.cat; data.kind = NOTE_TYPES.filter(function (x) { return x[0] === o.cat; })[0][1]; }
+        if (upl) {
+          data.url = o.url || "";
+          if (fi) { data.url = fi.url || ""; data.fileId = fi.fileId || ""; data.storagePath = fi.storagePath || ""; data.fileName = fi.fileName; data.fileType = fi.fileType; data.fileSize = fi.fileSize; }
+          else if (it && o.url && o.url !== it.url) { data.fileId = ""; data.storagePath = ""; data.fileName = ""; }
+          else if (it && !o.url && it.url) data.url = it.url;
+        }
+        var has = !!(data.url || data.fileId || (it && it.fileId && !fi));
+        if (kind === "class") { data.mode = o.mode || "inapp"; data.scheduledAt = firebase.firestore.Timestamp.fromDate(new Date(o.dt)); data.durationMin = +o.durationMin || 60; data.teacher = o.teacher || ""; if (!it) { data.status = "upcoming"; data.published = true; } }
+        if (kind === "recording") { data.durationMin = +o.durationMin || 0; data.teacher = o.teacher || ""; if (has && (!it || it.status === "processing" || it.status === "failed")) data.status = "ready"; if (!it) { data.status = has ? "ready" : "processing"; data.published = false; } }
+        if (kind === "announcement" && !it) data.published = true;
+        if (!it && kind !== "class" && kind !== "recording" && kind !== "announcement") data.published = false;
+        var p = it ? bref(A.inst, it.batchId).collection("items").doc(it.id).update(data) : bref(A.inst, o.batchId).collection("items").add(Object.assign(data, { createdAt: FV().serverTimestamp(), createdBy: adminEmail() }));
+        return p.then(function () { if (it && fi) deleteFileOf(it); audit("item." + (it ? "update" : "create"), kind); toast("✅ Save ho gaya"); return loadAll().then(function () { adminGo(v); }); });
+      });
     });
   }
   function itemRef(b, id) { return bref(A.inst, b).collection("items").doc(id); }
@@ -230,22 +307,27 @@
     var it = (A.items[b] || []).filter(function (x) { return x.id === id; })[0]; if (!it) return;
     var done = function (msg) { return function () { audit("item." + a, id); msg && toast(msg); return loadAll().then(function () { adminGo(v); }); }; }, upd = function (d) { d.updatedAt = FV().serverTimestamp(); return itemRef(b, id).update(d); };
     if (a === "edit") return itemForm(v, it);
-    if (a === "view") return viewer(it.title, it.url);
-    if (a === "del") { if (!sure('"' + it.title + '" delete karein? Ye undo nahi hoga.')) return; return itemRef(b, id).delete().then(done("Delete ho gaya")); }
-    if (a === "pub") { if (it.kind === "recording" && !it.url) return toast("Pehle recording ka valid link jodein (Edit)"); return upd(it.kind === "recording" ? { status: "published", published: true } : { published: true }).then(done("Published")); }
+    if (a === "view") return openItem(it, A.inst);
+    if (a === "del") { if (!sure('"' + it.title + '" delete karein? Ye undo nahi hoga.')) return; return itemRef(b, id).delete().then(function () { deleteFileOf(it); }).then(done("Delete ho gaya")); }
+    if (a === "pub") { if (it.kind === "recording" && !hasFile(it)) return toast("Pehle recording ka valid link jodein (Edit)"); return upd(it.kind === "recording" ? { status: "published", published: true } : { published: true }).then(done("Published")); }
     if (a === "unpub") return upd(it.kind === "recording" ? { status: "unpublished", published: false } : { published: false }).then(done("Unpublished"));
     if (a === "fail") return upd({ status: "failed" }).then(done());
     if (a === "retry") return upd({ status: "processing" }).then(done());
     if (a === "cancel") return upd({ status: "cancelled" }).then(done());
     if (a === "golive") {
-      if (!sure('"' + it.title + '" abhi live shuru karein?\n\nLive Jitsi room me hoga. Pehle jo join karta hai wo moderator banta hai.')) return;
-      var room = "snp" + rnd(14); return upd({ status: "live", liveRoom: room, published: true, startedAt: FV().serverTimestamp() }).then(done()).then(function () { window.open(liveUrl(room, "Teacher"), "_blank", "noopener"); });
+      if (it.mode === "external") {
+        var link = prompt("Live class ka link daalein (Zoom / Google Meet / YouTube Live / koi bhi https link):", ""); if (!link) return; link = link.trim();
+        if (!okUrl(link)) return toast("Link https:// se shuru hona chahiye");
+        return upd({ status: "live", liveUrl: link, published: true, startedAt: FV().serverTimestamp() }).then(done()).then(function () { window.open(link, "_blank", "noopener"); });
+      }
+      if (!sure('"' + it.title + '" abhi live shuru karein?\n\nLive app ke andar Jitsi room me hoga. Camera/mic ki permission allow karein.')) return;
+      var room = "snp" + rnd(14); return upd({ status: "live", liveRoom: room, published: true, startedAt: FV().serverTimestamp() }).then(done()).then(function () { joinLive({ mode: "inapp", liveRoom: room, title: it.title }, "Teacher"); });
     }
-    if (a === "rejoin") return window.open(liveUrl(it.liveRoom, "Teacher"), "_blank", "noopener");
+    if (a === "rejoin") return joinLive(it, "Teacher");
     if (a === "end") {
       if (!sure("Class khatam karein?")) return;
       var has = (A.items[b] || []).some(function (x) { return x.kind === "recording" && x.classId === id; });
-      return upd({ status: "completed", liveRoom: FV().delete(), endedAt: FV().serverTimestamp() }).then(function () {
+      return upd({ status: "completed", liveRoom: FV().delete(), liveUrl: FV().delete(), endedAt: FV().serverTimestamp() }).then(function () {
         if (has) return;
         return bref(A.inst, b).collection("items").add({ batchId: b, instituteId: A.inst, kind: "recording", classId: id, title: it.title, desc: it.desc || "", subject: it.subject || "", chapter: it.chapter || "", teacher: it.teacher || "", status: "processing", published: false, createdAt: FV().serverTimestamp(), createdBy: adminEmail(), updatedAt: FV().serverTimestamp() });
       }).then(done("Class khatam. Recording 'Processing' me hai — Recorded Lectures me uska link jodein."));
@@ -257,15 +339,29 @@
     var go = function () {
       var q = (A.f.q || "").toLowerCase(), bf = A.f.batch || "all";
       var rows = A.students.filter(function (s) { return (bf === "all" || (s.batchIds || []).indexOf(bf) > -1) && (!q || (s.name + s.mobile).toLowerCase().indexOf(q) > -1); }).slice(0, 200);
-      m.innerHTML = '<div class="bm-tools"><select id="bm-bf"><option value="all">All Students</option>' + A.batches.map(function (b) { return '<option value="' + b.id + '"' + (bf === b.id ? " selected" : "") + '>In: ' + esc(b.name) + '</option>'; }).join("") + '</select><input id="bm-q" placeholder="Name / mobile search…" value="' + esc(A.f.q || "") + '"></div>' +
+      var rq = (A.reqs || []).length ? '<div class="bm-card"><h3>📥 Enrollment Requests (' + A.reqs.length + ')</h3>' + A.reqs.map(function (r, ix) { return '<div class="bm-row"><div class="g"><b>' + esc(r.name || r.mobile) + '</b><small>' + esc(r.mobile) + ' • ' + esc(batchName(r.batchId)) + ' • ' + fdate(r.createdAt) + '</small></div><button class="bm-btn sm" data-ap="' + ix + '">Approve</button><button class="bm-btn red sm" data-rj="' + ix + '">Reject</button></div>'; }).join("") + '</div>' : "";
+      m.innerHTML = rq + '<div class="bm-tools"><select id="bm-bf"><option value="all">All Students</option>' + A.batches.map(function (b) { return '<option value="' + b.id + '"' + (bf === b.id ? " selected" : "") + '>In: ' + esc(b.name) + '</option>'; }).join("") + '</select><input id="bm-q" placeholder="Name / mobile search…" value="' + esc(A.f.q || "") + '"></div>' +
         '<div class="bm-tablewrap"><table class="bm-table"><tr><th>Name</th><th>Mobile</th><th>Batches</th><th>Action</th></tr>' + (rows.length ? rows.map(function (s) { return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.mobile) + '</td><td>' + esc((s.batchIds || []).map(batchName).join(", ") || "—") + '</td><td><button class="bm-btn sec sm" data-m="' + esc(s.mobile) + '">Manage Batches</button></td></tr>'; }).join("") : '<tr><td colspan="4"><div class="bm-empty">Koi student nahi mila.</div></td></tr>') + '</table></div><div class="bm-note">Sirf aapke institute ke students dikhte hain. Max 200 dikhaye gaye — search use karein.</div>';
       $("#bm-bf").onchange = function () { A.f.batch = this.value; vStudents(m); };
       $("#bm-q").oninput = function () { A.f.q = this.value; var p = this.selectionStart; go(); var n = $("#bm-q"); n.focus(); n.setSelectionRange(p, p); };
+      m.querySelectorAll("[data-ap]").forEach(function (b) { b.onclick = function () { reqAct("ap", A.reqs[+b.dataset.ap]); }; });
+      m.querySelectorAll("[data-rj]").forEach(function (b) { b.onclick = function () { reqAct("rj", A.reqs[+b.dataset.rj]); }; });
       m.querySelectorAll("[data-m]").forEach(function (b) { b.onclick = function () { enrollForm(b.dataset.m); }; });
     };
     if (A.students) return go();
     m.innerHTML = '<div class="bm-empty">Loading students…</div>';
     authReady().then(function () { return DB().collection("students").where("instituteId", "==", A.inst).limit(500).get(); }).then(function (q) { A.students = q.docs.map(function (d) { return Object.assign({ mobile: d.id }, d.data()); }); go(); }).catch(function (e) { m.innerHTML = '<div class="bm-empty">Students load nahi hue (' + esc(e.code || e.message) + ')</div>'; });
+  }
+  function reqAct(a, r) {
+    if (!r) return; var db = DB(), b = A.batches.filter(function (x) { return x.id === r.batchId; })[0], rr = bref(A.inst, r.batchId).collection("requests").doc(r.mobile), p;
+    if (a === "rj") { if (!sure("Request reject karein?")) return; p = rr.update({ status: "rejected" }); }
+    else {
+      if (b && b.limit && (b.enrolledCount || 0) >= b.limit) return toast("Batch ki limit poori ho chuki hai");
+      var wb = db.batch(); wb.update(db.collection("students").doc(r.mobile), { batchIds: FV().arrayUnion(r.batchId) });
+      wb.set(bref(A.inst, r.batchId).collection("members").doc(r.mobile), { mobile: r.mobile, name: r.name || "", instituteId: A.inst, enrolledAt: FV().serverTimestamp(), by: adminEmail() });
+      wb.update(bref(A.inst, r.batchId), { enrolledCount: FV().increment(1) }); wb.delete(rr); p = wb.commit();
+    }
+    p.then(function () { audit("enroll.request." + a, r.mobile); A.students = null; toast(a === "ap" ? "✅ Student enroll ho gaya" : "Reject kiya"); return loadAll(); }).then(function () { adminGo("students"); }).catch(function (e) { toast("Nahi hua: " + (e.code || e.message)); });
   }
   function enrollForm(mobile) {
     var s = A.students.filter(function (x) { return x.mobile === mobile; })[0], cur = s.batchIds || [], md = document.createElement("div"); md.className = "bm-modal";
@@ -301,30 +397,46 @@
   function loadMine() {
     var s = sess(), db = DB(); if (!db) return Promise.reject();
     return authReady().then(function () { return Promise.resolve(typeof ensureMyInstituteId === "function" ? ensureMyInstituteId() : s.instituteId); }).then(function (inst) {
-      S.inst = inst; if (!inst) { S.batches = []; return; }
+      S.inst = inst; if (!inst) { S.batches = []; S.avail = []; return; }
       return db.collection("students").doc(String(s.mobile)).get().then(function (d) {
         S.mine = (d.exists && d.data().batchIds) || [];
         return Promise.all(S.mine.map(function (id) { return bref(inst, id).get().then(function (b) { return b.exists ? Object.assign({ id: b.id }, b.data()) : null; }).catch(function () { return null; }); }));
       }).then(function (bs) {
         S.batches = bs.filter(function (b) { return b && b.published; });
-        return Promise.all(S.batches.map(function (b) { return bref(inst, b.id).collection("items").where("published", "==", true).get().then(function (q) { S.items[b.id] = q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); }).catch(function () { S.items[b.id] = []; }); }));
+        return Promise.all(S.batches.map(function (b) { return bref(inst, b.id).collection("items").where("published", "==", true).get().then(function (q) { S.items[b.id] = q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); }).catch(function () { S.items[b.id] = []; }); })).then(loadAvail);
       });
     });
   }
-  function liveOf(b) { return (S.items[b.id] || []).filter(function (i) { return i.kind === "class" && i.status === "live" && i.liveRoom; })[0]; }
+  function loadAvail() {
+    var s = sess(), mine = S.mine || [];
+    return bref(S.inst).where("published", "==", true).get().then(function (q) {
+      var av = q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }).filter(function (b) { return mine.indexOf(b.id) < 0; });
+      return Promise.all(av.map(function (b) { return bref(S.inst, b.id).collection("requests").doc(String(s.mobile)).get().then(function (r) { b.req = r.exists ? r.data().status : null; }).catch(function () {}); })).then(function () { S.avail = av; });
+    }).catch(function () { S.avail = []; });
+  }
+  function reqEnroll(id) {
+    var s = sess(); bref(S.inst, id).collection("requests").doc(String(s.mobile)).set({ mobile: String(s.mobile), name: s.name || "", status: "pending", createdAt: FV().serverTimestamp() })
+      .then(function () { var b = S.avail.filter(function (x) { return x.id === id; })[0]; b && (b.req = "pending"); toast("✅ Request bhej di — admin approve karega"); sHome(); }).catch(function (e) { toast("Request nahi gayi: " + (e.code || e.message)); });
+  }
+  function liveOf(b) { return (S.items[b.id] || []).filter(function (i) { return i.kind === "class" && i.status === "live" && (i.liveRoom || i.liveUrl); })[0]; }
   function nextOf(b) { var n = Date.now() - 36e5; return (S.items[b.id] || []).filter(function (i) { return i.kind === "class" && i.status === "upcoming" && ms(i.scheduledAt) >= n; }).sort(function (a, c) { return ms(a.scheduledAt) - ms(c.scheduledAt); })[0]; }
   function sHome() {
-    var o = $("#bm-student"), live = S.batches.map(liveOf).filter(Boolean);
-    o.innerHTML = '<div class="bm-sh"><b>My Batches</b><button data-x>✕</button></div>' +
-      (live.length ? '<div class="bm-next"><div>🔴 <b>Live Now:</b> ' + esc(live[0].title) + '</div><button data-j="' + live[0].batchId + '">Join Now</button></div>' : "") +
-      (S.batches.length ? S.batches.map(function (b) { var l = liveOf(b), n = nextOf(b); return '<div class="bm-bcard" data-b="' + b.id + '"><span class="bm-tag"' + (l ? ' style="background:#ef4444"' : "") + '>' + (l ? "Live Now" : { live: "Live Batch", recorded: "Recorded", hybrid: "Hybrid" }[b.type] || "Batch") + '</span><b>' + esc(b.name) + '</b><small>' + esc(subjOf(b).join(" • ")) + '</small><div class="bm-meta"><span>👥 ' + (b.enrolledCount || 0) + (b.limit ? "/" + b.limit : "") + '</span><span>' + (n ? "⏰ " + fdate(n.scheduledAt) : "Koi upcoming class nahi") + '</span></div></div>'; }).join("") :
-        '<div class="bm-empty">Abhi aap kisi batch me enrolled nahi hain.<br>Apne institute admin se enroll karwayein.</div>');
-    o.querySelector("[data-x]").onclick = function () { closeStudent(); var h = $('#sn-nav [data-k="home"]'); h && h.click(); };
+    var o = $("#bm-student"), live = S.batches.map(liveOf).filter(Boolean), h = S.h || "my", av = S.avail || [], body;
+    if (h === "my") body = S.batches.length ? S.batches.map(function (b) { var l = liveOf(b), n = nextOf(b); return '<div class="bm-bcard" data-b="' + b.id + '"><span class="bm-tag"' + (l ? ' style="background:#ef4444"' : "") + '>' + (l ? "Live Now" : { live: "Live Batch", recorded: "Recorded", hybrid: "Hybrid" }[b.type] || "Batch") + '</span><b>' + esc(b.name) + '</b><small>' + esc(subjOf(b).join(" • ")) + '</small><div class="bm-meta"><span>👥 ' + (b.enrolledCount || 0) + (b.limit ? "/" + b.limit : "") + '</span><span>' + (n ? "⏰ " + fdate(n.scheduledAt) : "Koi upcoming class nahi") + '</span></div></div>'; }).join("") :
+      '<div class="bm-empty">Abhi aap kisi batch me enrolled nahi hain.<br>"Available" tab se enroll request bhejein.</div>';
+    else body = av.length ? av.map(function (b) {
+      var full = b.limit && (b.enrolledCount || 0) >= b.limit, act = b.req === "pending" ? '<span class="bm-badge o">⏳ Request pending — admin approve karega</span>' : b.req === "rejected" ? '<span class="bm-badge r">Request reject hui — admin se baat karein</span>' : b.enrollment === "closed" ? '<span class="bm-badge">Enrollment band hai</span>' : full ? '<span class="bm-badge r">Batch full</span>' : '<button class="bm-btn sm" data-rq="' + b.id + '">Enroll Request bhejein</button>';
+      return '<div class="bm-bcard" style="cursor:default"><span class="bm-tag" style="background:#6366f1">' + ({ live: "Live Batch", recorded: "Recorded", hybrid: "Hybrid" }[b.type] || "Batch") + '</span><b>' + esc(b.name) + '</b><small>' + esc(subjOf(b).join(" • ")) + '</small><div class="bm-meta"><span>👥 ' + (b.enrolledCount || 0) + (b.limit ? "/" + b.limit : "") + '</span><span>📅 ' + esc(b.startDate || "") + '</span></div><div style="margin-top:10px">' + act + '</div></div>'; }).join("") : '<div class="bm-empty">Abhi koi naya batch available nahi hai.</div>';
+    o.innerHTML = '<div class="bm-sh"><b>Batch</b><button data-x>✕</button></div>' +
+      (live.length ? '<div class="bm-next"><div>🔴 <b>Live Now:</b> ' + esc(live[0].title) + '</div><button data-j>Join Now</button></div>' : "") +
+      '<div class="bm-tabs"><button data-h="my"' + (h === "my" ? ' class="on"' : "") + '>My Batches (' + S.batches.length + ')</button><button data-h="avail"' + (h === "avail" ? ' class="on"' : "") + '>Available (' + av.length + ')</button></div>' + body;
+    o.querySelector("[data-x]").onclick = function () { closeStudent(); var hm = $('#sn-nav [data-k="home"]'); hm && hm.click(); };
+    o.querySelectorAll("[data-h]").forEach(function (t) { t.onclick = function () { S.h = t.dataset.h; sHome(); }; });
     o.querySelectorAll("[data-b]").forEach(function (c) { c.onclick = function () { S.tab = "overview"; sBatch(c.dataset.b); }; });
+    o.querySelectorAll("[data-rq]").forEach(function (c) { c.onclick = function () { c.disabled = true; reqEnroll(c.dataset.rq); }; });
     var j = o.querySelector("[data-j]"); j && (j.onclick = function () { joinLive(live[0]); });
   }
-  function joinLive(c) { var s = sess(); window.open(liveUrl(c.liveRoom, s && s.name), "_blank", "noopener"); }
-  var TABS = [["overview", "Overview"], ["class", "Live Classes"], ["recording", "Recorded"], ["note", "Notes"], ["material", "Study Material"], ["ppt", "PPT"], ["tests", "Tests"], ["announcement", "Announcements"]];
+    var TABS = [["overview", "Overview"], ["class", "Live Classes"], ["recording", "Recorded"], ["note", "Notes"], ["material", "Study Material"], ["ppt", "PPT"], ["tests", "Tests"], ["announcement", "Announcements"]];
   function sBatch(id) {
     var b = S.batches.filter(function (x) { return x.id === id; })[0], o = $("#bm-student"); if (!b) return sHome(); S.cur = id;
     var its = S.items[id] || [], l = liveOf(b), n = nextOf(b);
@@ -337,7 +449,7 @@
       var list = its.filter(function (i) { return tab === "note" ? i.kind === "note" : i.kind === tab; }).sort(function (a, c) { return (ms(c.scheduledAt) || ms(c.createdAt)) - (ms(a.scheduledAt) || ms(a.createdAt)); });
       body = '<div class="bm-list">' + (list.length ? list.map(function (i) { var ic = { class: "🔴", recording: "🎬", note: "📄", material: "📚", ppt: "📊", announcement: "📢" }[i.kind];
         return '<div class="bm-item"><div class="ic">' + ic + '</div><div class="g"><b>' + esc(i.title) + '</b><small>' + esc([i.subject, i.chapter].filter(Boolean).join(" • ") || (i.cat || "")) + (i.kind === "class" ? " • " + fdate(i.scheduledAt) : "") + '</small>' + (i.kind === "announcement" ? '<small style="display:block;margin-top:4px;color:#334155">' + esc(i.desc) + '</small>' : "") + '</div>' +
-          (i.kind === "class" ? (i.status === "live" && i.liveRoom ? '<button class="go" style="background:#ef4444" data-live="' + i.id + '">Join</button>' : '<span class="bm-badge ' + (i.status === "completed" ? "" : "b") + '">' + (i.status === "completed" ? "Done" : i.status === "cancelled" ? "Cancelled" : "Upcoming") + '</span>') : i.url ? '<button class="go" data-v="' + i.id + '">' + (i.kind === "recording" ? "▶ Play" : "View") + '</button>' : "") + '</div>'; }).join("") : '<div class="bm-empty">Yahan abhi kuch publish nahi hua.</div>') + '</div>';
+          (i.kind === "class" ? (i.status === "live" && (i.liveRoom || i.liveUrl) ? '<button class="go" style="background:#ef4444" data-live="' + i.id + '">Join</button>' : '<span class="bm-badge ' + (i.status === "completed" ? "" : "b") + '">' + (i.status === "completed" ? "Done" : i.status === "cancelled" ? "Cancelled" : "Upcoming") + '</span>') : hasFile(i) ? '<button class="go" data-v="' + i.id + '">' + (i.kind === "recording" ? "▶ Play" : "View") + '</button>' : "") + '</div>'; }).join("") : '<div class="bm-empty">Yahan abhi kuch publish nahi hua.</div>') + '</div>';
     }
     o.innerHTML = '<div class="bm-sh"><button data-back>←</button><b>' + esc(b.name) + '</b></div><div class="bm-tabs">' + TABS.map(function (t) { return '<button data-tab="' + t[0] + '"' + (t[0] === tab ? ' class="on"' : "") + '>' + t[1] + '</button>'; }).join("") + '</div>' + body;
     o.querySelector("[data-back]").onclick = sHome;
@@ -345,7 +457,7 @@
     o.querySelectorAll("[data-t]").forEach(function (t) { t.onclick = function () { S.tab = t.dataset.t; sBatch(id); }; });
     var j = o.querySelector("[data-j]"); j && (j.onclick = function () { joinLive(l); });
     o.querySelectorAll("[data-live]").forEach(function (x) { x.onclick = function () { joinLive(its.filter(function (i) { return i.id === x.dataset.live; })[0]); }; });
-    o.querySelectorAll("[data-v]").forEach(function (x) { x.onclick = function () { var i = its.filter(function (k) { return k.id === x.dataset.v; })[0]; viewer(i.title, i.url); }; });
+    o.querySelectorAll("[data-v]").forEach(function (x) { x.onclick = function () { var i = its.filter(function (k) { return k.id === x.dataset.v; })[0]; openItem(i, S.inst); }; });
     var tb = o.querySelector("[data-tests]"); tb && (tb.onclick = function () { closeStudent(); typeof goStudentSection === "function" && goStudentSection("student-form-fields-anchor"); });
   }
 

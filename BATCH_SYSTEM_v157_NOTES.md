@@ -22,3 +22,12 @@ Study Material, PPT, Tests link, Announcements), in-app viewer.
 - Student security: students anonymous-auth hain, isliye rules "student kis batch ka member hai" verify nahi kar sakte. Admin-side
   isolation (write + draft read) server-side enforced hai; student-side client-trusted (app ka purana design).
 - Pending (Phase 2): Assignments/Doubts, batch-wise test assign, Reports page, teacher accounts, batch-wise push, 2-institute rules test.
+
+## Update (v157b)
+- Student: "Batch" me ab 2 tab — My Batches / Available. Available me admin ke bane published batches dikhte hain,
+  "Enroll Request bhejein". Admin: Batch Management -> Students me "Enrollment Requests" -> Approve/Reject. (Batch form me
+  Enrollment = request / band.)
+- Live class: 2 mode — "Meri app ke andar (Jitsi)" ya "Doosri app ka link (Zoom/Meet/YouTube)". External me Go Live par link daalte hain.
+  Note: public meet.jit.si ka embed time-limited ho sakta hai; apna Jitsi/JaaS domain SNAP_CONFIG.liveDomain me daal sakte hain.
+- Notes/PPT/Recording: direct file upload + link dono. Storage ON ho to 50MB; warna auto-fallback Firestore me max 4MB.
+- Naya rules: firestore.rules (requests, files) + storage.rules (Storage ON karne par).
