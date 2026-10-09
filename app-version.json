@@ -1,3 +1,9 @@
 {
-  "apk": { "build": 0, "name": "", "url": "", "notes": "", "force": false }
+  "apk": {
+    "build": 11,
+    "name": "1.0.11",
+    "url": "https://github.com/SnaptestPro/snaptestpro.github.io/releases/download/app-b11/SnapTestPro.apk",
+    "notes": "App ka naya version aaya hai.",
+    "force": false
+  }
 }
