@@ -31,3 +31,11 @@ Study Material, PPT, Tests link, Announcements), in-app viewer.
   Note: public meet.jit.si ka embed time-limited ho sakta hai; apna Jitsi/JaaS domain SNAP_CONFIG.liveDomain me daal sakte hain.
 - Notes/PPT/Recording: direct file upload + link dono. Storage ON ho to 50MB; warna auto-fallback Firestore me max 4MB.
 - Naya rules: firestore.rules (requests, files) + storage.rules (Storage ON karne par).
+
+## Update (v157c) — Paid batches (UPI QR)
+- Batch form me "Batch Fee ₹" (0 = free).
+- Admin: "Payment Setup (UPI QR)" me apna QR screenshot + UPI ID save. "Payments" me sab approved payments + total.
+- Student: paid batch par "Enroll & Pay ₹X" -> QR/UPI link -> UTR (+screenshot) bhejta hai -> admin Enrollment Requests me
+  UTR/screenshot dekhkar apni UPI app me paisa check karke Approve karta hai.
+- Payment AUTOMATIC verify nahi hoti (gateway/server nahi). Rules me amount = batch fee aur UTR zaroori hai, par UTR asli hai ya nahi admin check kare.
+- Naye rules: firestore.rules dobara publish karein.

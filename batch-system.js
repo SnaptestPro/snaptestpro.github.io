@@ -100,6 +100,24 @@
       if (it.fileId) { var fr = bref(A.inst, it.batchId).collection("files").doc(it.fileId); fr.collection("parts").get().then(function (q) { var wb = DB().batch(); q.docs.forEach(function (d) { wb.delete(d.ref); }); wb.delete(fr); return wb.commit(); }).catch(function () {}); }
     } catch (e) {}
   }
+  function rupee(n) { return "₹" + Number(n || 0).toLocaleString("en-IN"); }
+  function pref(inst) { return DB().collection("institutes").doc(inst).collection("batchSettings").doc("payment"); }
+  /* image -> chhota dataURL (QR / payment screenshot), Firestore doc me save hota hai */
+  function shrink(file, maxW, maxLen) {
+    return new Promise(function (res, rej) {
+      var fr = new FileReader(); fr.onerror = rej;
+      fr.onload = function () { var im = new Image(); im.onerror = rej; im.onload = function () {
+        var c = Math.min(1, maxW / im.width), cv = document.createElement("canvas"); cv.width = Math.round(im.width * c); cv.height = Math.round(im.height * c); cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+        var q = 0.9, u = cv.toDataURL("image/jpeg", q); while (u.length > maxLen && q > 0.3) { q -= 0.1; u = cv.toDataURL("image/jpeg", q); }
+        u.length > maxLen ? rej(new Error("Image bahut badi hai")) : res(u); }; im.src = fr.result; };
+      fr.readAsDataURL(file);
+    });
+  }
+  function showImg(title, src) {
+    var v = document.createElement("div"); v.className = "bm-viewer";
+    v.innerHTML = '<div class="vt"><b>' + esc(title) + '</b><button data-x>✕</button></div><div style="flex:1;overflow:auto;text-align:center;background:#111"><img src="' + src + '" style="max-width:100%"></div>';
+    v.querySelector("[data-x]").onclick = function () { v.remove(); }; document.body.appendChild(v);
+  }
   function bref(inst, id) { var c = DB().collection("institutes").doc(inst).collection("batches"); return id ? c.doc(id) : c; }
   function stBadge(it) {
     if (it.kind === "class") return it.status === "live" ? '<span class="bm-badge bm-live">LIVE</span>' : it.status === "completed" ? '<span class="bm-badge">Completed</span>' : it.status === "cancelled" ? '<span class="bm-badge r">Cancelled</span>' : '<span class="bm-badge b">Upcoming</span>';
@@ -130,10 +148,10 @@
       return Promise.all(A.batches.map(function (b) { return bref(A.inst, b.id).collection("items").get().then(function (s) { A.items[b.id] = s.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); }); }));
     }).then(function () {
       A.reqs = [];
-      return Promise.all(A.batches.map(function (b) { return bref(A.inst, b.id).collection("requests").get().then(function (q) { q.docs.forEach(function (d) { var x = d.data(); if (x.status === "pending") A.reqs.push({ batchId: b.id, mobile: d.id, name: x.name, createdAt: x.createdAt }); }); }).catch(function () {}); }));
+      return Promise.all(A.batches.map(function (b) { return bref(A.inst, b.id).collection("requests").get().then(function (q) { q.docs.forEach(function (d) { var x = d.data(); if (x.status === "pending") A.reqs.push({ batchId: b.id, mobile: d.id, name: x.name, createdAt: x.createdAt, amount: x.amount, utr: x.utr, shot: x.shot }); }); }).catch(function () {}); }));
     });
   }
-  var NAV = [["dash", "🏠", "Dashboard"], ["batches", "🎓", "Batch Management"], ["class", "🔴", "Live Classes"], ["recording", "🎬", "Recorded Lectures"], ["note", "📄", "Notes & Study Material"], ["ppt", "📊", "PPT / Presentations"], ["tests", "📝", "Tests & Assignments"], ["students", "👥", "Students"], ["announcement", "📢", "Announcements"]];
+  var NAV = [["dash", "🏠", "Dashboard"], ["batches", "🎓", "Batch Management"], ["class", "🔴", "Live Classes"], ["recording", "🎬", "Recorded Lectures"], ["note", "📄", "Notes & Study Material"], ["ppt", "📊", "PPT / Presentations"], ["tests", "📝", "Tests & Assignments"], ["students", "👥", "Students"], ["pay", "💰", "Payments"], ["payset", "💳", "Payment Setup (UPI QR)"], ["announcement", "📢", "Announcements"]];
   function buildAdmin() {
     var o = $("#bm-admin"); o && o.remove();
     o = document.createElement("div"); o.id = "bm-admin";
@@ -151,7 +169,7 @@
     var sb = $('#bm-admin .bm-nav[data-v="students"]'); sb && (sb.innerHTML = "<span>👥</span>Students" + (A.reqs && A.reqs.length ? ' <span class="bm-badge o">' + A.reqs.length + "</span>" : ""));
     document.querySelectorAll("#bm-admin .bm-nav").forEach(function (b) { b.classList.toggle("on", b.dataset.v === v); });
     var m = $("#bm-main");
-    ({ dash: vDash, batches: vBatches, students: vStudents, tests: vTests })[v] ? ({ dash: vDash, batches: vBatches, students: vStudents, tests: vTests })[v](m) : vItems(m, v);
+    ({ dash: vDash, batches: vBatches, students: vStudents, tests: vTests, pay: vPay, payset: vPaySet })[v] ? ({ dash: vDash, batches: vBatches, students: vStudents, tests: vTests, pay: vPay, payset: vPaySet })[v](m) : vItems(m, v);
   }
   function topBtn(label, fn) { var s = $("#bm-topact"); s.innerHTML = '<button class="bm-btn">' + label + '</button>'; s.firstChild.onclick = fn; }
 
@@ -199,7 +217,7 @@
     var rows = A.batches.filter(function (b) { return (s === "all" || b.status === s) && (!q || (b.name + b.code).toLowerCase().indexOf(q) > -1); }).sort(function (a, b) { return ms(b.createdAt) - ms(a.createdAt); });
     m.innerHTML = '<div class="bm-tools"><input id="bm-q" placeholder="Search batch…" value="' + esc(A.f.q || "") + '"><select id="bm-s">' + [["all", "All"], ["active", "Active"], ["inactive", "Inactive"], ["upcoming", "Upcoming"]].map(function (o) { return '<option value="' + o[0] + '"' + (s === o[0] ? " selected" : "") + '>' + o[1] + '</option>'; }).join("") + '</select></div>' +
       '<div class="bm-tablewrap"><table class="bm-table"><tr><th>Batch</th><th>Class</th><th>Subjects</th><th>Teacher</th><th>Students</th><th>Status</th><th>Created</th><th>Actions</th></tr>' +
-      (rows.length ? rows.map(function (b) { return '<tr><td><b>' + esc(b.name) + '</b><br><small>' + esc(b.code || "") + '</small></td><td>' + esc(b.classLabel || "") + '</td><td>' + esc(subjOf(b).join(", ")) + '</td><td>' + esc((b.teachers || []).join(", ")) + '</td><td>' + (b.enrolledCount || 0) + (b.limit ? "/" + b.limit : "") + '</td><td><span class="bm-badge ' + (b.status === "active" ? "g" : b.status === "upcoming" ? "b" : "") + '">' + esc(b.status) + '</span></td><td>' + fdate(b.createdAt).split(",")[0] + '</td><td><div class="bm-act">' +
+      (rows.length ? rows.map(function (b) { return '<tr><td><b>' + esc(b.name) + '</b><br><small>' + esc(b.code || "") + ' • ' + (b.fee ? rupee(b.fee) : "Free") + '</small></td><td>' + esc(b.classLabel || "") + '</td><td>' + esc(subjOf(b).join(", ")) + '</td><td>' + esc((b.teachers || []).join(", ")) + '</td><td>' + (b.enrolledCount || 0) + (b.limit ? "/" + b.limit : "") + '</td><td><span class="bm-badge ' + (b.status === "active" ? "g" : b.status === "upcoming" ? "b" : "") + '">' + esc(b.status) + '</span></td><td>' + fdate(b.createdAt).split(",")[0] + '</td><td><div class="bm-act">' +
         '<button class="bm-btn sec sm" data-a="content" data-id="' + b.id + '">Content</button><button class="bm-btn sec sm" data-a="stu" data-id="' + b.id + '">Students</button><button class="bm-btn sec sm" data-a="edit" data-id="' + b.id + '">Edit</button><button class="bm-btn sec sm" data-a="tog" data-id="' + b.id + '">' + (b.status === "active" ? "Deactivate" : "Activate") + '</button><button class="bm-btn red sm" data-a="del" data-id="' + b.id + '">Delete</button></div></td></tr>'; }).join("") : '<tr><td colspan="8"><div class="bm-empty">Koi batch nahi mila. "+ Create Batch" dabayein.</div></td></tr>') + '</table></div>';
     $("#bm-q").oninput = function () { A.f.q = this.value; var p = this.selectionStart; vBatches(m); var n = $("#bm-q"); n.focus(); n.setSelectionRange(p, p); };
     $("#bm-s").onchange = function () { A.f.s = this.value; vBatches(m); };
@@ -213,10 +231,10 @@
       { k: "desc", l: "Description", t: "textarea" }, { k: "teachersTxt", l: "Teachers (naam, comma se alag)", p: "Vikash Sir, Pooja Ma'am" },
       { k: "sd", l: "Start Date", t: "date", r: 1 }, { k: "ed", l: "End Date", t: "date", r: 1 },
       { k: "type", l: "Batch Type", t: "select", o: [["live", "Live Batch"], ["recorded", "Recorded Batch"], ["hybrid", "Hybrid (Live + Recorded)"]] },
-      { k: "enrollment", l: "Student Enrollment", t: "select", o: [["request", "Students request bhej sakte hain (admin approve karega)"], ["closed", "Band — sirf admin enroll kare"]] }, { k: "limit", l: "Enrollment Limit (khaali = unlimited)", t: "number" }, { k: "status", l: "Status", t: "select", o: ["active", "inactive", "upcoming"] }
+      { k: "fee", l: "Batch Fee ₹ (0 = free)", t: "number", p: "0" }, { k: "enrollment", l: "Student Enrollment", t: "select", o: [["request", "Students request bhej sakte hain (admin approve karega)"], ["closed", "Band — sirf admin enroll kare"]] }, { k: "limit", l: "Enrollment Limit (khaali = unlimited)", t: "number" }, { k: "status", l: "Status", t: "select", o: ["active", "inactive", "upcoming"] }
     ], v, function (o) {
       if (o.ed < o.sd) { toast("End Date, Start Date se pehle nahi ho sakti"); return false; }
-      var data = { name: o.name, code: o.code, classLabel: o.classLabel, subjects: o.subjectsTxt.split(",").map(function (x) { return x.trim(); }).filter(Boolean), desc: o.desc, teachers: o.teachersTxt.split(",").map(function (x) { return x.trim(); }).filter(Boolean), startDate: o.sd, endDate: o.ed, type: o.type, enrollment: o.enrollment || "request", limit: o.limit ? Math.max(1, +o.limit) : 0, status: o.status, published: o.status !== "inactive", instituteId: A.inst, updatedAt: FV().serverTimestamp() };
+      var data = { name: o.name, code: o.code, classLabel: o.classLabel, subjects: o.subjectsTxt.split(",").map(function (x) { return x.trim(); }).filter(Boolean), desc: o.desc, teachers: o.teachersTxt.split(",").map(function (x) { return x.trim(); }).filter(Boolean), startDate: o.sd, endDate: o.ed, type: o.type, enrollment: o.enrollment || "request", fee: Math.max(0, Math.round(+o.fee || 0)), limit: o.limit ? Math.max(1, +o.limit) : 0, status: o.status, published: o.status !== "inactive", instituteId: A.inst, updatedAt: FV().serverTimestamp() };
       var p = b ? bref(A.inst, b.id).update(data) : bref(A.inst).add(Object.assign(data, { enrolledCount: 0, createdAt: FV().serverTimestamp(), createdBy: adminEmail() }));
       return p.then(function () { audit(b ? "batch.update" : "batch.create", b ? b.id : data.name); toast("✅ Batch save ho gaya"); return loadAll().then(function () { adminGo("batches"); }); });
     });
@@ -339,11 +357,12 @@
     var go = function () {
       var q = (A.f.q || "").toLowerCase(), bf = A.f.batch || "all";
       var rows = A.students.filter(function (s) { return (bf === "all" || (s.batchIds || []).indexOf(bf) > -1) && (!q || (s.name + s.mobile).toLowerCase().indexOf(q) > -1); }).slice(0, 200);
-      var rq = (A.reqs || []).length ? '<div class="bm-card"><h3>📥 Enrollment Requests (' + A.reqs.length + ')</h3>' + A.reqs.map(function (r, ix) { return '<div class="bm-row"><div class="g"><b>' + esc(r.name || r.mobile) + '</b><small>' + esc(r.mobile) + ' • ' + esc(batchName(r.batchId)) + ' • ' + fdate(r.createdAt) + '</small></div><button class="bm-btn sm" data-ap="' + ix + '">Approve</button><button class="bm-btn red sm" data-rj="' + ix + '">Reject</button></div>'; }).join("") + '</div>' : "";
+      var rq = (A.reqs || []).length ? '<div class="bm-card"><h3>📥 Enrollment Requests (' + A.reqs.length + ')</h3>' + A.reqs.map(function (r, ix) { return '<div class="bm-row"><div class="g"><b>' + esc(r.name || r.mobile) + '</b><small>' + esc(r.mobile) + ' • ' + esc(batchName(r.batchId)) + ' • ' + fdate(r.createdAt) + (r.amount ? '<br>💰 ' + rupee(r.amount) + ' • UTR: <b>' + esc(r.utr) + '</b>' : "") + '</small></div>' + (r.shot ? '<button class="bm-btn sec sm" data-sh="' + ix + '">Screenshot</button>' : "") + '<button class="bm-btn sm" data-ap="' + ix + '">Approve</button><button class="bm-btn red sm" data-rj="' + ix + '">Reject</button></div>'; }).join("") + '</div>' : "";
       m.innerHTML = rq + '<div class="bm-tools"><select id="bm-bf"><option value="all">All Students</option>' + A.batches.map(function (b) { return '<option value="' + b.id + '"' + (bf === b.id ? " selected" : "") + '>In: ' + esc(b.name) + '</option>'; }).join("") + '</select><input id="bm-q" placeholder="Name / mobile search…" value="' + esc(A.f.q || "") + '"></div>' +
         '<div class="bm-tablewrap"><table class="bm-table"><tr><th>Name</th><th>Mobile</th><th>Batches</th><th>Action</th></tr>' + (rows.length ? rows.map(function (s) { return '<tr><td><b>' + esc(s.name) + '</b></td><td>' + esc(s.mobile) + '</td><td>' + esc((s.batchIds || []).map(batchName).join(", ") || "—") + '</td><td><button class="bm-btn sec sm" data-m="' + esc(s.mobile) + '">Manage Batches</button></td></tr>'; }).join("") : '<tr><td colspan="4"><div class="bm-empty">Koi student nahi mila.</div></td></tr>') + '</table></div><div class="bm-note">Sirf aapke institute ke students dikhte hain. Max 200 dikhaye gaye — search use karein.</div>';
       $("#bm-bf").onchange = function () { A.f.batch = this.value; vStudents(m); };
       $("#bm-q").oninput = function () { A.f.q = this.value; var p = this.selectionStart; go(); var n = $("#bm-q"); n.focus(); n.setSelectionRange(p, p); };
+      m.querySelectorAll("[data-sh]").forEach(function (b) { b.onclick = function () { showImg("Payment Screenshot", A.reqs[+b.dataset.sh].shot); }; });
       m.querySelectorAll("[data-ap]").forEach(function (b) { b.onclick = function () { reqAct("ap", A.reqs[+b.dataset.ap]); }; });
       m.querySelectorAll("[data-rj]").forEach(function (b) { b.onclick = function () { reqAct("rj", A.reqs[+b.dataset.rj]); }; });
       m.querySelectorAll("[data-m]").forEach(function (b) { b.onclick = function () { enrollForm(b.dataset.m); }; });
@@ -353,17 +372,22 @@
     authReady().then(function () { return DB().collection("students").where("instituteId", "==", A.inst).limit(500).get(); }).then(function (q) { A.students = q.docs.map(function (d) { return Object.assign({ mobile: d.id }, d.data()); }); go(); }).catch(function (e) { m.innerHTML = '<div class="bm-empty">Students load nahi hue (' + esc(e.code || e.message) + ')</div>'; });
   }
   function reqAct(a, r) {
-    if (!r) return; var db = DB(), b = A.batches.filter(function (x) { return x.id === r.batchId; })[0], rr = bref(A.inst, r.batchId).collection("requests").doc(r.mobile), p;
-    if (a === "rj") { if (!sure("Request reject karein?")) return; p = rr.update({ status: "rejected" }); }
-    else {
-      if (b && b.limit && (b.enrolledCount || 0) >= b.limit) return toast("Batch ki limit poori ho chuki hai");
+    if (!r) return; var db = DB(), b = A.batches.filter(function (x) { return x.id === r.batchId; })[0], rr = bref(A.inst, r.batchId).collection("requests").doc(r.mobile);
+    var fin = function (p, msg) { return p.then(function () { audit("enroll.request." + a, r.mobile); A.students = null; toast(msg); return loadAll(); }).then(function () { adminGo("students"); }).catch(function (e) { toast("Nahi hua: " + (e.code || e.message)); }); };
+    if (a === "rj") { if (!sure("Request reject karein?" + (r.amount ? "\n\n⚠️ Student ne " + rupee(r.amount) + " pay kiya hai to refund aapko khud karna hoga." : ""))) return; return fin(rr.update({ status: "rejected" }), "Reject kiya"); }
+    if (b && b.limit && (b.enrolledCount || 0) >= b.limit) return toast("Batch ki limit poori ho chuki hai");
+    var go = function () {
       var wb = db.batch(); wb.update(db.collection("students").doc(r.mobile), { batchIds: FV().arrayUnion(r.batchId) });
-      wb.set(bref(A.inst, r.batchId).collection("members").doc(r.mobile), { mobile: r.mobile, name: r.name || "", instituteId: A.inst, enrolledAt: FV().serverTimestamp(), by: adminEmail() });
-      wb.update(bref(A.inst, r.batchId), { enrolledCount: FV().increment(1) }); wb.delete(rr); p = wb.commit();
-    }
-    p.then(function () { audit("enroll.request." + a, r.mobile); A.students = null; toast(a === "ap" ? "✅ Student enroll ho gaya" : "Reject kiya"); return loadAll(); }).then(function () { adminGo("students"); }).catch(function (e) { toast("Nahi hua: " + (e.code || e.message)); });
+      wb.set(bref(A.inst, r.batchId).collection("members").doc(r.mobile), { mobile: r.mobile, name: r.name || "", instituteId: A.inst, enrolledAt: FV().serverTimestamp(), by: adminEmail(), paid: r.amount || 0 });
+      wb.update(bref(A.inst, r.batchId), { enrolledCount: FV().increment(1) }); wb.delete(rr);
+      if (r.amount) wb.set(db.collection("institutes").doc(A.inst).collection("payments").doc(), { instituteId: A.inst, batchId: r.batchId, mobile: r.mobile, name: r.name || "", amount: r.amount, utr: r.utr || "", at: FV().serverTimestamp(), by: adminEmail() });
+      return fin(wb.commit(), "✅ Student enroll ho gaya");
+    };
+    if (!r.amount) return go();
+    if (!sure("Approve se pehle apni UPI app / bank me check karein ki " + rupee(r.amount) + " (UTR " + r.utr + ") sach me aaya hai.\n\nPayment mil gaya? Approve karein?")) return;
+    return db.collection("institutes").doc(A.inst).collection("payments").where("utr", "==", r.utr).limit(1).get().then(function (q) { if (!q.empty && !sure("⚠️ Ye UTR pehle kisi aur payment me use ho chuka hai! Phir bhi approve karein?")) return; return go(); }).catch(function (e) { toast("Check nahi hua: " + (e.code || e.message)); });
   }
-  function enrollForm(mobile) {
+    function enrollForm(mobile) {
     var s = A.students.filter(function (x) { return x.mobile === mobile; })[0], cur = s.batchIds || [], md = document.createElement("div"); md.className = "bm-modal";
     md.innerHTML = '<div class="bm-sheet"><h3>' + esc(s.name) + ' — Batches</h3><div class="bm-form">' + (A.batches.length ? A.batches.map(function (b) { return '<label style="display:flex;gap:8px;align-items:center;font-size:.86rem"><input type="checkbox" style="width:auto" value="' + b.id + '"' + (cur.indexOf(b.id) > -1 ? " checked" : "") + '>' + esc(b.name) + (b.limit ? ' <small>(' + (b.enrolledCount || 0) + '/' + b.limit + ')</small>' : "") + '</label>'; }).join("") : '<div class="bm-empty">Pehle batch banayein.</div>') + '<div class="acts"><button class="bm-btn sec" data-c>Cancel</button><button class="bm-btn" data-s>Save</button></div></div></div>';
     document.body.appendChild(md);
@@ -376,6 +400,34 @@
       if (rem.length) step = step.then(function () { var wb = db.batch(); wb.update(sref, { batchIds: FV().arrayRemove.apply(FV(), rem) }); rem.forEach(function (id) { wb.delete(bref(A.inst, id).collection("members").doc(mobile)); wb.update(bref(A.inst, id), { enrolledCount: FV().increment(-1) }); }); return wb.commit(); });
       step.then(function () { s.batchIds = sel; audit("enroll.update", mobile); md.remove(); toast("✅ Enrollment update hua"); return loadAll(); }).then(function () { adminGo("students"); }).catch(function (e) { toast("Nahi hua: " + (e.code || e.message)); });
     };
+  }
+function vPay(m) {
+    m.innerHTML = '<div class="bm-empty">Loading…</div>';
+    authReady().then(function () { return DB().collection("institutes").doc(A.inst).collection("payments").orderBy("at", "desc").limit(300).get(); }).then(function (q) {
+      var rows = q.docs.map(function (d) { return d.data(); }), tot = rows.reduce(function (t, x) { return t + (x.amount || 0); }, 0), qq = (A.f.q || "").toLowerCase();
+      var show = rows.filter(function (x) { return !qq || (x.name + x.mobile + x.utr).toLowerCase().indexOf(qq) > -1; });
+      m.innerHTML = '<div class="bm-stats" style="grid-template-columns:1fr 1fr"><div class="bm-stat"><small>Total Collected (last 300)</small><b>' + rupee(tot) + '</b></div><div class="bm-stat"><small>Payments</small><b>' + rows.length + '</b></div></div>' +
+        '<div class="bm-tools"><input id="bm-q" placeholder="Name / mobile / UTR…" value="' + esc(A.f.q || "") + '"></div><div class="bm-tablewrap"><table class="bm-table"><tr><th>Date</th><th>Student</th><th>Batch</th><th>Amount</th><th>UTR</th></tr>' +
+        (show.length ? show.map(function (x) { return '<tr><td>' + fdate(x.at) + '</td><td><b>' + esc(x.name) + '</b><br><small>' + esc(x.mobile) + '</small></td><td>' + esc(batchName(x.batchId)) + '</td><td><b>' + rupee(x.amount) + '</b></td><td>' + esc(x.utr) + '</td></tr>'; }).join("") : '<tr><td colspan="5"><div class="bm-empty">Abhi koi payment record nahi hai.</div></td></tr>') + '</table></div><div class="bm-note">Ye record tab banta hai jab aap request Approve karte hain.</div>';
+      $("#bm-q").oninput = function () { var q2 = this.value.toLowerCase(); [].forEach.call(m.querySelectorAll(".bm-table tr"), function (tr, i) { if (i) tr.style.display = tr.textContent.toLowerCase().indexOf(q2) > -1 ? "" : "none"; }); };
+    }).catch(function (e) { m.innerHTML = '<div class="bm-empty">Load nahi hua (' + esc(e.code || e.message) + '). Rules publish kiye?</div>'; });
+  }
+  function vPaySet(m) {
+    m.innerHTML = '<div class="bm-empty">Loading…</div>';
+    authReady().then(function () { return pref(A.inst).get(); }).then(function (d) {
+      var v = d.exists ? d.data() : {};
+      m.innerHTML = '<div class="bm-card"><h3>UPI Payment Setup</h3><div class="bm-form"><label>Payee / Institute ka naam</label><input id="ps_n" value="' + esc(v.payeeName || "") + '" placeholder="Savyasachi Coaching">' +
+        '<label>UPI ID (optional)</label><input id="ps_u" value="' + esc(v.upiId || "") + '" placeholder="name@upi"><div class="bm-note">UPI ID dene par student ko "UPI app se pay karein" button milta hai (amount khud bhar jata hai).</div>' +
+        '<label>QR Scanner image (PhonePe / GPay / Paytm ka QR screenshot)</label><input id="ps_f" type="file" accept="image/*"><div id="ps_p" style="margin-top:10px">' + (v.qr ? '<img src="' + v.qr + '" style="max-width:220px;border-radius:12px;border:1px solid #e2e8f0">' : '<span class="bm-note">Abhi QR set nahi hai.</span>') + '</div>' +
+        '<div class="acts"><button class="bm-btn" id="ps_s">Save</button></div></div><div class="bm-note">⚠️ Payment automatic verify nahi hoti. Student UTR/screenshot bhejta hai, aap apni UPI app me paisa dekhkar Approve karte hain.</div></div>';
+      $("#ps_f").onchange = function () { var f = this.files[0]; if (!f) return; shrink(f, 640, 380000).then(function (u) { A.f.qr = u; $("#ps_p").innerHTML = '<img src="' + u + '" style="max-width:220px;border-radius:12px;border:1px solid #e2e8f0">'; }).catch(function (e) { toast("Image nahi lagi: " + e.message); }); };
+      $("#ps_s").onclick = function () {
+        var up = $("#ps_u").value.trim(), qr = A.f.qr || v.qr || "";
+        if (up && !/^[\w.\-]{2,}@[A-Za-z]{2,}$/.test(up)) return toast("UPI ID sahi nahi lagti (jaise name@upi)");
+        if (!up && !qr) return toast("QR image ya UPI ID dein");
+        pref(A.inst).set({ payeeName: $("#ps_n").value.trim(), upiId: up, qr: qr, instituteId: A.inst, updatedAt: FV().serverTimestamp() }).then(function () { audit("payment.setup", ""); toast("✅ Payment setup save ho gaya"); }).catch(function (e) { toast("Save nahi hua: " + (e.code || e.message)); });
+      };
+    }).catch(function (e) { m.innerHTML = '<div class="bm-empty">Load nahi hua (' + esc(e.code || e.message) + ')</div>'; });
   }
   function vTests(m) {
     m.innerHTML = '<div class="bm-card"><h3>Tests & Assignments</h3><p style="font-size:.86rem;color:#475569">Tests aapke maujooda SnapTest Pro test engine se hi chalte hain (duplicate nahi banaya gaya). Test banakar publish karein — students use Tests tab me dekhte hain.</p><button class="bm-btn" id="bm-gt">Existing Tests kholein</button><p class="bm-note">Batch-wise test assignment aur assignment submissions agle phase me.</p></div>';
@@ -407,7 +459,28 @@
       });
     });
   }
-  function loadAvail() {
+  function loadPay() { return pref(S.inst).get().then(function (d) { S.pay = d.exists ? d.data() : null; }).catch(function () { S.pay = null; }); }
+  function loadAvail() { return Promise.all([loadAvail0(), loadPay()]); }
+  function payForm(b) {
+    var p = S.pay || {}, s = sess(); if (!p.qr && !p.upiId) return toast("Institute ne abhi payment setup nahi kiya — admin se sampark karein");
+    var md = document.createElement("div"); md.className = "bm-modal"; var up = p.upiId ? "upi://pay?pa=" + encodeURIComponent(p.upiId) + "&pn=" + encodeURIComponent(p.payeeName || "Institute") + "&am=" + b.fee + "&cu=INR&tn=" + encodeURIComponent((b.name || "Batch").slice(0, 40)) : "";
+    md.innerHTML = '<div class="bm-sheet"><h3>' + esc(b.name) + '</h3><div style="text-align:center;font-size:1.5rem;font-weight:800;color:#1d4ed8">' + rupee(b.fee) + '</div>' +
+      (p.qr ? '<div style="text-align:center;margin:10px 0"><img src="' + p.qr + '" style="max-width:240px;width:100%;border-radius:12px;border:1px solid #e2e8f0"><div class="bm-note">Is QR ko apni UPI app (PhonePe/GPay/Paytm) se scan karke ' + rupee(b.fee) + ' pay karein</div></div>' : "") +
+      (p.upiId ? '<div style="text-align:center;font-size:.85rem">UPI ID: <b>' + esc(p.upiId) + '</b>' + (p.payeeName ? " (" + esc(p.payeeName) + ")" : "") + '<br><a class="bm-btn sm" style="display:inline-block;margin-top:8px;text-decoration:none" href="' + up + '">UPI app se pay karein</a></div>' : "") +
+      '<div class="bm-form"><label>Payment ke baad UTR / Transaction ID *</label><input id="pf_u" placeholder="12 digit UTR" autocomplete="off"><label>Payment screenshot (optional)</label><input id="pf_f" type="file" accept="image/*"><div class="bm-note">Admin aapka payment check karke approve karega, tab batch khulega.</div><div class="acts"><button class="bm-btn sec" data-c>Cancel</button><button class="bm-btn" data-s>Submit</button></div></div></div>';
+    document.body.appendChild(md);
+    md.querySelector("[data-c]").onclick = function () { md.remove(); };
+    md.querySelector("[data-s]").onclick = function () {
+      var u = md.querySelector("#pf_u").value.trim(), f = md.querySelector("#pf_f").files[0], btn = md.querySelector("[data-s]");
+      if (!/^[A-Za-z0-9]{6,30}$/.test(u)) return toast("UTR sahi daalein (6-30 letters/numbers)");
+      btn.disabled = true;
+      (f ? shrink(f, 900, 330000) : Promise.resolve("")).then(function (shot) {
+        var d = { mobile: String(s.mobile), name: s.name || "", status: "pending", createdAt: FV().serverTimestamp(), amount: b.fee, utr: u }; if (shot) d.shot = shot;
+        return bref(S.inst, b.id).collection("requests").doc(String(s.mobile)).set(d);
+      }).then(function () { b.req = "pending"; md.remove(); toast("✅ Payment details bhej di — admin verify karega"); sHome(); }).catch(function (e) { btn.disabled = false; toast("Nahi gaya: " + (e.code || e.message)); });
+    };
+  }
+  function loadAvail0() {
     var s = sess(), mine = S.mine || [];
     return bref(S.inst).where("published", "==", true).get().then(function (q) {
       var av = q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }).filter(function (b) { return mine.indexOf(b.id) < 0; });
@@ -415,6 +488,7 @@
     }).catch(function () { S.avail = []; });
   }
   function reqEnroll(id) {
+    var b0 = S.avail.filter(function (x) { return x.id === id; })[0]; if (b0 && b0.fee > 0) return payForm(b0);
     var s = sess(); bref(S.inst, id).collection("requests").doc(String(s.mobile)).set({ mobile: String(s.mobile), name: s.name || "", status: "pending", createdAt: FV().serverTimestamp() })
       .then(function () { var b = S.avail.filter(function (x) { return x.id === id; })[0]; b && (b.req = "pending"); toast("✅ Request bhej di — admin approve karega"); sHome(); }).catch(function (e) { toast("Request nahi gayi: " + (e.code || e.message)); });
   }
@@ -425,8 +499,8 @@
     if (h === "my") body = S.batches.length ? S.batches.map(function (b) { var l = liveOf(b), n = nextOf(b); return '<div class="bm-bcard" data-b="' + b.id + '"><span class="bm-tag"' + (l ? ' style="background:#ef4444"' : "") + '>' + (l ? "Live Now" : { live: "Live Batch", recorded: "Recorded", hybrid: "Hybrid" }[b.type] || "Batch") + '</span><b>' + esc(b.name) + '</b><small>' + esc(subjOf(b).join(" • ")) + '</small><div class="bm-meta"><span>👥 ' + (b.enrolledCount || 0) + (b.limit ? "/" + b.limit : "") + '</span><span>' + (n ? "⏰ " + fdate(n.scheduledAt) : "Koi upcoming class nahi") + '</span></div></div>'; }).join("") :
       '<div class="bm-empty">Abhi aap kisi batch me enrolled nahi hain.<br>"Available" tab se enroll request bhejein.</div>';
     else body = av.length ? av.map(function (b) {
-      var full = b.limit && (b.enrolledCount || 0) >= b.limit, act = b.req === "pending" ? '<span class="bm-badge o">⏳ Request pending — admin approve karega</span>' : b.req === "rejected" ? '<span class="bm-badge r">Request reject hui — admin se baat karein</span>' : b.enrollment === "closed" ? '<span class="bm-badge">Enrollment band hai</span>' : full ? '<span class="bm-badge r">Batch full</span>' : '<button class="bm-btn sm" data-rq="' + b.id + '">Enroll Request bhejein</button>';
-      return '<div class="bm-bcard" style="cursor:default"><span class="bm-tag" style="background:#6366f1">' + ({ live: "Live Batch", recorded: "Recorded", hybrid: "Hybrid" }[b.type] || "Batch") + '</span><b>' + esc(b.name) + '</b><small>' + esc(subjOf(b).join(" • ")) + '</small><div class="bm-meta"><span>👥 ' + (b.enrolledCount || 0) + (b.limit ? "/" + b.limit : "") + '</span><span>📅 ' + esc(b.startDate || "") + '</span></div><div style="margin-top:10px">' + act + '</div></div>'; }).join("") : '<div class="bm-empty">Abhi koi naya batch available nahi hai.</div>';
+      var full = b.limit && (b.enrolledCount || 0) >= b.limit, act = b.req === "pending" ? '<span class="bm-badge o">⏳ Request pending — admin approve karega</span>' : b.req === "rejected" ? '<span class="bm-badge r">Request reject hui — admin se baat karein</span>' : b.enrollment === "closed" ? '<span class="bm-badge">Enrollment band hai</span>' : full ? '<span class="bm-badge r">Batch full</span>' : '<button class="bm-btn sm" data-rq="' + b.id + '">' + (b.fee ? "Enroll & Pay " + rupee(b.fee) : "Enroll Request bhejein") + '</button>';
+      return '<div class="bm-bcard" style="cursor:default"><span class="bm-tag" style="background:#6366f1">' + ({ live: "Live Batch", recorded: "Recorded", hybrid: "Hybrid" }[b.type] || "Batch") + '</span><b>' + esc(b.name) + '</b><small>' + esc(subjOf(b).join(" • ")) + '</small><div class="bm-meta"><span>👥 ' + (b.enrolledCount || 0) + (b.limit ? "/" + b.limit : "") + '</span><span>📅 ' + esc(b.startDate || "") + '</span><span>' + (b.fee ? "💰 " + rupee(b.fee) : "Free") + '</span></div><div style="margin-top:10px">' + act + '</div></div>'; }).join("") : '<div class="bm-empty">Abhi koi naya batch available nahi hai.</div>';
     o.innerHTML = '<div class="bm-sh"><b>Batch</b><button data-x>✕</button></div>' +
       (live.length ? '<div class="bm-next"><div>🔴 <b>Live Now:</b> ' + esc(live[0].title) + '</div><button data-j>Join Now</button></div>' : "") +
       '<div class="bm-tabs"><button data-h="my"' + (h === "my" ? ' class="on"' : "") + '>My Batches (' + S.batches.length + ')</button><button data-h="avail"' + (h === "avail" ? ' class="on"' : "") + '>Available (' + av.length + ')</button></div>' + body;
