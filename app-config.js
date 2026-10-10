@@ -8,7 +8,9 @@ window.SNAP_CONFIG = {
   appName: "SnapTestPro",
   tagline: "Smart Practice • Better Result",
   version: "1.1",
-  build: "156",
+  workerUrl: "https://cool-thunder-a280.vishnu1234stm.workers.dev",   // Cloudflare Worker (bank + push + owner alerts)
+  ownerAlertEmail: "vishnu1234stm@gmail.com",                         // is email se login par owner app me alerts ka push aata hai
+  build: "168",
   ownerName: "Vishnu Sharma",
   supportPhone: "9525208263",
   supportWhatsapp: "9525208263",          // WhatsApp number (khaali = phone wala use hoga)

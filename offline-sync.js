@@ -27,7 +27,12 @@
     wait: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     ok: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>'
   };
+  /* v168: student ko "online save / network" jaisa koi pill ya toast nahi dikhta — sirf admin ko. Student ke saath problem ho to owner ko silent alert. */
+  function showUi() {
+    try { var a = typeof getAuth === "function" ? getAuth() : null, u = a && a.currentUser; return !!(u && !u.isAnonymous && u.email); } catch (e) { return false; }
+  }
   function paint() {
+    if (!showUi()) { try { if (pill && pill.isConnected) pill.style.display = "none"; } catch (e) {} emit(); return; }
     var p = ensurePill(), n = pending, has = n > 0 || unknown, cnt = n > 0 ? n + " " : "";
     if (offline()) { p.style.cssText += ";display:flex;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa"; p.innerHTML = ICON.off + "<span>Offline — saved data se chal raha hai" + (has ? " • " + cnt + "baaki" : "") + "</span>"; }
     else if (has && hadOffline) { p.style.cssText += ";display:flex;background:#fffbeb;color:#b45309;border:1px solid #fde68a"; p.innerHTML = ICON.wait + "<span>" + cnt + "badlav online save ho rahe hain…</span>"; }
@@ -37,6 +42,7 @@
   }
   function toast(msg, ok, ms) {
     try {
+      if (!showUi()) return;
       var old = document.getElementById("os-toast"); if (old) old.remove();
       var t = document.createElement("div"); t.id = "os-toast";
       t.style.cssText = "position:fixed;left:14px;right:14px;bottom:84px;margin:0 auto;max-width:420px;z-index:2147483001;pointer-events:none;background:#1e1b4b;color:#fff;border-radius:16px;padding:12px 14px;font:600 13px/1.5 Inter,'Segoe UI',Arial,sans-serif;box-shadow:0 10px 24px rgba(0,0,0,.35);display:flex;gap:10px;align-items:flex-start";
@@ -64,6 +70,7 @@
     paint();
     p.then(function () { clearTimeout(slow); settle(); }, function (e) {
       clearTimeout(slow); var wasOff = hadOffline; settle(true);
+      try { window.SnapAlert && window.SnapAlert.report("save", "Write reject: " + String((e && (e.code || e.message)) || "error"), {}, "error"); } catch (x) {}
       if (wasOff) toast("<b>Ek offline badlav server ne accept nahi kiya</b><br>" + String((e && (e.code || e.message)) || "error").slice(0, 80));
     });
   }

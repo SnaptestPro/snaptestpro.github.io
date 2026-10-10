@@ -9,6 +9,7 @@
  if(window.__IS_APP)document.documentElement.classList.add("is-app");}catch(e){}})();
 </script>
 <script src="app-bridge.js"></script>
+<script src="error-reporter.js?v=1"></script>
 <style>html.is-app #install-app-btn,html.is-app #app-install-modal{display:none!important}</style>
 
   <meta charset="UTF-8" />
@@ -2388,6 +2389,7 @@ B"></textarea>
           URL rakhne se browser/SW ka apna cache theek se kaam karta hai
           aur repeat visits kaafi fast ho jaate hain. -->
 <script defer src="subject-resolver.js"></script>
+<script defer src="bank-idb.js?v=1"></script>
 <script defer src="pdf-import.js"></script>
 <script defer src="script.js"></script>
 <script defer src="admin-notify.js"></script>
@@ -2407,7 +2409,9 @@ B"></textarea>
 <script defer src="upgrade.js"></script>
 <script defer src="whatsapp-poll-export.js"></script>
 <script defer src="student-features.js"></script>
+<script defer src="student-session.js?v=1"></script>
 <script defer src="batch-system.js?v=1"></script>
+<script defer src="batch-phase2.js?v=1"></script>
 <script defer src="id-card.js"></script>
 <script defer src="omr.js?v=2"></script>
 <script defer src="push-notifications.js"></script>
@@ -4396,6 +4400,11 @@ document.addEventListener('DOMContentLoaded',function(){
     // Naya SW control le chuka hai — reload turant NAHI, bas flag set.
     navigator.serviceWorker.addEventListener('controllerchange', function () {
       pendingAppUpdate = true;
+    });
+    // v168: SW ne background me koi file nayi pakdi (JS/CSS/HTML) -> reload flag. Reload sirf app background me jaate waqt hota hai
+    // (upar visibilitychange), exam/solution ke beech kabhi nahi — isliye student ko kuch dikhta nahi aur agli baar naya version milta hai.
+    navigator.serviceWorker.addEventListener('message', function (ev) {
+      if (ev && ev.data && ev.data.type === 'snap-asset-updated') pendingAppUpdate = true;
     });
 
     // App foreground mein wapas aaye to fresh update-check karo, aur

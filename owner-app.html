@@ -147,6 +147,15 @@
         </form>
       </div>
 
+      <div class="card" style="margin-bottom:16px;padding:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <strong>🚨 App Alerts <span style="font-weight:500;font-size:.72rem;color:#64748b">(error / quota / slow — apne-aap)</span></strong>
+          <span><button type="button" class="owner-mini-btn" onclick="ownerLoadAlerts()">↻ Refresh</button>
+          <button type="button" class="owner-mini-btn" onclick="ownerClearAlerts()">🗑 Clear</button></span>
+        </div>
+        <div id="owner-alerts-list" style="margin-top:8px;font-size:.78rem;color:#334155">Refresh dabayein.</div>
+      </div>
+
       <div id="owner-institutes-list"></div>
     </div>
 

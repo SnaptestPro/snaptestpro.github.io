@@ -64,6 +64,7 @@
       var wants = [];
       if (!localStorage.getItem(OPT_OUT)) {
         if (s && s.instituteId) { wants.push(topicFor(s.instituteId)); wants.push("app_student"); }   // institute notices + app update (students)
+        try { var oa = typeof getAuth === "function" ? getAuth() : null, oe = oa && oa.currentUser && oa.currentUser.email; var ow = (window.SNAP_CONFIG && window.SNAP_CONFIG.ownerAlertEmail) || "vishnu1234stm@gmail.com"; if (oe && String(oe).toLowerCase() === String(ow).toLowerCase()) wants.push("owner_alerts"); } catch (e) {}   // owner: app problem alerts
         if (admin) wants.push("app_admin");                                                        // app update (admin)
       }
       var have = haveList();
