@@ -126,9 +126,14 @@ async function handleBank(request, env, pathname) {
     return new Response(m || JSON.stringify({ exists: false }), { headers: { 'Content-Type': 'application/json', ...CORS } });
   }
   if (request.method === 'GET' && pathname === '/bank') {
+    // ETag = publish time: browser 304 se bank dobara download nahi karta; 1 ghanta fresh + 7 din stale-while-revalidate
+    let etag = '';
+    try { const m = JSON.parse((await env.BANK_KV.get('bank_meta')) || '{}'); if (m.updatedAt) etag = '"b' + m.updatedAt + '"'; } catch (e) {}
+    const H = { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, stale-while-revalidate=604800', ...CORS, 'Access-Control-Expose-Headers': 'ETag' };
+    if (etag) { H.ETag = etag; if (request.headers.get('If-None-Match') === etag) return new Response(null, { status: 304, headers: H }); }
     const body = await env.BANK_KV.get('bank', { type: 'stream' });
     if (!body) return json({ ok: false, error: 'bank abhi publish nahi hua' }, 404);
-    return new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300', ...CORS } });
+    return new Response(body, { headers: H });
   }
   if (request.method === 'PUT' && pathname === '/bank') {
     if (!env.SERVICE_ACCOUNT_JSON) throw new HttpErr(500, 'SERVICE_ACCOUNT_JSON secret set nahi hai');
@@ -177,12 +182,100 @@ async function handleBroadcast(request, env) {
   return { ok: true, sent: topics };
 }
 
+
+/* ---------- Owner alerts: app me koi bhi problem (error/quota/slow) -> owner ko automatic notification ----------
+   Client (error-reporter.js) POST /alert bhejta hai. Worker: validate -> rate-limit -> dedup -> owner ko push.
+   Owner tak 2 raaste (jo bhi set ho):  (1) FCM topic "owner_alerts" (owner Android app me)  (2) Telegram bot (optional, sabse pakka)
+   Optional secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID.  History: BANK_KV me key "alerts" (last 60) — Owner Panel > App Alerts. */
+const alertCache = () => caches.default;
+async function cacheCount(key, ttl) {
+  const req = new Request('https://alert-cache.local/' + key), c = alertCache(), hit = await c.match(req);
+  const n = hit ? (parseInt(await hit.text(), 10) || 0) : 0;
+  await c.put(req, new Response(String(n + 1), { headers: { 'Cache-Control': 'max-age=' + ttl } }));
+  return n + 1;
+}
+async function sha(str) { const d = await crypto.subtle.digest('SHA-256', te.encode(str)); return b64u(d).slice(0, 22); }
+const clip = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]+/g, ' ').slice(0, n);
+
+async function handleAlert(request, env) {
+  if (request.method !== 'POST') throw new HttpErr(405, 'POST chahiye');
+  const raw = await request.text();
+  if (raw.length > 4000) throw new HttpErr(413, 'Too big');
+  let a; try { a = JSON.parse(raw); } catch (e) { throw new HttpErr(400, 'Bad JSON'); }
+  const ip = request.headers.get('CF-Connecting-IP') || 'x';
+  const minute = Math.floor(Date.now() / 60000);
+  if ((await cacheCount('rl/' + (await sha(ip)) + '/' + minute, 90)) > 8) return { ok: true, limited: true };
+
+  const al = {
+    t: Date.now(), type: clip(a.type, 24), sev: ['critical', 'error', 'warn'].indexOf(a.sev) >= 0 ? a.sev : 'error',
+    msg: clip(a.msg, 300), src: clip(a.src, 120), stack: clip(a.stack, 500), role: clip(a.role, 12), inst: clip(a.inst, 60),
+    plat: clip(a.plat, 8), screen: clip(a.screen, 60), app: clip(a.app, 20), net: clip(a.net, 24), ua: clip(a.ua, 120), ctx: clip(a.ctx, 160),
+    online: a.online !== false, up: Number(a.up) || 0
+  };
+  if (!al.msg) throw new HttpErr(400, 'msg chahiye');
+  const fp = await sha(al.type + '|' + al.msg.slice(0, 100) + '|' + al.src.slice(0, 80) + '|' + al.inst);
+  const seen = await cacheCount('fp/' + fp, 3 * 3600);        // is alert ko pichhle 3 ghante me kitni baar dekha (is datacenter par)
+  al.fp = fp;
+
+  const doPush = seen === 1 && al.sev !== 'warn' && (await cacheCount('cap/' + Math.floor(Date.now() / 3600000), 3700)) <= 40;
+  if (seen === 1 && env.BANK_KV) {                            // history sirf pehli baar (KV write bachane ke liye)
+    try {
+      const cur = JSON.parse((await env.BANK_KV.get('alerts')) || '[]');
+      cur.unshift(al); await env.BANK_KV.put('alerts', JSON.stringify(cur.slice(0, 60)));
+    } catch (e) {}
+  }
+  if (!doPush) return { ok: true, pushed: false, seen };
+
+  const icon = al.sev === 'critical' ? '🚨' : al.sev === 'error' ? '⚠️' : 'ℹ️';
+  const title = (icon + ' SnapTest ' + al.sev.toUpperCase() + ' • ' + (al.role || 'user') + '/' + (al.plat || 'web')).slice(0, 100);
+  const lines = [al.msg, al.src && ('File: ' + al.src), al.screen && ('Screen: ' + al.screen), al.inst && ('Institute: ' + al.inst),
+    'App: ' + al.app + ' • Net: ' + (al.net || (al.online ? 'online' : 'offline'))].filter(Boolean);
+  const out = { fcm: false, telegram: false };
+
+  try {
+    if (env.SERVICE_ACCOUNT_JSON) {
+      const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), projectId = env.PROJECT_ID || sa.project_id, at = await googleAccessToken(sa);
+      const fr = await fetch('https://fcm.googleapis.com/v1/projects/' + projectId + '/messages:send', {
+        method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: { topic: 'owner_alerts', notification: { title, body: lines.join('\n').slice(0, 300) },
+          data: { type: 'owner_alert', sev: al.sev, fp },
+          android: { priority: 'HIGH', ttl: '21600s', notification: { sound: 'default', channel_id: 'snap_updates' } } } })
+      });
+      out.fcm = fr.ok;
+    }
+  } catch (e) {}
+  try {
+    if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
+      const tr = await fetch('https://api.telegram.org/bot' + env.TELEGRAM_BOT_TOKEN + '/sendMessage', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text: title + '\n\n' + lines.join('\n') + (al.stack ? '\n\n' + al.stack.slice(0, 300) : ''), disable_web_page_preview: true })
+      });
+      out.telegram = tr.ok;
+    }
+  } catch (e) {}
+  return { ok: true, pushed: out.fcm || out.telegram, via: out, seen };
+}
+
+async function handleAlertsList(request, env, pathname) {
+  if (!env.BANK_KV) throw new HttpErr(500, 'BANK_KV binding set nahi hai');
+  if (!env.SERVICE_ACCOUNT_JSON) throw new HttpErr(500, 'SERVICE_ACCOUNT_JSON secret set nahi hai');
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), projectId = env.PROJECT_ID || sa.project_id;
+  const user = await verifyIdToken((request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, ''), projectId);
+  const email = String(user.email || '').toLowerCase();
+  const owners = String(env.OWNER_EMAILS || 'vishnu1234stm@gmail.com').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean);
+  if (owners.indexOf(email) < 0) throw new HttpErr(403, 'Sirf owner');
+  if (request.method === 'POST' && pathname === '/alerts/clear') { await env.BANK_KV.put('alerts', '[]'); return { ok: true }; }
+  return { ok: true, alerts: JSON.parse((await env.BANK_KV.get('alerts')) || '[]') };
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const pathname = new URL(request.url).pathname.replace(/\/+$/, '') || '/';
     try {
       if (pathname === '/bank' || pathname === '/bank/meta') return await handleBank(request, env, pathname);
+      if (pathname === '/alert') return json(await handleAlert(request, env));
+      if (pathname === '/alerts' || pathname === '/alerts/clear') return json(await handleAlertsList(request, env, pathname));
       if (pathname === '/broadcast') return json(await handleBroadcast(request, env));
       if (request.method !== 'POST') return json({ ok: true, service: 'snaptestpro-push' });
       return json(await handle(request, env));
