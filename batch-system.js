@@ -49,11 +49,12 @@
   /* live join: mode "inapp" = app ke andar (Jitsi iframe), "external" = doosri app ka link (Zoom/Meet/YouTube...) */
   function joinLive(it, name) {
     if (it.mode === "external") { if (!it.liveUrl) return toast("Live link abhi available nahi hai"); window.open(it.liveUrl, "_blank", "noopener"); return; }
+    if (it.mode === "own") { if (!window.SnapLive) return toast("SnapLive load nahi hua"); return window.SnapLive.watch(it, ctx()); }
     if (!it.liveRoom) return toast("Class abhi live nahi hai");
     var s = (typeof getStudentSession === "function" && getStudentSession()) || {}, u = liveUrl(it.liveRoom, name || s.name || "Student");
     CFG.liveEmbed === false ? window.open(u, "_blank", "noopener") : liveViewer(it.title, u);
   }
-  function hasFile(i) { return !!(i.url || i.fileId || i.storagePath); }
+  function hasFile(i) { return !!(i.url || i.fileId || i.storagePath || i.ownKey); }
   /* ---- direct upload: Firebase Storage (ON ho to) warna Firestore chunks (max 4MB) ---- */
   var CH = 600000, MAXCH = 4 * 1024 * 1024;
   function storage() { var v = window.vishnuFirebase; return v && v.storage; }
@@ -91,6 +92,7 @@
     });
   }
   function openItem(it, inst) {
+    if (it.ownKey && window.SnapLive) return window.SnapLive.play(it, ctx());
     if (it.fileId) { toast("File load ho rahi hai…"); return loadChunked(inst, it.batchId, it.fileId).then(function (f) { viewer(it.title, URL.createObjectURL(f.blob), { mime: f.type, name: f.name }); }).catch(function (e) { toast("File nahi khuli: " + (e.message || e.code)); }); }
     if (!it.url && it.storagePath && storage()) { toast("File load ho rahi hai…"); return storage().ref(it.storagePath).getDownloadURL().then(function (u) { viewer(it.title, u, { name: it.fileName }); }).catch(function (e) { toast("File nahi khuli (permission/network): " + (e.code || e.message)); }); }
     viewer(it.title, it.url, { name: it.fileName });
@@ -304,10 +306,10 @@
     if (kind === "note" || kind === "material") f.push({ k: "cat", l: "Type", t: "select", o: NOTE_TYPES.map(function (x) { return x[0]; }) });
     if (kind !== "announcement") f.push({ k: "subject", l: "Subject" }, { k: "chapter", l: "Chapter" });
     f.push({ k: "desc", l: kind === "announcement" ? "Message" : "Description", t: "textarea", r: kind === "announcement" });
-    if (kind === "class") f.push({ k: "mode", l: "Live kaise hogi?", t: "select", o: [["inapp", "Meri app ke andar (Jitsi live)"], ["external", "Doosri app ka link (Zoom / Google Meet / YouTube Live)"]], h: "Doosri app chunne par 'Go Live' dabate waqt aap uska link daalenge — link pehle se student ko nahi dikhta." }, { k: "dt", l: "Date & Time", t: "datetime-local", r: 1 }, { k: "durationMin", l: "Duration (minutes)", t: "number" }, { k: "teacher", l: "Teacher" });
+    if (kind === "class") f.push({ k: "mode", l: "Live kaise hogi?", t: "select", o: ((window.SNAP_CONFIG && window.SNAP_CONFIG.snapLive) ? [["own", "SnapLive — apna live + auto recording (R2 chahiye)"]] : []).concat([["external", "Doosri app ka link (Zoom / Google Meet / YouTube Live)"], ["inapp", "Meri app ke andar (Jitsi live)"]]), h: "Doosri app chunne par 'Go Live' dabate waqt aap uska link daalenge — link pehle se student ko nahi dikhta." }, { k: "dt", l: "Date & Time", t: "datetime-local", r: 1 }, { k: "durationMin", l: "Duration (minutes)", t: "number" }, { k: "teacher", l: "Teacher" });
     if (kind === "recording") f.push({ k: "durationMin", l: "Duration (minutes)", t: "number" }, { k: "teacher", l: "Teacher" });
     if (upl) f.push({ k: "file", l: it && (it.fileName || hasFile(it)) ? "Nayi File Upload (purani replace hogi)" : "File Upload", t: "file", acc: kind === "recording" ? "video/*" : ".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png", h: "Phone/computer se seedhe upload. Firebase Storage ON ho to 50MB tak, warna 4MB tak." }, { k: "url", l: "YA Link (https)", h: "Google Drive (anyone with link) / YouTube / direct URL. Upload ya link — dono me se ek." + (it && it.fileName ? "<br>Abhi: " + esc(it.fileName) : "") });
-    var vals = it ? Object.assign({ mode: "inapp" }, it, { dt: it.scheduledAt ? new Date(ms(it.scheduledAt) - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 16) : "" }) : { batchId: A.f.batch || (A.batches[0] || {}).id, cat: "Notes", mode: "inapp", subject: A.f.subject || "", chapter: A.f.chapter || "" };
+    var vals = it ? Object.assign({ mode: "inapp" }, it, { dt: it.scheduledAt ? new Date(ms(it.scheduledAt) - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 16) : "" }) : { batchId: A.f.batch || (A.batches[0] || {}).id, cat: "Notes", mode: "external", subject: A.f.subject || "", chapter: A.f.chapter || "" };
     form((it ? "Edit " : "Add ") + kind, f, vals, function (o) {
       var ve = EXT.validateItem && EXT.validateItem(o, kind); if (ve) { toast(ve); return false; }
       if (o.url && !okUrl(o.url)) { toast("Link https:// se shuru hona chahiye"); return false; }
@@ -342,13 +344,14 @@
     var done = function (msg) { return function () { audit("item." + a, id); msg && toast(msg); return loadAll().then(function () { adminGo(v); }); }; }, upd = function (d) { d.updatedAt = FV().serverTimestamp(); return itemRef(b, id).update(d); };
     if (a === "edit") return itemForm(v, it);
     if (a === "view") return openItem(it, A.inst);
-    if (a === "del") { if (!sure('"' + it.title + '" delete karein? Ye undo nahi hoga.')) return; return itemRef(b, id).delete().then(function () { deleteFileOf(it); }).then(done("Delete ho gaya")); }
+    if (a === "del") { if (!sure('"' + it.title + '" delete karein? Ye undo nahi hoga.')) return; return itemRef(b, id).delete().then(function () { deleteFileOf(it); if (it.ownKey && window.SnapLive) window.SnapLive.purge(it); }).then(done("Delete ho gaya")); }
     if (a === "pub") { if (it.kind === "recording" && !hasFile(it)) return toast("Pehle recording ka valid link jodein (Edit)"); return upd(it.kind === "recording" ? { status: "published", published: true } : { published: true }).then(done("Published")); }
     if (a === "unpub") return upd(it.kind === "recording" ? { status: "unpublished", published: false } : { published: false }).then(done("Unpublished"));
     if (a === "fail") return upd({ status: "failed" }).then(done());
     if (a === "retry") return upd({ status: "processing" }).then(done());
     if (a === "cancel") return upd({ status: "cancelled" }).then(done());
     if (a === "golive") {
+      if (it.mode === "own") { if (!window.SnapLive) return toast("SnapLive load nahi hua"); return upd({ mode: "own", published: true }).then(function () { return loadAll(); }).then(function () { var cur = (A.items[b] || []).filter(function (x) { return x.id === id; })[0] || it; window.SnapLive.studio(cur, ctx(), done()); }); }
       if (it.mode === "external") {
         var link = prompt("Live class ka link daalein (Zoom / Google Meet / YouTube Live / koi bhi https link):", ""); if (!link) return; link = link.trim();
         if (!okUrl(link)) return toast("Link https:// se shuru hona chahiye");
@@ -357,8 +360,9 @@
       if (!sure('"' + it.title + '" abhi live shuru karein?\n\nLive app ke andar Jitsi room me hoga. Camera/mic ki permission allow karein.')) return;
       var room = "snp" + rnd(14); return upd({ status: "live", liveRoom: room, published: true, startedAt: FV().serverTimestamp() }).then(done()).then(function () { joinLive({ mode: "inapp", liveRoom: room, title: it.title }, "Teacher"); });
     }
-    if (a === "rejoin") return joinLive(it, "Teacher");
+    if (a === "rejoin") return it.mode === "own" ? window.SnapLive.studio(it, ctx(), done()) : joinLive(it, "Teacher");
     if (a === "end") {
+      if (it.mode === "own" && it.liveKey) { if (!sure("Class khatam karein? Jo segments upload ho chuke hain unse recording ban jayegi.")) return; return window.SnapLive.endClass(it, ctx(), done("Class khatam. Recording ready.")()).catch(function (e) { toast("Nahi hua: " + (e.message || e)); }); }
       if (!sure("Class khatam karein?")) return;
       var has = (A.items[b] || []).some(function (x) { return x.kind === "recording" && x.classId === id; });
       return upd({ status: "completed", liveRoom: FV().delete(), liveUrl: FV().delete(), endedAt: FV().serverTimestamp() }).then(function () {
@@ -508,7 +512,7 @@ function vPay(m) {
     var s = sess(); bref(S.inst, id).collection("requests").doc(String(s.mobile)).set({ mobile: String(s.mobile), name: s.name || "", status: "pending", createdAt: FV().serverTimestamp() })
       .then(function () { var b = S.avail.filter(function (x) { return x.id === id; })[0]; b && (b.req = "pending"); toast("✅ Request bhej di — admin approve karega"); sHome(); }).catch(function (e) { toast("Request nahi gayi: " + (e.code || e.message)); });
   }
-  function liveOf(b) { return (S.items[b.id] || []).filter(function (i) { return i.kind === "class" && i.status === "live" && (i.liveRoom || i.liveUrl); })[0]; }
+  function liveOf(b) { return (S.items[b.id] || []).filter(function (i) { return i.kind === "class" && i.status === "live" && (i.liveRoom || i.liveUrl || i.liveKey); })[0]; }
   function nextOf(b) { var n = Date.now() - 36e5; return (S.items[b.id] || []).filter(function (i) { return i.kind === "class" && i.status === "upcoming" && ms(i.scheduledAt) >= n; }).sort(function (a, c) { return ms(a.scheduledAt) - ms(c.scheduledAt); })[0]; }
   function sHome() {
     var o = $("#bm-student"), live = S.batches.map(liveOf).filter(Boolean), h = S.h || "my", av = S.avail || [], body;
@@ -542,7 +546,7 @@ function vPay(m) {
       var list = its.filter(function (i) { return tab === "note" ? i.kind === "note" : i.kind === tab; }).sort(function (a, c) { return (ms(c.scheduledAt) || ms(c.createdAt)) - (ms(a.scheduledAt) || ms(a.createdAt)); });
       body = '<div class="bm-list">' + (list.length ? list.map(function (i) { var ic = { class: "🔴", recording: "🎬", note: "📄", material: "📚", ppt: "📊", announcement: "📢" }[i.kind];
         return '<div class="bm-item"><div class="ic">' + ic + '</div><div class="g"><b>' + esc(i.title) + '</b><small>' + esc([i.subject, i.chapter].filter(Boolean).join(" • ") || (i.cat || "")) + (i.kind === "class" ? " • " + fdate(i.scheduledAt) : "") + '</small>' + (i.kind === "announcement" ? '<small style="display:block;margin-top:4px;color:#334155">' + esc(i.desc) + '</small>' : "") + '</div>' +
-          (i.kind === "class" ? (i.status === "live" && (i.liveRoom || i.liveUrl) ? '<button class="go" style="background:#ef4444" data-live="' + i.id + '">Join</button>' : '<span class="bm-badge ' + (i.status === "completed" ? "" : "b") + '">' + (i.status === "completed" ? "Done" : i.status === "cancelled" ? "Cancelled" : "Upcoming") + '</span>') : hasFile(i) ? '<button class="go" data-v="' + i.id + '">' + (i.kind === "recording" ? "▶ Play" : "View") + '</button>' : "") + '</div>'; }).join("") : '<div class="bm-empty">Yahan abhi kuch publish nahi hua.</div>') + '</div>';
+          (i.kind === "class" ? (i.status === "live" && (i.liveRoom || i.liveUrl || i.liveKey) ? '<button class="go" style="background:#ef4444" data-live="' + i.id + '">Join</button>' : '<span class="bm-badge ' + (i.status === "completed" ? "" : "b") + '">' + (i.status === "completed" ? "Done" : i.status === "cancelled" ? "Cancelled" : "Upcoming") + '</span>') : hasFile(i) ? '<button class="go" data-v="' + i.id + '">' + (i.kind === "recording" ? "▶ Play" : "View") + '</button>' : "") + '</div>'; }).join("") : '<div class="bm-empty">Yahan abhi kuch publish nahi hua.</div>') + '</div>';
     }
     o.innerHTML = '<div class="bm-sh"><button data-back>←</button><b>' + esc(b.name) + '</b></div><div class="bm-tabs">' + tabsAll().map(function (t) { return '<button data-tab="' + t[0] + '"' + (t[0] === tab ? ' class="on"' : "") + '>' + t[1] + '</button>'; }).join("") + '</div>' + body;
     o.querySelector("[data-back]").onclick = sHome;

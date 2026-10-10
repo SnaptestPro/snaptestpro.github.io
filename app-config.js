@@ -9,6 +9,7 @@ window.SNAP_CONFIG = {
   tagline: "Smart Practice • Better Result",
   version: "1.1",
   workerUrl: "https://cool-thunder-a280.vishnu1234stm.workers.dev",   // Cloudflare Worker (bank + push + owner alerts)
+  snapLive: false,                                                    // true tab karein jab Cloudflare R2 (LIVE_R2) set ho jaye — tab "SnapLive" option dikhega
   ownerAlertEmail: "vishnu1234stm@gmail.com",                         // is email se login par owner app me alerts ka push aata hai
   build: "168",
   ownerName: "Vishnu Sharma",

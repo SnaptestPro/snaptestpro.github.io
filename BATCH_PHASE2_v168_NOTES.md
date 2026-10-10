@@ -14,8 +14,8 @@ Purana kuch delete/replace nahi hua — sab usi Batch system ke andar plug hota 
 | 6–7 Student My Batches + Batch Dashboard | ✅ progress bar, live/next class, announcements, subject cards, teachers, recent recordings & notes, assignments count |
 | 8 Subjects (own ID, order, status) | ✅ `batches/{b}/subjects/{id}`; same naam alag batch me alag content. ❌ Subject Image |
 | 9 Chapters | ✅ add/edit/delete(safe)/reorder/on-off, har chapter me Live, Recorded, Notes, Study, PPT, Tests, Doubts |
-| 10 Live class | ✅ Jitsi (mic/camera/screen/chat/raise hand/participants Jitsi ke built-in) + external link. ✅ **attendance** (join par record) |
-| 11 Recording auto-save | ❌ **nahi** — Jitsi public server recording nahi deta. Abhi: class end → "Processing" recording → admin link/file jodta hai tab "Ready". Auto-record ke liye paid server (Jibri/Daily/LiveKit) chahiye |
+| 10 Live class | ✅ SnapLive (teacher camera/screen+mic, chat, raise hand) + Jitsi + external link. ✅ **attendance** (join par record) |
+| 11 Recording auto-save | ✅ **SnapLive** — apna live + auto recording (Jitsi/Zoom ke bina), details `SNAPLIVE_v168_NOTES.md`. R2 bucket + Worker binding chahiye. Limits: one-to-many, Chrome/Android, iPhone nahi |
 | 12–13 Notes / PPT | ✅ subject→chapter dropdown (parent-child validated), file ab permanent token-link ke bajay `storagePath` se rules ke baad open hoti hai |
 | 14 Tests & Assignments | ✅ Assignments (submit, due, marks, feedback, evaluate) + existing tests ko batch/chapter se link. ❌ Naya per-batch test engine (MCQ/multi/TF/short/long) nahi bana — maujooda test engine use hota hai |
 | 15 Doubts | ✅ student ask (text+photo), apne doubts, admin answer/status/delete |
