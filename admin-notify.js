@@ -37,7 +37,7 @@
         var c = live && (t.isDraft === false || fresh) && col();
         if (c) {
           var at = whenTxt(t), nm = t.title || "Ek naya test";
-          c.doc("t_" + id).set(testNotifDoc(id, t, nm, at)).then(function () { window.SnapPush && window.SnapPush.send("t_" + id); }).catch(function () { /* pehle se bhej chuke hain (edit) — ignore */ });
+          var nd = testNotifDoc(id, t, nm, at); c.doc("t_" + id).set(nd).then(function () { window.SnapPush && window.SnapPush.send("t_" + id, nd); }).catch(function () { /* pehle se bhej chuke hain (edit) — ignore */ });
         }
       } catch (e) {}
       return r;
@@ -52,7 +52,7 @@
         var c = col(); if (!c || !id) return;
         var nm = (ex && ex.examName) || "Exam", cl = ex && ex.className ? " (" + ex.className + ")" : "";
         c.doc("e_" + id).set({ type: "exam", title: "Exam Result Publish Hua", body: nm + cl + " ka result ab dekh sakte hain", createdAt: ts(), createdBy: email() })
-          .then(function () { window.SnapPush && window.SnapPush.send("e_" + id); }).catch(function () { /* pehle bhej chuke hain — ignore */ });
+          .then(function () { window.SnapPush && window.SnapPush.send("e_" + id, { type: "exam", title: "Exam Result Publish Hua", body: nm + cl + " ka result ab dekh sakte hain" }); }).catch(function () { /* pehle bhej chuke hain — ignore */ });
       } catch (e) {}
     }
   };
@@ -86,7 +86,7 @@
     if (!t || !b) return st("⚠️ Title aur message dono bharein.");
     var btn = $("an-send"); btn.disabled = true; st("⏳ Bhej rahe hain...");
     c.add({ type: "admin", title: t, body: b, createdAt: ts(), createdBy: email() }).then(function (ref) {
-      window.SnapPush && window.SnapPush.send(ref.id);
+      window.SnapPush && window.SnapPush.send(ref.id, { type: "admin", title: t, body: b });
       $("an-title").value = ""; $("an-body").value = ""; st("✅ Bhej diya gaya!"); btn.disabled = false; loadList();
     }).catch(function (e) {
       btn.disabled = false;

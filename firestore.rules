@@ -905,6 +905,14 @@ service cloud.firestore {
       // (signed-in), sirf us institute ka admin likh/delete kar sakta hai.
       // Update allowed nahi — isliye "Naya test" auto-notification
       // (doc id t_<testId>) ek test ke liye sirf ek baar bani rehti hai.
+      // v170 read-diet: institutes/{id}/ver/main — chhota "version" doc. Admin badlaav par number badalta hai, app sirf ye 1 doc padhkar
+      // faisla karta hai ki cache chalega ya data dobara padhna hai (reads bahut kam).
+      match /ver/{vid} {
+        allow read: if isSignedIn() && (!instStrict(instituteId) || isInstStudent(instituteId) || (isAdmin() && instituteId == adminInstituteId()));
+        allow create, update: if isAdmin() && instituteId == adminInstituteId();
+        allow delete: if false;
+      }
+
       match /notifications/{nid} {
         allow read: if isSignedIn() && (!instStrict(instituteId) || isInstStudent(instituteId) || (isAdmin() && instituteId == adminInstituteId()));
         allow create: if isAdmin() && instituteId == adminInstituteId() &&

@@ -25,12 +25,13 @@
     var m;
     if ((m = u.match(/drive\.google\.com\/file\/d\/([^/]+)/))) return { t: "frame", u: "https://drive.google.com/file/d/" + m[1] + "/preview" };
     if ((m = u.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|live\/))([\w-]{6,})/))) return { t: "frame", u: "https://www.youtube.com/embed/" + m[1] };
-    if (/\.(mp4|webm|m3u8)(\?|$)/i.test(u)) return { t: "video", u: u };
+    if (/\.(mp4|webm|m3u8|mov|m4v|mp3|m4a|wav|ogg)(\?|$)/i.test(u)) return { t: "video", u: u };
+    if (/\.(png|jpe?g|gif|webp|bmp)(\?|$)/i.test(u)) return { t: "frame", u: u };
     if (/\.(pdf|pptx?|docx?|xlsx?)(\?|$)/i.test(u)) return { t: "frame", u: "https://docs.google.com/viewer?embedded=true&url=" + encodeURIComponent(u) };
     return { t: "link", u: u };
   }
   function viewer(title, url, o) {
-    o = o || {}; var e = url.indexOf("blob:") === 0 ? (/pdf|image/.test(o.mime || "") ? { t: "frame", u: url } : /video/.test(o.mime || "") ? { t: "video", u: url } : { t: "link", u: url }) : embed(url), v = document.createElement("div"); v.className = "bm-viewer";
+    o = o || {}; var e = url.indexOf("blob:") === 0 ? (/pdf|image/.test(o.mime || "") ? { t: "frame", u: url } : /video/.test(o.mime || "") ? { t: "video", u: url } : { t: "link", u: url }) : (o.mime && /^(image|video|audio)\//.test(o.mime) ? { t: /^image/.test(o.mime) ? "frame" : "video", u: url } : embed(url)), v = document.createElement("div"); v.className = "bm-viewer";
     v.innerHTML = '<div class="vt"><b>' + esc(title) + '</b><button data-d>⬇</button><button data-o>Open ↗</button><button data-x>✕</button></div>' +
       (e.t === "video" ? '<video controls autoplay playsinline src="' + esc(e.u) + '"></video>' : e.t === "frame" ? '<iframe allow="autoplay; fullscreen" allowfullscreen src="' + esc(e.u) + '"></iframe>' :
         '<div style="color:#fff;padding:24px;text-align:center">Is file ka preview in-app nahi ho sakta (PPT/DOC jaisi files).<br><br>Upar <b>⬇</b> se download karke apne phone ki app me kholein.</div>');
@@ -54,12 +55,18 @@
     var s = (typeof getStudentSession === "function" && getStudentSession()) || {}, u = liveUrl(it.liveRoom, name || s.name || "Student");
     CFG.liveEmbed === false ? window.open(u, "_blank", "noopener") : liveViewer(it.title, u);
   }
-  function hasFile(i) { return !!(i.url || i.fileId || i.storagePath || i.ownKey); }
+  function hasFile(i) { return !!(i.url || i.fileId || i.storagePath || i.ownKey || i.ownFile); }
   /* ---- direct upload: Firebase Storage (ON ho to) warna Firestore chunks (max 4MB) ---- */
   var CH = 600000, MAXCH = 4 * 1024 * 1024;
   function storage() { var v = window.vishnuFirebase; return v && v.storage; }
   function b64(buf) { var s = "", a = new Uint8Array(buf), k = 0x8000; for (var i = 0; i < a.length; i += k) s += String.fromCharCode.apply(null, a.subarray(i, i + k)); return btoa(s); }
   function uploadFile(file, inst, batchId, prog) {
+    var sf = window.SnapFiles;
+    if (sf && sf.ready()) return sf.upload(file, { inst: inst, batchId: batchId }, prog).then(function (of) { if (of.used) toast("✅ Upload ho gaya • Storage: " + Math.round(of.used / 1048576) + " MB / 1 GB"); return { ownFile: of, fileName: file.name, fileType: of.type || file.type || "", fileSize: of.size }; })
+      .catch(function (e) { console.warn("[SnapFiles] apna storage fail — Firebase tareeka:", e); try { sf.noteFail(e); } catch (x) {} toast(e && (e.status === 507 || e.status === 413) ? e.message : "Apna storage nahi chala — Firebase se upload ho raha hai…"); return uploadFileFb(file, inst, batchId, prog); });
+    return uploadFileFb(file, inst, batchId, prog);
+  }
+  function uploadFileFb(file, inst, batchId, prog) {
     var safe = file.name.replace(/[^\w.\-]+/g, "_"), path = "batches/" + inst + "/" + batchId + "/" + Date.now() + "_" + safe, st = storage();
     function viaChunks() {
       if (file.size > MAXCH) return Promise.reject(new Error("Firebase Storage ON nahi hai — bina Storage ke file 4MB tak hi upload hoti hai. Badi file ke liye link use karein ya Storage ON karein."));
@@ -93,12 +100,14 @@
   }
   function openItem(it, inst) {
     if (it.ownKey && window.SnapLive) return window.SnapLive.play(it, ctx());
+    if (it.ownFile && window.SnapFiles) return viewer(it.title, window.SnapFiles.urlOf(it.ownFile), { name: it.ownFile.name || it.fileName, mime: it.ownFile.type });
     if (it.fileId) { toast("File load ho rahi hai…"); return loadChunked(inst, it.batchId, it.fileId).then(function (f) { viewer(it.title, URL.createObjectURL(f.blob), { mime: f.type, name: f.name }); }).catch(function (e) { toast("File nahi khuli: " + (e.message || e.code)); }); }
     if (!it.url && it.storagePath && storage()) { toast("File load ho rahi hai…"); return storage().ref(it.storagePath).getDownloadURL().then(function (u) { viewer(it.title, u, { name: it.fileName }); }).catch(function (e) { toast("File nahi khuli (permission/network): " + (e.code || e.message)); }); }
     viewer(it.title, it.url, { name: it.fileName });
   }
   function deleteFileOf(it) {
     try {
+      if (it.ownFile && it.ownFile.key && window.SnapFiles) window.SnapFiles.remove(it.ownFile.key);
       if (it.storagePath && storage()) storage().ref(it.storagePath).delete().catch(function () {});
       if (it.fileId) { var fr = bref(A.inst, it.batchId).collection("files").doc(it.fileId); fr.collection("parts").get().then(function (q) { var wb = DB().batch(); q.docs.forEach(function (d) { wb.delete(d.ref); }); wb.delete(fr); return wb.commit(); }).catch(function () {}); }
     } catch (e) {}
@@ -156,7 +165,14 @@
   function loadAll() {
     return authReady().then(function () { return bref(A.inst).get(); }).then(function (q) {
       A.batches = q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); A.items = {};
-      return Promise.all(A.batches.map(function (b) { return bref(A.inst, b.id).collection("items").get().then(function (s) { A.items[b.id] = s.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); }); }));
+      /* v170 read-diet: admin ke apne naye badlaav wale batch ke items hi dobara; baaki cache (ver doc se doosre admin ke badlaav bhi pakde jaate hain) */
+      return (window.SnapDiet ? window.SnapDiet.ver(A.inst, true) : Promise.resolve(null)).then(function (ver) {
+        return Promise.all(A.batches.map(function (b) {
+          var fq = function () { return bref(A.inst, b.id).collection("items").get(); };
+          var p = window.SnapDiet ? window.SnapDiet.cached("snap_diet_items_A_" + b.id, "b_" + b.id, fq, ver, false, 1800000, b.id) : fq().then(function (s) { return s.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); });
+          return p.then(function (arr) { A.items[b.id] = arr; });
+        }));
+      });
     }).then(function () {
       return healCounts();
     }).then(function () {
@@ -297,6 +313,7 @@
         return inGroups(items, 6, function (it) {
           if (it.storagePath && storage()) storage().ref(it.storagePath).delete().catch(function () {});
           if (it.ownKey && window.SnapLive) try { window.SnapLive.purge(it); } catch (e) {}
+          if (it.ownFile && it.ownFile.key && window.SnapFiles) window.SnapFiles.remove(it.ownFile.key);
           return Promise.all([collRefs(it.ref.collection("chat")), collRefs(it.ref.collection("hands"))]).then(function (r) { return delDocs(r[0].concat(r[1])); }).catch(function () {}).then(function () { k++; });
         });
       })
@@ -309,7 +326,9 @@
       })
       .then(function () {
         say("Assignments aur submissions hata rahe hain…");
-        return collRefs(B.collection("assignments")).then(function (ars) {
+        return B.collection("assignments").get().then(function (aq) {
+          aq.docs.forEach(function (d) { var of = d.data().ownFile; if (of && of.key && window.SnapFiles) window.SnapFiles.remove(of.key); });
+          var ars = aq.docs.map(function (d) { return d.ref; });
           return inGroups(ars, 4, function (ar) { return collRefs(ar.collection("submissions")).then(function (sr) { return delDocs(sr); }); }).then(function () { return delDocs(ars); });
         });
       })
@@ -410,12 +429,12 @@
     f.push({ k: "desc", l: kind === "announcement" ? "Message" : "Description", t: "textarea", r: kind === "announcement" });
     if (kind === "class") f.push({ k: "mode", l: "Live kaise hogi?", t: "select", o: ((window.SNAP_CONFIG && window.SNAP_CONFIG.snapLive) ? [["own", "SnapLive — apna live + auto recording (R2 chahiye)"]] : []).concat([["external", "Doosri app ka link (Zoom / Google Meet / YouTube Live)"], ["inapp", "Meri app ke andar (Jitsi live)"]]), h: "Doosri app chunne par 'Go Live' dabate waqt aap uska link daalenge — link pehle se student ko nahi dikhta." }, { k: "dt", l: "Date & Time", t: "datetime-local", r: 1 }, { k: "durationMin", l: "Duration (minutes)", t: "number" }, { k: "teacher", l: "Teacher" });
     if (kind === "recording") f.push({ k: "durationMin", l: "Duration (minutes)", t: "number" }, { k: "teacher", l: "Teacher" });
-    if (upl) f.push({ k: "file", l: it && (it.fileName || hasFile(it)) ? "Nayi File Upload (purani replace hogi)" : "File Upload", t: "file", acc: kind === "recording" ? "video/*" : ".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png", h: "Phone/computer se seedhe upload. Firebase Storage ON ho to 50MB tak, warna 4MB tak." }, { k: "url", l: "YA Link (https)", h: "Google Drive (anyone with link) / YouTube / direct URL. Upload ya link — dono me se ek." + (it && it.fileName ? "<br>Abhi: " + esc(it.fileName) : "") });
+    if (upl) f.push({ k: "file", l: it && (it.fileName || hasFile(it)) ? "Nayi File Upload (purani replace hogi)" : "File Upload", t: "file", acc: kind === "recording" ? "video/*,audio/*" : ".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,image/*,audio/*,video/*", h: "Phone/computer se seedhe upload — apna storage (badi file bhi chalegi, koi size limit nahi). Pehle upload poora hone dein." }, { k: "url", l: "YA Link (https)", h: "Google Drive (anyone with link) / YouTube / direct URL. Upload ya link — dono me se ek." + (it && it.fileName ? "<br>Abhi: " + esc(it.fileName) : "") });
     var vals = it ? Object.assign({ mode: "inapp" }, it, { dt: it.scheduledAt ? new Date(ms(it.scheduledAt) - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 16) : "" }) : { batchId: A.f.batch || (A.batches[0] || {}).id, cat: "Notes", mode: "external", subject: A.f.subject || "", chapter: A.f.chapter || "" };
     form((it ? "Edit " : "Add ") + kind, f, vals, function (o) {
       var ve = EXT.validateItem && EXT.validateItem(o, kind); if (ve) { toast(ve); return false; }
       if (o.url && !okUrl(o.url)) { toast("Link https:// se shuru hona chahiye"); return false; }
-      if (o.file && o.file.size > 52428800) { toast("File 50MB se badi hai"); return false; }
+      if (o.file && o.file.size > 52428800 && !(window.SnapFiles && window.SnapFiles.ready())) { toast("File 50MB se badi hai"); return false; }
       if (kind === "class" && !it && new Date(o.dt).getTime() < Date.now() - 36e5) { toast("Past ka time schedule nahi ho sakta"); return false; }
       if ((kind === "note" || kind === "material" || kind === "ppt") && !o.file && !o.url && !(it && hasFile(it))) { toast("File upload karein ya link daalein"); return false; }
       var up = Promise.resolve(null);
@@ -426,17 +445,17 @@
         if (kind === "note" || kind === "material") { data.cat = o.cat; data.kind = NOTE_TYPES.filter(function (x) { return x[0] === o.cat; })[0][1]; }
         if (upl) {
           data.url = o.url || "";
-          if (fi) { data.url = fi.storagePath ? "" : (fi.url || "");   /* v168: Storage file ka permanent token-link save nahi hota; dekhte waqt rules ke baad resolve hota hai */ data.fileId = fi.fileId || ""; data.storagePath = fi.storagePath || ""; data.fileName = fi.fileName; data.fileType = fi.fileType; data.fileSize = fi.fileSize; }
-          else if (it && o.url && o.url !== it.url) { data.fileId = ""; data.storagePath = ""; data.fileName = ""; }
+          if (fi) { if (fi.ownFile) data.ownFile = fi.ownFile; else if (it && it.ownFile) data.ownFile = FV().delete(); data.url = (fi.storagePath || fi.ownFile) ? "" : (fi.url || "");   /* v168: Storage file ka permanent token-link save nahi hota; dekhte waqt rules ke baad resolve hota hai */ data.fileId = fi.fileId || ""; data.storagePath = fi.storagePath || ""; data.fileName = fi.fileName; data.fileType = fi.fileType; data.fileSize = fi.fileSize; }
+          else if (it && o.url && o.url !== it.url) { data.fileId = ""; data.storagePath = ""; data.fileName = ""; if (it.ownFile) data.ownFile = FV().delete(); }
           else if (it && !o.url && it.url) data.url = it.url;
         }
-        var has = !!(data.url || data.fileId || data.storagePath || (it && (it.fileId || it.storagePath) && !fi));
+        var has = !!(data.url || data.fileId || data.storagePath || (fi && fi.ownFile) || (it && (it.fileId || it.storagePath || it.ownFile) && !fi));
         if (kind === "class") { data.mode = o.mode || "inapp"; data.scheduledAt = firebase.firestore.Timestamp.fromDate(new Date(o.dt)); data.durationMin = +o.durationMin || 60; data.teacher = o.teacher || ""; if (!it) { data.status = "upcoming"; data.published = true; } }
         if (kind === "recording") { data.durationMin = +o.durationMin || 0; data.teacher = o.teacher || ""; if (has && (!it || it.status === "processing" || it.status === "failed")) data.status = "ready"; if (!it) { data.status = has ? "ready" : "processing"; data.published = false; } }
         if (kind === "announcement" && !it) data.published = true;
         if (!it && kind !== "class" && kind !== "recording" && kind !== "announcement") data.published = false;
         var p = it ? bref(A.inst, it.batchId).collection("items").doc(it.id).update(data) : bref(A.inst, o.batchId).collection("items").add(Object.assign(data, { createdAt: FV().serverTimestamp(), createdBy: adminEmail() }));
-        return p.then(function () { if (it && fi) deleteFileOf(it); if (!it && data.published === true && (kind === "class" || kind === "announcement")) nv(kind === "class" ? "class_new" : "announce", data); audit("item." + (it ? "update" : "create"), kind); toast("✅ Save ho gaya"); return loadAll().then(function () { adminGo(v); }); });
+        return p.then(function () { if (it && (fi || (it.ownFile && o.url && o.url !== it.url))) deleteFileOf(it); if (!it && data.published === true && (kind === "class" || kind === "announcement")) nv(kind === "class" ? "class_new" : "announce", data); audit("item." + (it ? "update" : "create"), kind); toast("✅ Save ho gaya"); return loadAll().then(function () { adminGo(v); }); });
       });
     });
   }
@@ -577,12 +596,23 @@ function vPay(m) {
         return Promise.all(S.mine.map(function (id) { return bref(inst, id).get().then(function (b) { return b.exists ? Object.assign({ id: b.id }, b.data()) : null; }).catch(function () { return null; }); }));
       }).then(function (bs) {
         S.batches = bs.filter(function (b) { return b && b.published; });
-        return Promise.all(S.batches.map(function (b) { return bref(inst, b.id).collection("items").where("published", "==", true).get().then(function (q) { S.items[b.id] = q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); }).catch(function () { S.items[b.id] = []; }); })).then(loadAvail);
+        /* v170 read-diet: items tabhi padhe jaate hain jab admin ne badlaav kiya ho (ver doc) — warna phone ka cache */
+        var force = !!S.force; S.force = false;
+        return (window.SnapDiet ? window.SnapDiet.ver(inst, force) : Promise.resolve(null)).then(function (ver) {
+          S.ver = ver;
+          return Promise.all(S.batches.map(function (b) {
+            var fq = function () { return bref(inst, b.id).collection("items").where("published", "==", true).get(); };
+            var p = window.SnapDiet ? window.SnapDiet.cached("snap_diet_items_S_" + String(s.mobile) + "_" + b.id, "b_" + b.id, fq, ver, force) : fq().then(function (q) { return q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); });
+            return p.then(function (arr) { S.items[b.id] = arr; }).catch(function () { S.items[b.id] = []; });
+          }));
+        }).then(loadAvail);
       });
     });
   }
   function loadPay() { return pref(S.inst).get().then(function (d) { S.pay = d.exists ? d.data() : null; }).catch(function () { S.pay = null; }); }
-  function loadAvail() { return Promise.all([loadAvail0(), loadPay()]); }
+  function loadAvail() { return loadAvail0(); }
+  /* v170: request-status aur payment doc tabhi padhe jaate hain jab student "Available" tab kholta hai */
+  function loadReqs() { var s = sess(); return Promise.all([loadPay()].concat((S.avail || []).map(function (b) { return bref(S.inst, b.id).collection("requests").doc(String(s.mobile)).get().then(function (r) { b.req = r.exists ? r.data().status : null; }).catch(function () {}); }))); }
   function payForm(b) {
     var p = S.pay || {}, s = sess(); if (!p.qr && !p.upiId) return toast("Institute ne abhi payment setup nahi kiya — admin se sampark karein");
     var md = document.createElement("div"); md.className = "bm-modal"; var up = p.upiId ? "upi://pay?pa=" + encodeURIComponent(p.upiId) + "&pn=" + encodeURIComponent(p.payeeName || "Institute") + "&am=" + b.fee + "&cu=INR&tn=" + encodeURIComponent((b.name || "Batch").slice(0, 40)) : "";
@@ -604,10 +634,9 @@ function vPay(m) {
   }
   function loadAvail0() {
     var s = sess(), mine = S.mine || [];
-    return bref(S.inst).where("published", "==", true).get().then(function (q) {
-      var av = q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }).filter(function (b) { return mine.indexOf(b.id) < 0; });
-      return Promise.all(av.map(function (b) { return bref(S.inst, b.id).collection("requests").doc(String(s.mobile)).get().then(function (r) { b.req = r.exists ? r.data().status : null; }).catch(function () {}); })).then(function () { S.avail = av; });
-    }).catch(function () { S.avail = []; });
+    var fq = function () { return bref(S.inst).where("published", "==", true).get(); };
+      var p = window.SnapDiet ? window.SnapDiet.cached("snap_diet_avail_" + S.inst, "batches", fq, S.ver, false) : fq().then(function (q) { return q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); });
+      return p.then(function (all) { S.avail = all.filter(function (b) { return mine.indexOf(b.id) < 0; }); S.reqDone = false; S.reqBusy = false; }).catch(function () { S.avail = []; });
   }
   function reqEnroll(id) {
     var b0 = S.avail.filter(function (x) { return x.id === id; })[0]; if (b0 && b0.fee > 0) return payForm(b0);
@@ -618,15 +647,17 @@ function vPay(m) {
   function nextOf(b) { var n = Date.now() - 36e5; return (S.items[b.id] || []).filter(function (i) { return i.kind === "class" && i.status === "upcoming" && ms(i.scheduledAt) >= n; }).sort(function (a, c) { return ms(a.scheduledAt) - ms(c.scheduledAt); })[0]; }
   function sHome() {
     var o = $("#bm-student"), live = S.batches.map(liveOf).filter(Boolean), h = S.h || "my", av = S.avail || [], body;
+      if (h === "avail" && !S.reqDone && !S.reqBusy) { S.reqBusy = true; loadReqs().then(function () { S.reqDone = true; S.reqBusy = false; sHome(); }, function () { S.reqDone = true; S.reqBusy = false; sHome(); }); }
     if (h === "my") body = S.batches.length ? S.batches.map(function (b) { var l = liveOf(b), n = nextOf(b); return '<div class="bm-bcard" data-b="' + b.id + '">' + (b.image ? '<img class="bx-bimg" src="' + esc(b.image) + '" alt="">' : "") + '<span class="bm-tag"' + (l ? ' style="background:#ef4444"' : "") + '>' + (l ? "Live Now" : { live: "Live Batch", recorded: "Recorded", hybrid: "Hybrid" }[b.type] || "Batch") + '</span><b>' + esc(b.name) + '</b><small>' + esc(subjOf(b).join(" • ")) + '</small><div class="bm-meta"><span>👥 ' + (b.enrolledCount || 0) + (b.limit ? "/" + b.limit : "") + '</span><span>' + (n ? "⏰ " + fdate(n.scheduledAt) : "Koi upcoming class nahi") + '</span></div></div>'; }).join("") :
       '<div class="bm-empty">Abhi aap kisi batch me enrolled nahi hain.<br>"Available" tab se enroll request bhejein.</div>';
     else body = av.length ? av.map(function (b) {
-      var full = b.limit && (b.enrolledCount || 0) >= b.limit, act = b.req === "pending" ? '<span class="bm-badge o">⏳ Request pending — admin approve karega</span>' : b.req === "rejected" ? '<span class="bm-badge r">Request reject hui — admin se baat karein</span>' : b.enrollment === "closed" ? '<span class="bm-badge">Enrollment band hai</span>' : full ? '<span class="bm-badge r">Batch full</span>' : '<button class="bm-btn sm" data-rq="' + b.id + '">' + (b.fee ? "Enroll & Pay " + rupee(b.fee) : "Enroll Request bhejein") + '</button>';
+      var full = b.limit && (b.enrolledCount || 0) >= b.limit, act = !S.reqDone ? '<span class="bm-badge">⏳ Check ho raha hai…</span>' : b.req === "pending" ? '<span class="bm-badge o">⏳ Request pending — admin approve karega</span>' : b.req === "rejected" ? '<span class="bm-badge r">Request reject hui — admin se baat karein</span>' : b.enrollment === "closed" ? '<span class="bm-badge">Enrollment band hai</span>' : full ? '<span class="bm-badge r">Batch full</span>' : '<button class="bm-btn sm" data-rq="' + b.id + '">' + (b.fee ? "Enroll & Pay " + rupee(b.fee) : "Enroll Request bhejein") + '</button>';
       return '<div class="bm-bcard" style="cursor:default"><span class="bm-tag" style="background:#6366f1">' + ({ live: "Live Batch", recorded: "Recorded", hybrid: "Hybrid" }[b.type] || "Batch") + '</span><b>' + esc(b.name) + '</b><small>' + esc(subjOf(b).join(" • ")) + '</small><div class="bm-meta"><span>👥 ' + (b.enrolledCount || 0) + (b.limit ? "/" + b.limit : "") + '</span><span>📅 ' + esc(b.startDate || "") + '</span><span>' + (b.fee ? "💰 " + rupee(b.fee) : "Free") + '</span></div><div style="margin-top:10px">' + act + '</div></div>'; }).join("") : '<div class="bm-empty">Abhi koi naya batch available nahi hai.</div>';
-    o.innerHTML = '<div class="bm-sh"><b>Batch</b><button data-x>✕</button></div>' +
+    o.innerHTML = '<div class="bm-sh"><b>Batch</b><button data-rf title="Refresh">🔄</button><button data-x>✕</button></div>' +
       (live.length ? '<div class="bm-next"><div>🔴 <b>Live Now:</b> ' + esc(live[0].title) + '</div><button data-j>Join Now</button></div>' : "") +
       '<div class="bm-tabs"><button data-h="my"' + (h === "my" ? ' class="on"' : "") + '>My Batches (' + S.batches.length + ')</button><button data-h="avail"' + (h === "avail" ? ' class="on"' : "") + '>Available (' + av.length + ')</button></div>' + body;
     o.querySelector("[data-x]").onclick = function () { closeStudent(); var hm = $('#sn-nav [data-k="home"]'); hm && hm.click(); };
+    o.querySelector("[data-rf]").onclick = function () { S.force = true; openStudent(); };
     o.querySelectorAll("[data-h]").forEach(function (t) { t.onclick = function () { S.h = t.dataset.h; sHome(); }; });
     o.querySelectorAll("[data-b]").forEach(function (c) { c.onclick = function () { S.tab = EXT.studentTabs.subjects ? "subjects" : "overview"; sBatch(c.dataset.b); }; });
     o.querySelectorAll("[data-rq]").forEach(function (c) { c.onclick = function () { c.disabled = true; reqEnroll(c.dataset.rq); }; });

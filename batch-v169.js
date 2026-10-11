@@ -82,7 +82,7 @@
       return d.collection("institutes").doc(i).collection("notifications").add({
         type: String(type || "batch"), batchId: String(batchId), title: String(title).slice(0, 100), body: String(body || "").slice(0, 300),
         createdAt: FV().serverTimestamp(), createdBy: adminEmail()
-      }).then(function (ref) { try { W.SnapPush && W.SnapPush.send(ref.id); } catch (e) {} return true; })
+      }).then(function (ref) { try { W.SnapPush && W.SnapPush.send(ref.id, { type: String(type || "batch"), title: title, body: body, batchId: batchId }); } catch (e) {} return true; })
         .catch(function (e) { console.warn("[v169 notify]", e); return false; });
     } catch (e) { return Promise.resolve(false); }
   }

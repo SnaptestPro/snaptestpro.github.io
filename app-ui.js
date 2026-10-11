@@ -35,14 +35,21 @@
     var ss = null; try { ss = typeof getStudentSession === "function" ? getStudentSession() : null; } catch (e) {}
     var vf = window.vishnuFirebase; if (!ss || !ss.instituteId || !vf || !vf.enabled || !vf.db) return Promise.resolve();
     lastFetch = now;
-    return Promise.resolve(vf.authReady).catch(function () {}).then(function () {
-      return vf.db.collection("institutes").doc(ss.instituteId).collection("notifications").orderBy("createdAt", "desc").limit(30).get();
-    }).then(function (q) {
-      var a = []; q.forEach(function (d) { var x = d.data(); if (x.batchId && !(window.SnapV169 && window.SnapV169.mineHas(x.batchId))) return; a.push({ id: d.id, t: x.title || "", b: x.body || "", ts: x.createdAt && x.createdAt.toMillis ? x.createdAt.toMillis() : Date.now() }); });
+    return Promise.resolve(vf.authReady).catch(function () {}).then(function () { return window.SnapDiet ? window.SnapDiet.ver(ss.instituteId) : null; }).then(function (ver) {
+      /* v170 read-diet: nayi notification nahi aayi (ver same) to cache — 0 reads; warna 30 docs ek baar */
+      var ck = "snap_diet_notifs_" + ss.instituteId, c = window.SnapDiet ? window.SnapDiet.cget(ck, 12 * 3600000) : null, cur = ver ? (ver.notifs || 0) : null;
+      if (c && (cur === null || c.v === cur)) return c.items;
+      return vf.db.collection("institutes").doc(ss.instituteId).collection("notifications").orderBy("createdAt", "desc").limit(30).get().then(function (q) {
+        var raw = []; q.forEach(function (d) { var x = d.data(); raw.push({ id: d.id, t: x.title || "", b: x.body || "", ts: x.createdAt && x.createdAt.toMillis ? x.createdAt.toMillis() : Date.now(), bid: x.batchId || "" }); });
+        window.SnapDiet && window.SnapDiet.cset(ck, cur === null ? 0 : cur, raw); return raw;
+      });
+    }).then(function (raw) {
+      var a = raw.filter(function (x) { return !x.bid || (window.SnapV169 && window.SnapV169.mineHas(x.bid)); }).map(function (x) { return { id: x.id, t: x.t, b: x.b, ts: x.ts }; });
       SRV = a; try { localStorage.setItem(SK, JSON.stringify(a)); } catch (e) {} nDot();
     }).catch(function () { lastFetch = 0; });
   }
   window.addEventListener("snap-batches-changed", function () { lastFetch = 0; nRefresh(true); });
+  window.__snapBellRefresh = function () { lastFetch = 0; return nRefresh(true); };
   function me() { return window._selfRankStudent || null; }
   function pct() { var s = me(); return s && s.totalMaxScore ? Math.round(100 * s.totalScore / s.totalMaxScore) : null; }
 

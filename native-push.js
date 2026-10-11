@@ -34,14 +34,14 @@
     try { localStorage.setItem(PQ, "[]"); } catch (e) {}
     q.reduce(function (p, id) { return p.then(function () { return send(id); }); }, Promise.resolve());
   }
-  function send(notifId) {
+  function send(notifId, payload) {
     try {
       if (notifId && navigator.onLine === false) { pqAdd(String(notifId)); toast("📴 Offline — push internet aate hi apne-aap chala jaayega"); return Promise.resolve(false); }
       var a = typeof getAuth === "function" ? getAuth() : null, u = a && a.currentUser;
       var inst = typeof getCurrentAdminInstituteId === "function" ? getCurrentAdminInstituteId() : null;
       if (!u || !inst || !notifId || /YOUR-SUBDOMAIN/.test(PUSH_WORKER_URL)) { toast("⚠️ Push nahi gaya: " + (!u ? "admin email login nahi hai" : !inst ? "institute id nahi mila" : "Worker URL set nahi")); return Promise.resolve(false); }
       return u.getIdToken().then(function (t) {
-        return fetch(PUSH_WORKER_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ idToken: t, instituteId: inst, notifId: String(notifId) }) });
+        return fetch(PUSH_WORKER_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(Object.assign({ idToken: t, instituteId: inst, notifId: String(notifId) }, payload && payload.title ? { title: String(payload.title), body: String(payload.body || ""), type: String(payload.type || "admin"), batchId: payload.batchId ? String(payload.batchId) : undefined } : {})) });
       }).then(function (r) { return r.json(); }).then(function (j) {
         if (!j.ok) { console.warn("[SnapPush] push fail:", j.error); toast("❌ Push fail: " + j.error); } else toast("📲 Push bhej diya gaya"); return !!j.ok;
       }).catch(function (e) { console.warn("[SnapPush] push error", e); if (navigator.onLine === false) { pqAdd(String(notifId)); return false; } toast("❌ Worker tak nahi pahunch paaye: " + ((e && e.message) || e)); return false; });
@@ -125,7 +125,7 @@
     var n = (ev && ev.notification) || {}, d = n.data || {}, key = d.notifId || ((n.title || "") + "|" + (n.body || ""));
     var now = Date.now(); if (seenMsg[key] && now - seenMsg[key] < 20000) return; seenMsg[key] = now;
     if (d.type === "app_update") { if (d.kind === "apk") { window.SnapAppUpdate && SnapAppUpdate.check({}); } else if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) navigator.serviceWorker.getRegistration().then(function (r) { r && r.update(); }); }
-    else refreshBell();
+    else { refreshBell(); try { window.dispatchEvent(new CustomEvent("snap-push-in")); } catch (e) {} }
     if (examBusy()) return;                                                       // exam ke beech banner nahi (bell me aa jaata hai)
     var show = function () { banner(n.title, n.body, d); };
     if (d.type === "test") setTimeout(function () { if (!document.getElementById("savya-push-banner")) show(); }, 1500);   // purana local banner pehle se dikha ho to dobara nahi
@@ -137,7 +137,7 @@
       var C = getCap();
       if (!C || typeof C.nativeCallback !== "function") { if (++tries < 40) setTimeout(go, 250); return; }
       try { C.nativeCallback("FirebaseMessaging", "addListener", { eventName: "notificationReceived" }, onForeground); } catch (e) { console.warn("[SnapPush] fg listener", e); }
-      try { C.nativeCallback("FirebaseMessaging", "addListener", { eventName: "notificationActionPerformed" }, function (ev) { var d = (ev && ev.notification && ev.notification.data) || {}; setTimeout(function () { route(d); }, 900); }); } catch (e) { console.warn("[SnapPush] tap listener", e); }
+      try { C.nativeCallback("FirebaseMessaging", "addListener", { eventName: "notificationActionPerformed" }, function (ev) { var d = (ev && ev.notification && ev.notification.data) || {}; setTimeout(function () { route(d); }, 900); try { window.dispatchEvent(new CustomEvent("snap-push-in")); } catch (e) {} }); } catch (e) { console.warn("[SnapPush] tap listener", e); }
     })();
   }
   attachForeground();

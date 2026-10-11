@@ -9,7 +9,7 @@
 const te = new TextEncoder(), td = new TextDecoder();
 const RS = { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' };
 const JWK_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
-const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Bank-Count' };
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Bank-Count, Range' };
 
 const b64u = (buf) => { let s = ''; for (const c of new Uint8Array(buf)) s += String.fromCharCode(c); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
 const unb64u = (s) => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; const b = atob(s), o = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) o[i] = b.charCodeAt(i); return o; };
@@ -69,6 +69,7 @@ async function handle(request, env) {
   const email = String(user.email || '').toLowerCase();
   if (!email) throw new HttpErr(403, 'Admin email login chahiye');
 
+  if (typeof req.title === 'string' && req.title.trim()) return await pushDirect(env, sa, projectId, email, instituteId, notifId, req);   // v170: 0 Firestore reads
   const at = await googleAccessToken(sa);
   const docUrl = 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/(default)/documents/institutes/' +
     encodeURIComponent(instituteId) + '/notifications/' + encodeURIComponent(notifId);
@@ -289,6 +290,35 @@ async function fsGetFields(env, path) {
   if (!r.ok) throw new HttpErr(502, 'Firestore ' + r.status);
   return (await r.json()).fields || {};
 }
+/* v170 read-diet: admins/{email} doc 10 minute memory me cache (har live segment / file / push par 1 Firestore read lagta tha).
+   Firestore down / quota khatam ho to purana (24 ghante tak ka) cache chalta hai — isliye push aur live quota khatam hone par bhi nahi rukte. */
+const adminCache = new Map();
+async function adminFields(env, email) {
+  const c = adminCache.get(email), now = Date.now();
+  if (c && now - c.at < 10 * 60 * 1000) return c.f;
+  try {
+    const f = await fsGetFields(env, 'admins/' + encodeURIComponent(email));
+    if (f) { if (adminCache.size > 300) adminCache.clear(); adminCache.set(email, { f, at: now }); } else adminCache.delete(email);
+    return f;
+  } catch (e) { if (c && now - c.at < 24 * 3600 * 1000) return c.f; throw e; }
+}
+const pushSeen = new Map();
+async function pushDirect(env, sa, projectId, email, instituteId, notifId, req) {
+  const owners = String(env.OWNER_EMAILS || 'vishnu1234stm@gmail.com,vishnu1234stmp@gmail.com').toLowerCase().split(',').map((x) => x.trim());
+  const f = await adminFields(env, email), active = !!f && !(f.active && f.active.booleanValue === false), myInst = (f && f.instituteId && f.instituteId.stringValue) || '';
+  if (owners.indexOf(email) < 0 && !(active && myInst === instituteId)) throw new HttpErr(403, 'Aap is institute ke admin nahi hain');
+  const now = Date.now(); for (const [k, t] of pushSeen) if (now - t > 15 * 60 * 1000) pushSeen.delete(k);
+  const dk = instituteId + '/' + notifId; if (pushSeen.has(dk)) return { ok: true, already: true }; pushSeen.set(dk, now);
+  const batchId = String(req.batchId || '').slice(0, 120), type = String(req.type || 'admin').slice(0, 30);
+  const topic = batchId ? batchTopic(instituteId, batchId) : 'inst_' + topicSafe(instituteId), at = await googleAccessToken(sa);
+  const fr = await fetch('https://fcm.googleapis.com/v1/projects/' + projectId + '/messages:send', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: { topic, notification: { title: String(req.title).slice(0, 100) || 'SnapTest Pro', body: String(req.body || '').slice(0, 300) },
+      data: { instituteId, notifId, type, ...(batchId ? { batchId } : {}) }, android: { priority: 'HIGH', ttl: '86400s', notification: { sound: 'default', channel_id: 'snap_updates' } } } })
+  });
+  if (!fr.ok) { pushSeen.delete(dk); throw new HttpErr(502, 'FCM fail ' + fr.status + ' ' + (await fr.text()).slice(0, 200)); }
+  return { ok: true, direct: true };
+}
 async function liveAdmin(request, env) {
   if (!env.SERVICE_ACCOUNT_JSON) throw new HttpErr(500, 'SERVICE_ACCOUNT_JSON secret set nahi hai');
   const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), projectId = env.PROJECT_ID || sa.project_id;
@@ -296,7 +326,7 @@ async function liveAdmin(request, env) {
   const email = String(user.email || '').toLowerCase();
   if (!email) throw new HttpErr(401, 'Admin login chahiye');
   const owners = String(env.OWNER_EMAILS || 'vishnu1234stm@gmail.com,vishnu1234stmp@gmail.com').toLowerCase().split(',').map((x) => x.trim());
-  const f = await fsGetFields(env, 'admins/' + encodeURIComponent(email));
+  const f = await adminFields(env, email);
   const active = !!f && !(f.active && f.active.booleanValue === false);
   if (!active && owners.indexOf(email) < 0) throw new HttpErr(403, 'Sirf admin');
   return { email, instituteId: (f && f.instituteId && f.instituteId.stringValue) || '' };
@@ -419,6 +449,7 @@ async function sendReminders(env) {
         method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields })
       });
       if (!cr.ok) continue;                                                                   // 409 = pehle bhej chuke
+      fetch(base + '/institutes/' + encodeURIComponent(inst) + '/ver/main?updateMask.fieldPaths=notifs', { method: 'PATCH', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: { notifs: { integerValue: String(Date.now()) } } }) }).catch(() => {});
       const topic = b ? batchTopic(inst, b) : 'inst_' + topicSafe(inst);
       if (await fcmTopicSend(at, projectId, topic, title, body, { instituteId: inst, notifId: nid, type: 'reminder', ...(b ? { batchId: b } : {}) })) sent++;
     }
@@ -426,14 +457,192 @@ async function sendReminders(env) {
   return { ok: true, checked: rows.length, sent };
 }
 
+/* ---------- v169: SnapFiles — apna file storage (notes / PPT / recording / assignment) ----------
+   Firebase Storage / Firestore ke bina, wahi R2 bucket (LIVE_R2) me "files/" folder. Upload sirf admin se; download capability-URL
+   (unguessable key; URL sirf us batch ke students ko Firestore item se milta hai). Badi file 8 MB ke tukdon (multipart) me jaati hai, isliye
+   Worker ki request-size limit se koi dikkat nahi aur file size ki practical limit nahi (R2 free 10 GB total).
+   PUT /files/put?name=&type=  (<= 8MB, ek request) | POST /files/start, PUT /files/part?key=&uid=&n=, POST /files/done, POST /files/abort (badi file)
+   POST /files/del {key} | GET /files/f/<inst>/<rand>/<name>  (Range support — video seek / resume) */
+const FILE_PART = 8 * 1024 * 1024, FILE_MAX = 20 * 1024 * 1024 * 1024;
+const fSeg = (x) => String(x || '').replace(/[^A-Za-z0-9._~-]/g, '_').slice(0, 60) || 'x';
+const fName = (n) => String(n || 'file').replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^\.+/, '').slice(-100) || 'file';
+const fKeyOk = (k) => { const p = String(k || '').split('/'); return p.length === 3 && /^[A-Za-z0-9._~-]{1,60}$/.test(p[0]) && !/^\.+$/.test(p[0]) && /^[a-f0-9]{48}$/.test(p[1]) && /^[A-Za-z0-9._-]{1,100}$/.test(p[2]) && !/^\.+$/.test(p[2]); };
+const fNew = (seg, name) => seg + '/' + [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, '0')).join('') + '/' + fName(name);
+const fType = (t) => (/^[\w.+-]{1,60}\/[\w.+-]{1,80}$/.test(String(t || '')) ? String(t) : 'application/octet-stream');
+const FILE_RISKY = /^(text\/html|application\/xhtml|image\/svg|text\/javascript|application\/javascript|text\/xml|application\/xml)/i;
+const fHeaders = (extra) => ({ 'Access-Control-Allow-Origin': '*', 'Cross-Origin-Resource-Policy': 'cross-origin', 'X-Content-Type-Options': 'nosniff', ...extra });
+
+/* ---------- v171: KV backend — bina card ke (R2 ke liye card chahiye) ----------
+   Cloudflare Workers KV free plan (card nahi): 1 GB jagah, ek value max 25 MB. File 8 MB ke tukdon me `fp:<key>:<n>`, details `fm:<key>`.
+   Limit: total ~950 MB, ek file max 300 MB (free Worker ke 50-subrequest limit me poori file ek baar me pade). R2 (LIVE_R2) bind ho jaaye to wahi pehle chalega
+   (koi limit nahi) aur KV ki purani files bhi padhi / delete hoti rahengi. Binding: FILES_KV (ya pehle se bani BANK_KV — koi naya setup nahi). */
+const KV_CAP = 950 * 1024 * 1024, KV_MAX_FILE = 300 * 1024 * 1024;
+const kvOf = (env) => env.FILES_KV || env.BANK_KV || null;
+const kvUsed = async (kv) => { const u = await kv.get('fu:total', 'json'); return (u && Number(u.bytes)) || 0; };
+const kvAdd = async (kv, d) => { await kv.put('fu:total', JSON.stringify({ bytes: Math.max(0, (await kvUsed(kv)) + d) })); };
+function fileHdrs(ct, nm, size, start, end, status, etag) {
+  const risky = FILE_RISKY.test(ct);
+  const H = fHeaders({ 'Content-Type': risky ? 'application/octet-stream' : ct, 'Content-Disposition': (risky ? 'attachment' : 'inline') + "; filename*=UTF-8''" + encodeURIComponent(nm),
+    'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=31536000, immutable', 'Content-Length': String(end - start + 1), 'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges' });
+  if (etag) H['ETag'] = etag; if (status === 206) H['Content-Range'] = 'bytes ' + start + '-' + end + '/' + size; return H;
+}
+function parseRange(h, size) {
+  const rg = /^bytes=(\d*)-(\d*)$/.exec(h || ''); let start = 0, end = size - 1, status = 200;
+  if (rg && (rg[1] !== '' || rg[2] !== '')) {
+    if (rg[1] === '') start = Math.max(0, size - Number(rg[2])); else { start = Number(rg[1]); end = rg[2] === '' ? size - 1 : Math.min(Number(rg[2]), size - 1); }
+    if (!(start <= end) || start >= size) return null; status = 206;
+  }
+  return { start, end, status };
+}
+async function kvServe(request, kv, key, ctx) {
+  const meta = await kv.get('fm:' + key, { type: 'json', cacheTtl: 300 }); if (!meta) throw new HttpErr(404, 'Not found');
+  const size = meta.size, PS = meta.ps || FILE_PART, total = meta.parts, r = parseRange(request.headers.get('Range'), size);
+  if (!r) return new Response(null, { status: 416, headers: fHeaders({ 'Content-Range': 'bytes */' + size }) });
+  const nm = (() => { try { return decodeURIComponent(meta.name || ''); } catch (e) { return ''; } })() || key.split('/')[2];
+  const H = fileHdrs(meta.type || 'application/octet-stream', nm, size, r.start, r.end, r.status, '"' + key.split('/')[1].slice(0, 16) + '"');
+  if (request.method === 'HEAD') return new Response(null, { status: r.status, headers: H });
+  const { readable, writable } = new TransformStream(), first = Math.floor(r.start / PS) + 1, last = Math.floor(r.end / PS) + 1;
+  const pump = (async () => {
+    const w = writable.getWriter();
+    try {
+      for (let n = first; n <= last; n++) {
+        const plen = n < total ? PS : size - (total - 1) * PS, ps = (n - 1) * PS, from = Math.max(r.start, ps) - ps, to = Math.min(r.end, ps + plen - 1) - ps;
+        const ab = await kv.get('fp:' + key + ':' + n, { type: 'arrayBuffer', cacheTtl: 3600 }); if (!ab) throw new Error('part missing ' + n);
+        await w.write(new Uint8Array(ab, from, to - from + 1));
+      }
+      await w.close();
+    } catch (e) { try { await w.abort(e); } catch (x) {} }
+  })();
+  if (ctx && ctx.waitUntil) ctx.waitUntil(pump);
+  return new Response(readable, { status: r.status, headers: H });
+}
+async function kvDelete(kv, key) {
+  const meta = await kv.get('fm:' + key, 'json'); if (!meta) return false;
+  for (let n = 1; n <= (meta.parts || 1); n++) await kv.delete('fp:' + key + ':' + n);
+  await kv.delete('fm:' + key); await kvAdd(kv, -(meta.size || 0)); return true;
+}
+async function handleFilesKV(request, env, pathname, kv, ctx) {
+  if ((request.method === 'GET' || request.method === 'HEAD') && pathname.indexOf('/files/f/') === 0) {
+    const key = pathname.slice('/files/f/'.length); if (!fKeyOk(key)) throw new HttpErr(404, 'Not found'); return await kvServe(request, kv, key, ctx);
+  }
+  const admin = await liveAdmin(request, env); admin.seg = fSeg(admin.instituteId || 'owner');
+  const url = new URL(request.url), q = (k) => url.searchParams.get(k);
+  const mine = (key) => { if (!fKeyOk(key)) throw new HttpErr(400, 'Bad key'); if (key.split('/')[0] !== admin.seg) throw new HttpErr(403, 'Ye file aapke institute ki nahi'); return key; };
+  const room = async (add) => { const used = await kvUsed(kv); if (used + add > KV_CAP) throw new HttpErr(507, 'Free storage bhar gaya (' + Math.round(used / 1048576) + ' MB / 1 GB) — purani files delete karein'); return used; };
+  const nameOf = (n) => encodeURIComponent(String(n || 'file')).slice(0, 300);
+  if (request.method === 'GET' && pathname === '/files/usage') return json({ ok: true, used: await kvUsed(kv), cap: KV_CAP, maxFile: KV_MAX_FILE });
+  if (request.method === 'PUT' && pathname === '/files/put') {
+    const buf = await request.arrayBuffer();
+    if (!buf.byteLength) throw new HttpErr(400, 'Khaali file'); if (buf.byteLength > FILE_PART + 1024) throw new HttpErr(413, 'Badi file tukdon me bhejein');
+    await room(buf.byteLength); const key = fNew(admin.seg, q('name'));
+    await kv.put('fp:' + key + ':1', buf);
+    await kv.put('fm:' + key, JSON.stringify({ size: buf.byteLength, parts: 1, ps: FILE_PART, type: fType(q('type')), name: nameOf(q('name')), by: admin.email, at: Date.now() }));
+    await kvAdd(kv, buf.byteLength); return json({ ok: true, key, size: buf.byteLength, used: await kvUsed(kv) });
+  }
+  if (request.method === 'POST' && pathname === '/files/start') {
+    const b = await request.json().catch(() => ({})), size = Number(b.size) || 0;
+    if (size > KV_MAX_FILE) throw new HttpErr(413, 'Free storage me ek file max 300 MB — isse badi video ke liye YouTube/Drive link use karein');
+    await room(size); return json({ ok: true, key: fNew(admin.seg, b.name), uploadId: 'kv', partSize: FILE_PART });
+  }
+  if (request.method === 'PUT' && pathname === '/files/part') {
+    const key = mine(q('key')), n = parseInt(q('n'), 10);
+    if (!(n >= 1 && n <= Math.ceil(KV_MAX_FILE / FILE_PART))) throw new HttpErr(400, 'Bad part');
+    const buf = await request.arrayBuffer(); if (!buf.byteLength || buf.byteLength > FILE_PART + 1024) throw new HttpErr(413, 'Part size galat');
+    await kv.put('fp:' + key + ':' + n, buf); return json({ ok: true, partNumber: n, etag: String(buf.byteLength) });
+  }
+  if (request.method === 'POST' && pathname === '/files/done') {
+    const b = await request.json().catch(() => ({})), key = mine(b.key), parts = Array.isArray(b.parts) ? b.parts : [];
+    if (!parts.length || parts.length > Math.ceil(KV_MAX_FILE / FILE_PART)) throw new HttpErr(400, 'Bad parts');
+    const sorted = parts.map((p) => ({ n: Number(p.partNumber), len: parseInt(p.etag, 10) })).sort((x, y) => x.n - y.n); let total = 0;
+    sorted.forEach((p, i) => { if (p.n !== i + 1 || !(p.len > 0) || (i < sorted.length - 1 && p.len !== FILE_PART)) throw new HttpErr(400, 'Parts adhoore / galat size'); total += p.len; });
+    if (total > KV_MAX_FILE) throw new HttpErr(413, 'File bahut badi');
+    await kv.put('fm:' + key, JSON.stringify({ size: total, parts: sorted.length, ps: FILE_PART, type: fType(b.type), name: nameOf(b.name), by: admin.email, at: Date.now() }));
+    await kvAdd(kv, total); return json({ ok: true, key, size: total, used: await kvUsed(kv) });
+  }
+  if (request.method === 'POST' && pathname === '/files/abort') {
+    const b = await request.json().catch(() => ({})), key = mine(b.key), c = Math.min(40, Number(b.count) || 0);
+    for (let n = 1; n <= c; n++) await kv.delete('fp:' + key + ':' + n); return json({ ok: true });
+  }
+  if (request.method === 'POST' && pathname === '/files/del') { const b = await request.json().catch(() => ({})); await kvDelete(kv, mine(b.key)); return json({ ok: true }); }
+  throw new HttpErr(404, 'Unknown files endpoint');
+}
+
+async function handleFiles(request, env, pathname, ctx) {
+  if (!env.LIVE_R2) { const kv = kvOf(env); if (kv) return await handleFilesKV(request, env, pathname, kv, ctx); throw new HttpErr(501, 'File storage binding nahi hai — Worker me FILES_KV (free, card nahi) ya LIVE_R2 jodein'); }
+  const R = env.LIVE_R2;
+  if ((request.method === 'GET' || request.method === 'HEAD') && pathname.indexOf('/files/f/') === 0) {           // public (capability-URL) read
+    const key = pathname.slice('/files/f/'.length); if (!fKeyOk(key)) throw new HttpErr(404, 'Not found');
+    const head = await R.head('files/' + key); if (!head) { const kv0 = kvOf(env); if (kv0) return await kvServe(request, kv0, key, ctx); throw new HttpErr(404, 'Not found'); }
+    const size = head.size, rg = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get('Range') || '');
+    let status = 200, opt, start = 0, end = size - 1;
+    if (rg && (rg[1] !== '' || rg[2] !== '')) {
+      if (rg[1] === '') { start = Math.max(0, size - Number(rg[2])); } else { start = Number(rg[1]); end = rg[2] === '' ? size - 1 : Math.min(Number(rg[2]), size - 1); }
+      if (!(start <= end) || start >= size) return new Response(null, { status: 416, headers: fHeaders({ 'Content-Range': 'bytes */' + size }) });
+      status = 206; opt = { range: { offset: start, length: end - start + 1 } };
+    }
+    const ct = (head.httpMetadata && head.httpMetadata.contentType) || 'application/octet-stream', risky = FILE_RISKY.test(ct);
+    let nm = key.split('/')[2]; try { const m = head.customMetadata && head.customMetadata.name; if (m) nm = decodeURIComponent(m); } catch (e) {}
+    const H = fHeaders({ 'Content-Type': risky ? 'application/octet-stream' : ct, 'Content-Disposition': (risky ? 'attachment' : 'inline') + "; filename*=UTF-8''" + encodeURIComponent(nm),
+      'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=31536000, immutable', 'ETag': head.httpEtag, 'Content-Length': String(end - start + 1), 'Access-Control-Expose-Headers': 'Content-Range, Content-Length, Accept-Ranges' });
+    if (status === 206) H['Content-Range'] = 'bytes ' + start + '-' + end + '/' + size;
+    if (request.method === 'HEAD') return new Response(null, { status, headers: H });
+    const o = await R.get('files/' + key, opt); if (!o) throw new HttpErr(404, 'Not found');
+    return new Response(o.body, { status, headers: H });
+  }
+  const admin = await liveAdmin(request, env); admin.seg = fSeg(admin.instituteId || 'owner');
+  const url = new URL(request.url), q = (k) => url.searchParams.get(k);
+  const mine = (key) => { if (!fKeyOk(key)) throw new HttpErr(400, 'Bad key'); if (key.split('/')[0] !== admin.seg) throw new HttpErr(403, 'Ye file aapke institute ki nahi'); return key; };
+  const meta = (name) => ({ by: admin.email, name: encodeURIComponent(String(name || 'file')).slice(0, 300), at: String(Date.now()) });
+  if (request.method === 'PUT' && pathname === '/files/put') {
+    const buf = await request.arrayBuffer();
+    if (!buf.byteLength) throw new HttpErr(400, 'Khaali file');
+    if (buf.byteLength > FILE_PART + 1024) throw new HttpErr(413, 'Badi file tukdon me bhejein');
+    const key = fNew(admin.seg, q('name'));
+    await R.put('files/' + key, buf, { httpMetadata: { contentType: fType(q('type')) }, customMetadata: meta(q('name')) });
+    return json({ ok: true, key, size: buf.byteLength });
+  }
+  if (request.method === 'POST' && pathname === '/files/start') {
+    const b = await request.json().catch(() => ({}));
+    if (Number(b.size) > FILE_MAX) throw new HttpErr(413, 'File bahut badi hai');
+    const key = fNew(admin.seg, b.name), mp = await R.createMultipartUpload('files/' + key, { httpMetadata: { contentType: fType(b.type) }, customMetadata: meta(b.name) });
+    return json({ ok: true, key, uploadId: mp.uploadId, partSize: FILE_PART });
+  }
+  if (request.method === 'PUT' && pathname === '/files/part') {
+    const key = mine(q('key')), n = parseInt(q('n'), 10), uid = String(q('uid') || '');
+    if (!(n >= 1 && n <= 10000) || !uid) throw new HttpErr(400, 'Bad part');
+    const buf = await request.arrayBuffer();
+    if (!buf.byteLength || buf.byteLength > FILE_PART + 1024) throw new HttpErr(413, 'Part size galat');
+    const part = await R.resumeMultipartUpload('files/' + key, uid).uploadPart(n, buf);
+    return json({ ok: true, partNumber: part.partNumber, etag: part.etag });
+  }
+  if (request.method === 'POST' && pathname === '/files/done') {
+    const b = await request.json().catch(() => ({})), key = mine(b.key);
+    const parts = (Array.isArray(b.parts) ? b.parts : []).map((p) => ({ partNumber: Number(p.partNumber), etag: String(p.etag) })).sort((x, y) => x.partNumber - y.partNumber);
+    if (!parts.length || parts.length > 10000 || !b.uploadId) throw new HttpErr(400, 'Bad parts');
+    const obj = await R.resumeMultipartUpload('files/' + key, String(b.uploadId)).complete(parts);
+    return json({ ok: true, key, size: obj.size });
+  }
+  if (request.method === 'POST' && pathname === '/files/abort') {
+    const b = await request.json().catch(() => ({})), key = mine(b.key);
+    try { await R.resumeMultipartUpload('files/' + key, String(b.uploadId || '')).abort(); } catch (e) {}
+    return json({ ok: true });
+  }
+  if (request.method === 'POST' && pathname === '/files/del') {
+    const b = await request.json().catch(() => ({})), key = mine(b.key);
+    await R.delete('files/' + key); try { const kv0 = kvOf(env); kv0 && await kvDelete(kv0, key); } catch (e) {} return json({ ok: true });
+  }
+  throw new HttpErr(404, 'Unknown files endpoint');
+}
+
 export default {
   async scheduled(event, env, ctx) { ctx.waitUntil(sendReminders(env).catch((e) => console.log('reminder fail', e && e.message))); },
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const pathname = new URL(request.url).pathname.replace(/\/+$/, '') || '/';
     try {
       if (pathname === '/bank' || pathname === '/bank/meta') return await handleBank(request, env, pathname);
       if (pathname.indexOf('/live/') === 0) return await handleLive(request, env, pathname);
+      if (pathname.indexOf('/files/') === 0) return await handleFiles(request, env, pathname, ctx);
       if (pathname === '/alert') return json(await handleAlert(request, env));
       if (pathname === '/alerts' || pathname === '/alerts/clear') return json(await handleAlertsList(request, env, pathname));
       if (pathname === '/broadcast') return json(await handleBroadcast(request, env));

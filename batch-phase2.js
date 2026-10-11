@@ -268,7 +268,7 @@
     m.querySelectorAll("[data-lx]").forEach(function (b) { b.onclick = function () { var l = links[+b.dataset.lx]; if (!c.sure("Test ko batch se unlink karein? (test delete nahi hoga)")) return; sub(c, inst, bf, "testLinks").doc(l.id).delete().then(function () { c.audit("testlink.delete", l.id); try { window.SnapV169 && window.SnapV169.untagTest(l.testId, bf); } catch (e) {} again(); }); }; });
     m.querySelectorAll("[data-ap]").forEach(function (b) { b.onclick = function () { var a = asg[+b.dataset.ap]; sub(c, inst, bf, "assignments").doc(a.id).update({ published: !a.published, updatedAt: c.FV().serverTimestamp() }).then(function () { c.audit("assignment.publish", a.id); if (!a.published) try { window.SnapV169 && window.SnapV169.assignmentPublished(a); } catch (e) {} again(); }); }; });
     m.querySelectorAll("[data-ae]").forEach(function (b) { b.onclick = function () { asgForm(c, asg[+b.dataset.ae], bf, m); }; });
-    m.querySelectorAll("[data-ax]").forEach(function (b) { b.onclick = function () { var a = asg[+b.dataset.ax]; if (a.subs.length) return alert("Is assignment par " + a.subs.length + " submissions hain. Safe policy: delete ke bajay Unpublish karein (records surakshit rahenge)."); if (!c.sure('"' + a.title + '" delete karein?')) return; sub(c, inst, bf, "assignments").doc(a.id).delete().then(function () { c.audit("assignment.delete", a.id); again(); }); }; });
+    m.querySelectorAll("[data-ax]").forEach(function (b) { b.onclick = function () { var a = asg[+b.dataset.ax]; if (a.subs.length) return alert("Is assignment par " + a.subs.length + " submissions hain. Safe policy: delete ke bajay Unpublish karein (records surakshit rahenge)."); if (!c.sure('"' + a.title + '" delete karein?')) return; sub(c, inst, bf, "assignments").doc(a.id).delete().then(function () { c.audit("assignment.delete", a.id); if (a.ownFile && a.ownFile.key && window.SnapFiles) window.SnapFiles.remove(a.ownFile.key); again(); }); }; });
     m.querySelectorAll("[data-sb]").forEach(function (b) { b.onclick = function () { subsView(c, asg[+b.dataset.sb], bf, again); }; });
   }
   function linkForm(c, bf, m) {
@@ -282,12 +282,22 @@
   function asgForm(c, a, bf, m) {
     var v = a ? Object.assign({}, a, { dueTxt: a.due ? new Date(a.due - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 16) : "" }) : { batchId: bf, maxMarks: 10 };
     c.form(a ? "Edit Assignment" : "New Assignment", [{ k: "batchId", l: "Batch", t: "select", o: c.A.batches.map(function (b) { return [b.id, b.name]; }), r: 1 }, { k: "title", l: "Title", r: 1 }, { k: "subject", l: "Subject" }, { k: "chapter", l: "Chapter" }, { k: "desc", l: "Instructions", t: "textarea" },
-      { k: "dueTxt", l: "Due Date & Time", t: "datetime-local" }, { k: "maxMarks", l: "Max Marks", t: "number" }, { k: "url", l: "Attachment / Question Link (https, optional)" }], v, function (o) {
+      { k: "dueTxt", l: "Due Date & Time", t: "datetime-local" }, { k: "maxMarks", l: "Max Marks", t: "number" }, { k: "file", l: "Attachment file — device se (optional)", t: "file", acc: ".pdf,.ppt,.pptx,.doc,.docx,.xls,.xlsx,.txt,.csv,.zip,image/*,audio/*,video/*", h: "Apna storage — badi file bhi chalegi. YA neeche link daalein." }, { k: "url", l: "Attachment / Question Link (https, optional)" }], v, function (o) {
       if (a && o.batchId !== a.batchId) { c.toast("Assignment ka batch badla nahi ja sakta"); return false; }
       if (o.url && !/^https:\/\/\S+$/i.test(o.url)) { c.toast("Link https:// se shuru hona chahiye"); return false; }
       var ve = EXT.validateItem(o, "assignment"); if (ve) { c.toast(ve); return false; }
       var d = { instituteId: c.A.inst, batchId: o.batchId, title: o.title, desc: o.desc || "", subject: o.subject || "", chapter: o.chapter || "", due: o.dueTxt ? new Date(o.dueTxt).getTime() : 0, maxMarks: +o.maxMarks || 0, url: o.url || "", updatedAt: c.FV().serverTimestamp() }; EXT.stampIds(d, o);
-      var p = a ? sub(c, c.A.inst, a.batchId, "assignments").doc(a.id).update(d) : sub(c, c.A.inst, o.batchId, "assignments").add(Object.assign(d, { published: false, createdAt: c.FV().serverTimestamp(), createdBy: c.adminEmail() }));
+      var upP = Promise.resolve(null);
+      if (o.file) {
+        if (!(window.SnapFiles && window.SnapFiles.ready())) { c.toast("Apna storage abhi chalu nahi (internet / Worker R2) — link daalein"); return false; }
+        c.toast("⏳ Upload ho raha hai… (band na karein)");
+        upP = window.SnapFiles.upload(o.file, { inst: c.A.inst, batchId: o.batchId }, function (pc) { var bt = document.querySelector(".bm-sheet [data-s]"); bt && (bt.textContent = "Upload " + pc + "%"); });
+      }
+      var p = upP.then(function (of) {
+        var oldF = a && a.ownFile;
+        if (of) d.ownFile = of; else if (a && oldF && o.url && o.url !== a.url) d.ownFile = c.FV().delete();
+        return (a ? sub(c, c.A.inst, a.batchId, "assignments").doc(a.id).update(d) : sub(c, c.A.inst, o.batchId, "assignments").add(Object.assign(d, { published: false, createdAt: c.FV().serverTimestamp(), createdBy: c.adminEmail() }))).then(function (r) { if (oldF && oldF.key && (of || d.ownFile) && window.SnapFiles) window.SnapFiles.remove(oldF.key); return r; });
+      });
       return p.then(function () { c.audit(a ? "assignment.update" : "assignment.create", o.title); c.toast("✅ Save ho gaya"); EXT.adminViews.tests.render(m, c); });
     });
   }
@@ -508,7 +518,7 @@
       box.innerHTML = (strict ? "" : '<div class="bm-note">Submission abhi band hai (admin ko Security Mode ON karna hoga). Assignment dekh sakte hain.</div>') + (as.length ? as.map(function (a, ix) {
         var late = a.due && Date.now() > a.due, st = a.my ? (a.my.status === "evaluated" ? '<span class="bm-badge">' + a.my.marks + "/" + (a.maxMarks || 0) + "</span>" : '<span class="bm-badge b">Submitted</span>') : late ? '<span class="bm-badge r">Due nikal gaya</span>' : '<span class="bm-badge o">Pending</span>';
         return '<div class="bm-card"><div class="bm-row"><div class="g"><b>' + c0(a.title) + "</b><small>" + c0([a.subject, a.chapter].filter(Boolean).join(" › ") || "") + (a.due ? " • Due " + new Date(a.due).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "") + "</small></div>" + st + "</div>" +
-          (a.desc ? '<p style="font-size:.84rem;white-space:pre-wrap;margin:6px 0">' + c0(a.desc) + "</p>" : "") + (a.url ? '<a href="' + c0(a.url) + '" target="_blank" rel="noopener">📎 Question / attachment</a>' : "") + (a.my && a.my.feedback ? '<div class="bx-ans"><small>Teacher feedback</small><div>' + c0(a.my.feedback) + "</div></div>" : "") +
+          (a.desc ? '<p style="font-size:.84rem;white-space:pre-wrap;margin:6px 0">' + c0(a.desc) + "</p>" : "") + (a.url ? '<a href="' + c0(a.url) + '" target="_blank" rel="noopener">📎 Question / attachment</a>' : "") + (a.ownFile && window.SnapFiles ? '<a href="' + c0(window.SnapFiles.urlOf(a.ownFile)) + '" target="_blank" rel="noopener">📎 ' + c0(a.ownFile.name || "File") + "</a>" : "") + (a.my && a.my.feedback ? '<div class="bx-ans"><small>Teacher feedback</small><div>' + c0(a.my.feedback) + "</div></div>" : "") +
           (strict && !(a.my && a.my.status === "evaluated") ? '<div style="margin-top:6px"><button class="bm-btn sm" data-sm="' + ix + '">' + (a.my ? "Submission badlein" : "Submit karein") + "</button></div>" : "") + "</div>"; }).join("") : '<div class="bm-card bm-empty">Abhi koi assignment nahi.</div>');
       box.querySelectorAll("[data-sm]").forEach(function (x) { x.onclick = function () { var a = as[+x.dataset.sm];
         c.form("Submit — " + a.title, [{ k: "text", l: "Aapka jawab", t: "textarea", r: 1 }, { k: "url", l: "Link (Drive / photo, https — optional)" }], { text: a.my ? a.my.text : "", url: a.my ? a.my.url : "" }, function (o) {
