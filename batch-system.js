@@ -145,10 +145,20 @@
       buildAdmin(); return loadAll().then(function () { adminGo("dash"); }).catch(function (e) { console.warn(e); $("#bm-main").innerHTML = '<div class="bm-empty">Data load nahi hua (' + esc(e.code || e.message) + '). Firestore Rules publish kiye? NOTES padhein.</div>'; });
     });
   }
+  /* v169: enrolledCount negative (jaise -8) ho gaya ho to asli members gin kar sahi number save karo (normal batch par koi extra read nahi) */
+  function healCounts() {
+    var bad = A.batches.filter(function (b) { return typeof b.enrolledCount === "number" && b.enrolledCount < 0; });
+    if (!bad.length) return Promise.resolve();
+    return Promise.all(bad.map(function (b) {
+      return bref(A.inst, b.id).collection("members").get().then(function (q) { b.enrolledCount = q.size; return bref(A.inst, b.id).update({ enrolledCount: q.size }); }).catch(function () { b.enrolledCount = 0; });
+    }));
+  }
   function loadAll() {
     return authReady().then(function () { return bref(A.inst).get(); }).then(function (q) {
       A.batches = q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); A.items = {};
       return Promise.all(A.batches.map(function (b) { return bref(A.inst, b.id).collection("items").get().then(function (s) { A.items[b.id] = s.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); }); }));
+    }).then(function () {
+      return healCounts();
     }).then(function () {
       A.reqs = [];
       return Promise.all(A.batches.map(function (b) { return bref(A.inst, b.id).collection("requests").get().then(function (q) { q.docs.forEach(function (d) { var x = d.data(); if (x.status === "pending") A.reqs.push({ batchId: b.id, mobile: d.id, name: x.name, createdAt: x.createdAt, amount: x.amount, utr: x.utr, shot: x.shot }); }); }).catch(function () {}); }));
@@ -232,7 +242,7 @@
     m.innerHTML = '<div class="bm-tools"><input id="bm-q" placeholder="Search batch…" value="' + esc(A.f.q || "") + '"><select id="bm-s">' + [["all", "All"], ["active", "Active"], ["inactive", "Inactive"], ["upcoming", "Upcoming"], ["archived", "Archived"]].map(function (o) { return '<option value="' + o[0] + '"' + (s === o[0] ? " selected" : "") + '>' + o[1] + '</option>'; }).join("") + '</select></div>' +
       '<div class="bm-tablewrap"><table class="bm-table"><tr><th>Batch</th><th>Class</th><th>Subjects</th><th>Teacher</th><th>Students</th><th>Status</th><th>Created</th><th>Actions</th></tr>' +
       (rows.length ? rows.map(function (b) { return '<tr><td><b>' + esc(b.name) + '</b><br><small>' + esc(b.code || "") + ' • ' + (b.fee ? rupee(b.fee) : "Free") + '</small></td><td>' + esc(b.classLabel || "") + '</td><td>' + esc(subjOf(b).join(", ")) + '</td><td>' + esc((b.teachers || []).join(", ")) + '</td><td>' + (b.enrolledCount || 0) + (b.limit ? "/" + b.limit : "") + '</td><td><span class="bm-badge ' + (b.status === "active" ? "g" : b.status === "upcoming" ? "b" : "") + '">' + esc(b.status) + '</span></td><td>' + fdate(b.createdAt).split(",")[0] + '</td><td><div class="bm-act">' +
-        '<button class="bm-btn sec sm" data-a="content" data-id="' + b.id + '">Content</button><button class="bm-btn sec sm" data-a="stu" data-id="' + b.id + '">Students</button><button class="bm-btn sec sm" data-a="edit" data-id="' + b.id + '">Edit</button><button class="bm-btn sec sm" data-a="tog" data-id="' + b.id + '">' + (b.status === "active" ? "Deactivate" : b.status === "archived" ? "Unarchive" : "Activate") + '</button>' + (b.status !== "archived" ? '<button class="bm-btn sec sm" data-a="arc" data-id="' + b.id + '">Archive</button>' : "") + '<button class="bm-btn red sm" data-a="del" data-id="' + b.id + '">Delete</button></div></td></tr>'; }).join("") : '<tr><td colspan="8"><div class="bm-empty">Koi batch nahi mila. "+ Create Batch" dabayein.</div></td></tr>') + '</table></div>';
+        '<button class="bm-btn sec sm" data-a="content" data-id="' + b.id + '">Content</button><button class="bm-btn sec sm" data-a="stu" data-id="' + b.id + '">Students</button><button class="bm-btn sec sm" data-a="edit" data-id="' + b.id + '">Edit</button><button class="bm-btn sec sm" data-a="tog" data-id="' + b.id + '">' + (b.status === "active" ? "Deactivate" : b.status === "archived" ? "Unarchive" : "Activate") + '</button>' + (b.status !== "archived" ? '<button class="bm-btn sec sm" data-a="arc" data-id="' + b.id + '">Archive</button>' : "") + '<button class="bm-btn sec sm" data-a="cnt" data-id="' + b.id + '">Recount</button><button class="bm-btn red sm" data-a="del" data-id="' + b.id + '">Delete</button><button class="bm-btn red sm" data-a="delall" data-id="' + b.id + '">Delete + Data</button></div></td></tr>'; }).join("") : '<tr><td colspan="8"><div class="bm-empty">Koi batch nahi mila. "+ Create Batch" dabayein.</div></td></tr>') + '</table></div>';
     $("#bm-q").oninput = function () { A.f.q = this.value; var p = this.selectionStart; vBatches(m); var n = $("#bm-q"); n.focus(); n.setSelectionRange(p, p); };
     $("#bm-s").onchange = function () { A.f.s = this.value; vBatches(m); };
     m.querySelectorAll("[data-a]").forEach(function (b) { b.onclick = function () { batchAct(b.dataset.a, b.dataset.id); }; });
@@ -255,18 +265,109 @@
       return p; }).then(function () { audit(b ? "batch.update" : "batch.create", b ? b.id : data.name); toast("✅ Batch save ho gaya"); return loadAll().then(function () { adminGo("batches"); }); });
     });
   }
+  /* ---------- v169: Batch + uska SAARA data ek saath delete (khatam hone wale batch ke liye) ----------
+     Content (+ files / recordings), chat, assignments + submissions, test links (tests delete nahi hote — batch se alag ho jaate hain),
+     subjects/chapters, doubts, attendance, progress, requests, members (students ke batchIds se bhi hatta hai). Payments ka record bacha rehta hai.
+     Har step pehle data padhta hai, isliye beech me ruk jaye to dobara dabane par bacha hua bhi hat jaata hai. */
+  function collRefs(col) { return col.get().then(function (q) { return q.docs.map(function (d) { return d.ref; }); }); }
+  function delDocs(refs, prog) {
+    var p = Promise.resolve(), done = 0;
+    for (var i = 0; i < refs.length; i += 400) (function (part) {
+      p = p.then(function () { var wb = DB().batch(); part.forEach(function (r) { wb.delete(r); }); return wb.commit().then(function () { done += part.length; prog && prog(done); }); });
+    })(refs.slice(i, i + 400));
+    return p;
+  }
+  function inGroups(list, n, fn) {
+    var p = Promise.resolve();
+    for (var i = 0; i < list.length; i += n) (function (g) { p = p.then(function () { return Promise.all(g.map(fn)); }); })(list.slice(i, i + n));
+    return p;
+  }
+  function deleteBatchAll(b) {
+    var id = b.id, B = bref(A.inst, id), ov = document.createElement("div");
+    if (navigator.onLine === false) return toast("Internet chalu karein — delete online hi hota hai");
+    ov.className = "bm-modal";
+    ov.innerHTML = '<div class="bm-sheet"><h3>🗑️ ' + esc(b.name) + ' delete ho raha hai…</h3><p id="bm-dp" style="white-space:pre-wrap;font-size:.9rem;margin:8px 0">Shuru…</p><small>App band na karein jab tak ye khatam na ho.</small><div class="acts" id="bm-dx" style="display:none"><button class="bm-btn sec" data-c>Close</button></div></div>';
+    document.body.appendChild(ov);
+    var say = function (t) { var e = ov.querySelector("#bm-dp"); e && (e.textContent = t); };
+    var items = [], mobiles = [];
+    return Promise.resolve()
+      .then(function () { say("Content padh rahe hain…"); return B.collection("items").get().then(function (q) { items = q.docs.map(function (d) { return Object.assign({ id: d.id, ref: d.ref }, d.data()); }); }); })
+      .then(function () {   // live chat / hands + recordings ki files
+        var k = 0; say("Content ka chat/files hata rahe hain… (" + items.length + ")");
+        return inGroups(items, 6, function (it) {
+          if (it.storagePath && storage()) storage().ref(it.storagePath).delete().catch(function () {});
+          if (it.ownKey && window.SnapLive) try { window.SnapLive.purge(it); } catch (e) {}
+          return Promise.all([collRefs(it.ref.collection("chat")), collRefs(it.ref.collection("hands"))]).then(function (r) { return delDocs(r[0].concat(r[1])); }).catch(function () {}).then(function () { k++; });
+        });
+      })
+      .then(function () { say("Content delete ho raha hai… (" + items.length + ")"); return delDocs(items.map(function (i) { return i.ref; }), function (n) { say("Content delete: " + n + "/" + items.length); }); })
+      .then(function () {   // chunk me upload ki hui files
+        say("Uploaded files hata rahe hain…");
+        return collRefs(B.collection("files")).then(function (frs) {
+          return inGroups(frs, 4, function (fr) { return collRefs(fr.collection("parts")).then(function (pr) { return delDocs(pr); }); }).then(function () { return delDocs(frs); });
+        });
+      })
+      .then(function () {
+        say("Assignments aur submissions hata rahe hain…");
+        return collRefs(B.collection("assignments")).then(function (ars) {
+          return inGroups(ars, 4, function (ar) { return collRefs(ar.collection("submissions")).then(function (sr) { return delDocs(sr); }); }).then(function () { return delDocs(ars); });
+        });
+      })
+      .then(function () {   // tests delete nahi — sirf batch se alag
+        say("Test links hata rahe hain…");
+        return B.collection("testLinks").get().then(function (q) {
+          var tids = q.docs.map(function (d) { return d.data().testId; }).filter(Boolean);
+          return inGroups(tids, 6, function (t) { return window.SnapV169 ? window.SnapV169.untagTest(t, id) : null; }).then(function () { return delDocs(q.docs.map(function (d) { return d.ref; })); });
+        });
+      })
+      .then(function () {
+        say("Subjects aur chapters hata rahe hain…");
+        return collRefs(B.collection("subjects")).then(function (srs) {
+          return inGroups(srs, 4, function (sr) { return collRefs(sr.collection("chapters")).then(function (cr) { return delDocs(cr); }); }).then(function () { return delDocs(srs); });
+        });
+      })
+      .then(function () { say("Doubts, attendance, progress, requests hata rahe hain…"); return inGroups(["doubts", "attendance", "progress", "requests"], 4, function (n) { return collRefs(B.collection(n)).then(function (r) { return delDocs(r); }).catch(function () {}); }); })
+      .then(function () { say("Students ki enrollment hata rahe hain…"); return B.collection("members").get().then(function (q) { mobiles = q.docs.map(function (d) { return d.id; }); }); })
+      .then(function () {
+        var k = 0, db = DB();
+        return inGroups(mobiles, 10, function (m) { return db.collection("students").doc(m).update({ batchIds: FV().arrayRemove(id) }).catch(function () {}).then(function () { k++; say("Students se batch hata: " + k + "/" + mobiles.length); }); });
+      })
+      .then(function () { return collRefs(B.collection("members")).then(function (r) { return delDocs(r); }); })
+      .then(function () { say("Batch delete ho raha hai…"); return B.delete(); })
+      .then(function () { audit("batch.deleteall", id); ov.remove(); A.students = null; toast("✅ Batch aur uska saara data delete ho gaya"); return loadAll(); })
+      .then(function () { adminGo("batches"); })
+      .catch(function (e) {
+        console.warn(e); say("❌ Beech me ruk gaya: " + (e.code || e.message) + "\n\nDobara 'Delete + Data' dabayein — jo bacha hai wo bhi hat jayega.");
+        var x = ov.querySelector("#bm-dx"); x && (x.style.display = ""); var c = ov.querySelector("[data-c]"); c && (c.onclick = function () { ov.remove(); loadAll().then(function () { adminGo("batches"); }); });
+      });
+  }
   function batchAct(a, id) {
     var b = A.batches.filter(function (x) { return x.id === id; })[0]; if (!b) return;
+    if (a === "cnt") {
+      return bref(A.inst, id).collection("members").get().then(function (q) { return bref(A.inst, id).update({ enrolledCount: q.size }).then(function () { toast("✅ Students ginti theek ho gayi: " + q.size); return loadAll(); }); }).then(function () { adminGo("batches"); }).catch(function (e) { toast("Nahi hua: " + (e.code || e.message)); });
+    }
     if (a === "edit") return batchForm(b);
     if (a === "content") { A.f = { batch: id }; return adminGo("class"); }
     if (a === "stu") { A.f = { batch: id }; return adminGo("students"); }
     if (a === "arc") { if (!sure('"' + b.name + '" ko Archive karein?\n\nNayi enrollment band ho jayegi; enrolled students purana content dekhte rahenge. Kuch delete nahi hota — baad me Unarchive kar sakte hain.')) return; return bref(A.inst, id).update({ status: "archived", enrollment: "closed", updatedAt: FV().serverTimestamp() }).then(function () { audit("batch.archive", id); toast("Batch archive ho gaya"); return loadAll(); }).then(function () { adminGo("batches"); }); }
     if (a === "tog") { var on = b.status !== "active"; return bref(A.inst, id).update({ status: on ? "active" : "inactive", published: on, updatedAt: FV().serverTimestamp() }).then(function () { audit("batch." + (on ? "activate" : "deactivate"), id); return loadAll(); }).then(function () { adminGo("batches"); }); }
+    if (a === "delall") {
+      return Promise.all([bref(A.inst, id).collection("members").get(), bref(A.inst, id).collection("assignments").get(), bref(A.inst, id).collection("testLinks").get()]).then(function (r) {
+        var msg = 'Batch "' + b.name + '" ka SAARA data permanently delete hoga:\n\n• ' + (A.items[id] || []).length + ' content (class / recording / notes / PPT / announcement) aur unki files\n• ' + r[0].size + ' students ki enrollment\n• ' + r[1].size + ' assignments (submissions ke saath)\n• ' + r[2].size + ' test links (tests delete nahi honge, batch se alag ho jayenge)\n• subjects, chapters, doubts, attendance\n\nPayments ka record bacha rahega. YE UNDO NAHI HOGA.\n\nConfirm karne ke liye batch ka naam likhein:';
+        var typed = prompt(msg, ""); if (typed == null) return;
+        if (typed.trim().toLowerCase() !== String(b.name || "").trim().toLowerCase()) return toast("Naam match nahi hua — delete nahi kiya");
+        return deleteBatchAll(b);
+      }).catch(function (e) { toast("Nahi hua: " + (e.code || e.message)); });
+    }
     if (a === "del") {
       var n = (A.items[id] || []).length;
-      if (n || b.enrolledCount) return alert("Is batch me " + n + " content aur " + (b.enrolledCount || 0) + " students hain.\nSafe policy: pehle content/students hatayein, ya batch ko Deactivate karein (data surakshit rahega).");
-      if (!sure('Batch "' + b.name + '" permanently delete karein? Ye undo nahi hoga.')) return;
-      bref(A.inst, id).delete().then(function () { audit("batch.delete", id); return loadAll(); }).then(function () { adminGo("batches"); });
+      /* v169: counter par bharosa nahi — batch ke asli members gine jaate hain (counter galat/negative ho to bhi delete rukta nahi) */
+      return bref(A.inst, id).collection("members").get().then(function (mq) {
+        var real = mq.size;
+        if (n || real) return alert("Is batch me " + n + " content aur " + real + " students hain.\nSafe policy: pehle content/students hatayein, ya batch ko Deactivate karein (data surakshit rahega).");
+        if (!sure('Batch "' + b.name + '" permanently delete karein? Ye undo nahi hoga.')) return;
+        return bref(A.inst, id).delete().then(function () { audit("batch.delete", id); return loadAll(); }).then(function () { adminGo("batches"); });
+      }).catch(function (e) { toast("Nahi hua: " + (e.code || e.message)); });
     }
   }
 
@@ -397,13 +498,13 @@
     var fin = function (p, msg) { return p.then(function () { audit("enroll.request." + a, r.mobile); A.students = null; toast(msg); return loadAll(); }).then(function () { adminGo("students"); }).catch(function (e) { toast("Nahi hua: " + (e.code || e.message)); }); };
     if (a === "rj") { if (!sure("Request reject karein?" + (r.amount ? "\n\n⚠️ Student ne " + rupee(r.amount) + " pay kiya hai to refund aapko khud karna hoga." : ""))) return; return fin(rr.update({ status: "rejected" }), "Reject kiya"); }
     if (b && b.limit && (b.enrolledCount || 0) >= b.limit) return toast("Batch ki limit poori ho chuki hai");
-    var go = function () {
+    var go = function () { return rr.parent.parent.collection("members").doc(r.mobile).get().then(function (m0) { return !m0.exists; }, function () { return true; }).then(function (isNew) {
       var wb = db.batch(); wb.update(db.collection("students").doc(r.mobile), { batchIds: FV().arrayUnion(r.batchId) });
       wb.set(bref(A.inst, r.batchId).collection("members").doc(r.mobile), { mobile: r.mobile, name: r.name || "", instituteId: A.inst, enrolledAt: FV().serverTimestamp(), by: adminEmail(), paid: r.amount || 0 });
-      wb.update(bref(A.inst, r.batchId), { enrolledCount: FV().increment(1) }); wb.delete(rr);
+      if (isNew) wb.update(bref(A.inst, r.batchId), { enrolledCount: FV().increment(1) }); wb.delete(rr);
       if (r.amount) wb.set(db.collection("institutes").doc(A.inst).collection("payments").doc(), { instituteId: A.inst, batchId: r.batchId, mobile: r.mobile, name: r.name || "", amount: r.amount, utr: r.utr || "", at: FV().serverTimestamp(), by: adminEmail() });
       return fin(wb.commit(), "✅ Student enroll ho gaya");
-    };
+    }); };
     if (!r.amount) return go();
     if (!sure("Approve se pehle apni UPI app / bank me check karein ki " + rupee(r.amount) + " (UTR " + r.utr + ") sach me aaya hai.\n\nPayment mil gaya? Approve karein?")) return;
     return db.collection("institutes").doc(A.inst).collection("payments").where("utr", "==", r.utr).limit(1).get().then(function (q) { if (!q.empty && !sure("⚠️ Ye UTR pehle kisi aur payment me use ho chuka hai! Phir bhi approve karein?")) return; return go(); }).catch(function (e) { toast("Check nahi hua: " + (e.code || e.message)); });
@@ -416,9 +517,9 @@
     md.querySelector("[data-s]").onclick = function () {
       var sel = [].map.call(md.querySelectorAll("input:checked"), function (i) { return i.value; }), add = sel.filter(function (x) { return cur.indexOf(x) < 0; }), rem = cur.filter(function (x) { return sel.indexOf(x) < 0; });
       for (var k = 0; k < add.length; k++) { var bb = A.batches.filter(function (x) { return x.id === add[k]; })[0]; if (bb && bb.limit && (bb.enrolledCount || 0) >= bb.limit) return toast('"' + bb.name + '" ki limit poori ho chuki hai'); }
-      var db = DB(), sref = db.collection("students").doc(mobile), step = Promise.resolve();
-      if (add.length) step = step.then(function () { var wb = db.batch(); wb.update(sref, { batchIds: FV().arrayUnion.apply(FV(), add) }); add.forEach(function (id) { wb.set(bref(A.inst, id).collection("members").doc(mobile), { mobile: mobile, name: s.name || "", instituteId: A.inst, enrolledAt: FV().serverTimestamp(), by: adminEmail() }); wb.update(bref(A.inst, id), { enrolledCount: FV().increment(1) }); }); return wb.commit(); });
-      if (rem.length) step = step.then(function () { var wb = db.batch(); wb.update(sref, { batchIds: FV().arrayRemove.apply(FV(), rem) }); rem.forEach(function (id) { wb.delete(bref(A.inst, id).collection("members").doc(mobile)); wb.update(bref(A.inst, id), { enrolledCount: FV().increment(-1) }); }); return wb.commit(); });
+      var db = DB(), sref = db.collection("students").doc(mobile), exist = {}, step = Promise.all(add.concat(rem).map(function (id) { return bref(A.inst, id).collection("members").doc(mobile).get().then(function (d) { exist[id] = d.exists; }, function () { exist[id] = null; }); })).then(function () {});
+      if (add.length) step = step.then(function () { var wb = db.batch(); wb.update(sref, { batchIds: FV().arrayUnion.apply(FV(), add) }); add.forEach(function (id) { wb.set(bref(A.inst, id).collection("members").doc(mobile), { mobile: mobile, name: s.name || "", instituteId: A.inst, enrolledAt: FV().serverTimestamp(), by: adminEmail() }); if (exist[id] === false) wb.update(bref(A.inst, id), { enrolledCount: FV().increment(1) }); }); return wb.commit(); });
+      if (rem.length) step = step.then(function () { var wb = db.batch(); wb.update(sref, { batchIds: FV().arrayRemove.apply(FV(), rem) }); rem.forEach(function (id) { wb.delete(bref(A.inst, id).collection("members").doc(mobile)); if (exist[id] === true) wb.update(bref(A.inst, id), { enrolledCount: FV().increment(-1) }); }); return wb.commit(); });
       step.then(function () { s.batchIds = sel; audit("enroll.update", mobile); md.remove(); toast("✅ Enrollment update hua"); return loadAll(); }).then(function () { adminGo("students"); }).catch(function (e) { toast("Nahi hua: " + (e.code || e.message)); });
     };
   }
