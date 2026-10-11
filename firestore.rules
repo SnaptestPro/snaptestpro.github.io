@@ -908,7 +908,7 @@ service cloud.firestore {
       match /notifications/{nid} {
         allow read: if isSignedIn() && (!instStrict(instituteId) || isInstStudent(instituteId) || (isAdmin() && instituteId == adminInstituteId()));
         allow create: if isAdmin() && instituteId == adminInstituteId() &&
-          request.resource.data.keys().hasOnly(['type', 'testId', 'title', 'body', 'createdAt', 'createdBy']) &&
+          request.resource.data.keys().hasOnly(['type', 'testId', 'batchId', 'title', 'body', 'createdAt', 'createdBy']) &&
           request.resource.data.title is string && request.resource.data.title.size() <= 100 &&
           request.resource.data.body is string && request.resource.data.body.size() <= 500 &&
           request.resource.data.createdAt == request.time;

@@ -29,7 +29,7 @@
   };
   /* v168: student ko "online save / network" jaisa koi pill ya toast nahi dikhta — sirf admin ko. Student ke saath problem ho to owner ko silent alert. */
   function showUi() {
-    try { var a = typeof getAuth === "function" ? getAuth() : null, u = a && a.currentUser; return !!(u && !u.isAnonymous && u.email); } catch (e) { return false; }
+    return false;   /* v169: online-save pill / toast kisi ko (admin ya student) nahi dikhta — sync background me chalta rahega */
   }
   function paint() {
     if (!showUi()) { try { if (pill && pill.isConnected) pill.style.display = "none"; } catch (e) {} emit(); return; }

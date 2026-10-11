@@ -36,12 +36,13 @@
     var vf = window.vishnuFirebase; if (!ss || !ss.instituteId || !vf || !vf.enabled || !vf.db) return Promise.resolve();
     lastFetch = now;
     return Promise.resolve(vf.authReady).catch(function () {}).then(function () {
-      return vf.db.collection("institutes").doc(ss.instituteId).collection("notifications").orderBy("createdAt", "desc").limit(15).get();
+      return vf.db.collection("institutes").doc(ss.instituteId).collection("notifications").orderBy("createdAt", "desc").limit(30).get();
     }).then(function (q) {
-      var a = []; q.forEach(function (d) { var x = d.data(); a.push({ id: d.id, t: x.title || "", b: x.body || "", ts: x.createdAt && x.createdAt.toMillis ? x.createdAt.toMillis() : Date.now() }); });
+      var a = []; q.forEach(function (d) { var x = d.data(); if (x.batchId && !(window.SnapV169 && window.SnapV169.mineHas(x.batchId))) return; a.push({ id: d.id, t: x.title || "", b: x.body || "", ts: x.createdAt && x.createdAt.toMillis ? x.createdAt.toMillis() : Date.now() }); });
       SRV = a; try { localStorage.setItem(SK, JSON.stringify(a)); } catch (e) {} nDot();
     }).catch(function () { lastFetch = 0; });
   }
+  window.addEventListener("snap-batches-changed", function () { lastFetch = 0; nRefresh(true); });
   function me() { return window._selfRankStudent || null; }
   function pct() { var s = me(); return s && s.totalMaxScore ? Math.round(100 * s.totalScore / s.totalMaxScore) : null; }
 

@@ -163,6 +163,7 @@
     return base;
   }
   function ctx() { return { A: A, S: S, DB: DB, FV: FV, bref: bref, esc: esc, ms: ms, fdate: fdate, toast: toast, form: form, sure: sure, audit: audit, adminEmail: adminEmail, authReady: authReady, loadAll: loadAll, adminGo: adminGo, openItem: openItem, hasFile: hasFile, sess: sess, rnd: rnd, shrink: shrink, subjOf: subjOf, batchName: batchName, topBtn: topBtn, stBadge: stBadge, rupee: rupee, sBatch: sBatch, sHome: sHome, closeStudent: closeStudent, allItems: allItems, joinLive: joinLive, $: $ }; }
+  function nv(ev, it) { try { window.SnapV169 && window.SnapV169.itemEvent(ev, it); } catch (e) { console.warn(e); } }
   function fire(name, a, b) { try { var f = EXT.hooks[name]; f && f(a, b); } catch (e) { console.warn("[batch hook " + name + "]", e); } }
   function buildAdmin() {
     var o = $("#bm-admin"); o && o.remove();
@@ -334,7 +335,7 @@
         if (kind === "announcement" && !it) data.published = true;
         if (!it && kind !== "class" && kind !== "recording" && kind !== "announcement") data.published = false;
         var p = it ? bref(A.inst, it.batchId).collection("items").doc(it.id).update(data) : bref(A.inst, o.batchId).collection("items").add(Object.assign(data, { createdAt: FV().serverTimestamp(), createdBy: adminEmail() }));
-        return p.then(function () { if (it && fi) deleteFileOf(it); audit("item." + (it ? "update" : "create"), kind); toast("✅ Save ho gaya"); return loadAll().then(function () { adminGo(v); }); });
+        return p.then(function () { if (it && fi) deleteFileOf(it); if (!it && data.published === true && (kind === "class" || kind === "announcement")) nv(kind === "class" ? "class_new" : "announce", data); audit("item." + (it ? "update" : "create"), kind); toast("✅ Save ho gaya"); return loadAll().then(function () { adminGo(v); }); });
       });
     });
   }
@@ -345,20 +346,20 @@
     if (a === "edit") return itemForm(v, it);
     if (a === "view") return openItem(it, A.inst);
     if (a === "del") { if (!sure('"' + it.title + '" delete karein? Ye undo nahi hoga.')) return; return itemRef(b, id).delete().then(function () { deleteFileOf(it); if (it.ownKey && window.SnapLive) window.SnapLive.purge(it); }).then(done("Delete ho gaya")); }
-    if (a === "pub") { if (it.kind === "recording" && !hasFile(it)) return toast("Pehle recording ka valid link jodein (Edit)"); return upd(it.kind === "recording" ? { status: "published", published: true } : { published: true }).then(done("Published")); }
+    if (a === "pub") { if (it.kind === "recording" && !hasFile(it)) return toast("Pehle recording ka valid link jodein (Edit)"); return upd(it.kind === "recording" ? { status: "published", published: true } : { published: true }).then(function (r) { if (!it.published) nv("pub", it); return r; }).then(done("Published")); }
     if (a === "unpub") return upd(it.kind === "recording" ? { status: "unpublished", published: false } : { published: false }).then(done("Unpublished"));
     if (a === "fail") return upd({ status: "failed" }).then(done());
     if (a === "retry") return upd({ status: "processing" }).then(done());
     if (a === "cancel") return upd({ status: "cancelled" }).then(done());
     if (a === "golive") {
-      if (it.mode === "own") { if (!window.SnapLive) return toast("SnapLive load nahi hua"); return upd({ mode: "own", published: true }).then(function () { return loadAll(); }).then(function () { var cur = (A.items[b] || []).filter(function (x) { return x.id === id; })[0] || it; window.SnapLive.studio(cur, ctx(), done()); }); }
+      if (it.mode === "own") { if (!window.SnapLive) return toast("SnapLive load nahi hua"); return upd({ mode: "own", published: true }).then(function () { nv("live_start", it); return loadAll(); }).then(function () { var cur = (A.items[b] || []).filter(function (x) { return x.id === id; })[0] || it; window.SnapLive.studio(cur, ctx(), done()); }); }
       if (it.mode === "external") {
         var link = prompt("Live class ka link daalein (Zoom / Google Meet / YouTube Live / koi bhi https link):", ""); if (!link) return; link = link.trim();
         if (!okUrl(link)) return toast("Link https:// se shuru hona chahiye");
-        return upd({ status: "live", liveUrl: link, published: true, startedAt: FV().serverTimestamp() }).then(done()).then(function () { window.open(link, "_blank", "noopener"); });
+        return upd({ status: "live", liveUrl: link, published: true, startedAt: FV().serverTimestamp() }).then(function (r) { nv("live_start", it); return r; }).then(done()).then(function () { window.open(link, "_blank", "noopener"); });
       }
       if (!sure('"' + it.title + '" abhi live shuru karein?\n\nLive app ke andar Jitsi room me hoga. Camera/mic ki permission allow karein.')) return;
-      var room = "snp" + rnd(14); return upd({ status: "live", liveRoom: room, published: true, startedAt: FV().serverTimestamp() }).then(done()).then(function () { joinLive({ mode: "inapp", liveRoom: room, title: it.title }, "Teacher"); });
+      var room = "snp" + rnd(14); return upd({ status: "live", liveRoom: room, published: true, startedAt: FV().serverTimestamp() }).then(function (r) { nv("live_start", it); return r; }).then(done()).then(function () { joinLive({ mode: "inapp", liveRoom: room, title: it.title }, "Teacher"); });
     }
     if (a === "rejoin") return it.mode === "own" ? window.SnapLive.studio(it, ctx(), done()) : joinLive(it, "Teacher");
     if (a === "end") {
@@ -471,7 +472,7 @@ function vPay(m) {
     return authReady().then(function () { return Promise.resolve(typeof ensureMyInstituteId === "function" ? ensureMyInstituteId() : s.instituteId); }).then(function (inst) {
       S.inst = inst; if (!inst) { S.batches = []; S.avail = []; return; }
       return db.collection("students").doc(String(s.mobile)).get().then(function (d) {
-        S.mine = (d.exists && d.data().batchIds) || [];
+        S.mine = (d.exists && d.data().batchIds) || []; try { window.SnapV169 && window.SnapV169.setMine(S.mine); } catch (e) {}
         return Promise.all(S.mine.map(function (id) { return bref(inst, id).get().then(function (b) { return b.exists ? Object.assign({ id: b.id }, b.data()) : null; }).catch(function () { return null; }); }));
       }).then(function (bs) {
         S.batches = bs.filter(function (b) { return b && b.published; });

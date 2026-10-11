@@ -20,6 +20,7 @@
       b.style.cssText = "position:fixed;left:50%;top:18px;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 16px;border-radius:14px;font-size:.8rem;z-index:2147483647;max-width:90vw;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.35);pointer-events:none";
       document.body.appendChild(b); setTimeout(function () { b.remove(); }, 5000); } catch (e) {}
   }
+  function batchTopic(i, b) { var re = /[^a-zA-Z0-9\-_.~%]/g; return "bat_" + String(i).replace(re, "_") + "_" + String(b).replace(re, "_"); }
   function topicFor(id) { return "inst_" + String(id).replace(/[^a-zA-Z0-9\-_.~%]/g, "_"); }
   function native(method, opts) { var C = getCap(); return C ? C.nativePromise("FirebaseMessaging", method, opts || {}) : Promise.reject(new Error("no plugin")); }
 
@@ -63,7 +64,7 @@
       try { var a = typeof getAuth === "function" ? getAuth() : null; admin = !!(a && a.currentUser && a.currentUser.email && typeof getCurrentAdminInstituteId === "function" && getCurrentAdminInstituteId()); } catch (e) {}
       var wants = [];
       if (!localStorage.getItem(OPT_OUT)) {
-        if (s && s.instituteId) { wants.push(topicFor(s.instituteId)); wants.push("app_student"); }   // institute notices + app update (students)
+        if (s && s.instituteId) { wants.push(topicFor(s.instituteId)); wants.push("app_student"); try { (window.SnapV169 ? window.SnapV169.mineList() : []).forEach(function (b) { wants.push(batchTopic(s.instituteId, b)); }); } catch (e) {} }   // institute notices + app update (students)
         try { var oa = typeof getAuth === "function" ? getAuth() : null, oe = oa && oa.currentUser && oa.currentUser.email; var ow = (window.SNAP_CONFIG && window.SNAP_CONFIG.ownerAlertEmail) || "vishnu1234stm@gmail.com"; if (oe && String(oe).toLowerCase() === String(ow).toLowerCase()) wants.push("owner_alerts"); } catch (e) {}   // owner: app problem alerts
         if (admin) wants.push("app_admin");                                                        // app update (admin)
       }

@@ -54,6 +54,9 @@ async function googleAccessToken(sa) {
   return cached.token;
 }
 
+const topicSafe = (x) => String(x).replace(/[^a-zA-Z0-9\-_.~%]/g, '_');
+const batchTopic = (inst, b) => 'bat_' + topicSafe(inst) + '_' + topicSafe(b);
+
 async function handle(request, env) {
   if (!env.SERVICE_ACCOUNT_JSON) throw new HttpErr(500, 'SERVICE_ACCOUNT_JSON secret set nahi hai');
   const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON);
@@ -89,13 +92,15 @@ async function handle(request, env) {
   });
   if (!mk.ok) throw new HttpErr(502, 'Mark fail ' + mk.status);
 
-  const topic = 'inst_' + instituteId.replace(/[^a-zA-Z0-9\-_.~%]/g, '_');
+  // v169: notification par batchId ho to push sirf us batch ke students ko (topic bat_<inst>_<batch>), warna poore institute ko
+  const batchId = s('batchId');
+  const topic = batchId ? batchTopic(instituteId, batchId) : 'inst_' + topicSafe(instituteId);
   const fr = await fetch('https://fcm.googleapis.com/v1/projects/' + projectId + '/messages:send', {
     method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: {
       topic,
       notification: { title: s('title').slice(0, 100) || 'SnapTest Pro', body: s('body').slice(0, 300) },
-      data: { instituteId, notifId, type: s('type') || 'admin' },
+      data: { instituteId, notifId, type: s('type') || 'admin', ...(batchId ? { batchId } : {}) },
       android: { priority: 'HIGH', ttl: '86400s', notification: { sound: 'default', channel_id: 'snap_updates' } }
     } })
   });
@@ -363,7 +368,66 @@ async function handleLive(request, env, pathname) {
   throw new HttpErr(404, 'Unknown live endpoint');
 }
 
+/* ---------- v169: Upcoming test reminders (cron) ----------
+   Test se ~24 ghante aur ~1 ghanta pehle students ko syllabus ke saath push. Cloudflare > Worker > Settings > Triggers > Cron Triggers: har 15 minute (cron: "every 15 min" = slash-15 star star star star)
+   Test ka startTime admin ke local (IST) time me "YYYY-MM-DDTHH:mm" string hota hai; TZ_OFFSET_MIN (default 330 = IST).
+   Duplicate roke: notification doc id = rem_<testId>_<24|1>[_<batchId>] — pehle se ho to dobara nahi bhejta. */
+const fsStr = (f, k) => (f && f[k] && f[k].stringValue) || '';
+async function fcmTopicSend(at, projectId, topic, title, body, data) {
+  const fr = await fetch('https://fcm.googleapis.com/v1/projects/' + projectId + '/messages:send', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: { topic, notification: { title: String(title).slice(0, 100), body: String(body).slice(0, 300) }, data, android: { priority: 'HIGH', ttl: '86400s', notification: { sound: 'default', channel_id: 'snap_updates' } } } })
+  });
+  return fr.ok;
+}
+async function sendReminders(env) {
+  if (!env.SERVICE_ACCOUNT_JSON) return { ok: false, error: 'SERVICE_ACCOUNT_JSON nahi hai' };
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), projectId = env.PROJECT_ID || sa.project_id;
+  const at = await googleAccessToken(sa);
+  const base = 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/(default)/documents';
+  const off = (Number(env.TZ_OFFSET_MIN) || 330) * 60000, nowL = Date.now() + off;            // "local wall-clock" ko UTC-jaisa treat karte hain
+  const iso = (ms) => new Date(ms).toISOString().slice(0, 16);
+  const qr = await fetch(base + ':runQuery', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'tests' }], limit: 200, where: { compositeFilter: { op: 'AND', filters: [
+      { fieldFilter: { field: { fieldPath: 'startTime' }, op: 'GREATER_THAN', value: { stringValue: iso(nowL) } } },
+      { fieldFilter: { field: { fieldPath: 'startTime' }, op: 'LESS_THAN_OR_EQUAL', value: { stringValue: iso(nowL + 25 * 3600000) } } }] } } } })
+  });
+  if (!qr.ok) return { ok: false, error: 'runQuery ' + qr.status };
+  const rows = await qr.json(); let sent = 0;
+  for (const r of rows) {
+    if (!r.document) continue;
+    const f = r.document.fields || {}, testId = r.document.name.split('/').pop();
+    if (f.isDraft && f.isDraft.booleanValue === true) continue;
+    const st = fsStr(f, 'startTime'), inst = fsStr(f, 'instituteId'); if (!st || !inst) continue;
+    const stMs = Date.parse(st.slice(0, 16) + ':00Z'); if (isNaN(stMs)) continue;
+    const diff = (stMs - nowL) / 60000;
+    const kind = diff <= 1440 && diff > 1380 ? '24' : diff <= 60 && diff > 20 ? '1' : '';
+    if (!kind) continue;
+    const bl = f.batchLinks && f.batchLinks.mapValue && f.batchLinks.mapValue.fields ? Object.keys(f.batchLinks.mapValue.fields) : [];
+    const when = new Date(stMs).toLocaleString('en-IN', { timeZone: 'UTC', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    const sy = fsStr(f, 'syllabus').replace(/\s+/g, ' ').slice(0, 170);
+    const title = kind === '24' ? '⏰ Kal Test Hai' : '⏰ Test 1 ghante me shuru';
+    const body = (fsStr(f, 'title') || 'Test') + ' — ' + when + (sy ? '\n📚 Syllabus: ' + sy : '');
+    const targets = bl.length ? bl : [''];
+    for (const b of targets) {
+      const nid = 'rem_' + testId + '_' + kind + (b ? '_' + b : '');
+      const fields = { type: { stringValue: 'reminder' }, testId: { stringValue: testId }, title: { stringValue: title }, body: { stringValue: body.slice(0, 480) },
+        createdAt: { timestampValue: new Date().toISOString() }, createdBy: { stringValue: 'system' }, pushedAt: { timestampValue: new Date().toISOString() } };
+      if (b) fields.batchId = { stringValue: b };
+      const cr = await fetch(base + '/institutes/' + encodeURIComponent(inst) + '/notifications?documentId=' + encodeURIComponent(nid), {
+        method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields })
+      });
+      if (!cr.ok) continue;                                                                   // 409 = pehle bhej chuke
+      const topic = b ? batchTopic(inst, b) : 'inst_' + topicSafe(inst);
+      if (await fcmTopicSend(at, projectId, topic, title, body, { instituteId: inst, notifId: nid, type: 'reminder', ...(b ? { batchId: b } : {}) })) sent++;
+    }
+  }
+  return { ok: true, checked: rows.length, sent };
+}
+
 export default {
+  async scheduled(event, env, ctx) { ctx.waitUntil(sendReminders(env).catch((e) => console.log('reminder fail', e && e.message))); },
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const pathname = new URL(request.url).pathname.replace(/\/+$/, '') || '/';

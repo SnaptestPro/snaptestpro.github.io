@@ -19,6 +19,13 @@
       if (ms && ms > Date.now() + 60000) return new Date(ms).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }); } catch (e) {}
     return "";
   }
+  // v169: syllabus body me; batch se juda test ho to notification sirf us batch ke students ko (batchId => worker batch topic par bhejta hai)
+  function testNotifDoc(id, t, nm, at) {
+    var sy = t && t.syllabus ? "\n📚 Syllabus: " + String(t.syllabus).replace(/\s+/g, " ").slice(0, 170) : "";
+    var d = { type: "test", testId: String(id), title: at ? "Naya Test Schedule Hua!" : "Naya Test Publish Hua!", body: (at ? nm + " — " + at + " se shuru hoga" : nm + " ab available hai") + sy, createdAt: ts(), createdBy: email() };
+    try { var bl = t && t.batchLinks ? Object.keys(t.batchLinks) : []; if (bl.length) d.batchId = bl[0]; } catch (e) {}
+    return d;
+  }
   function hookSave() {
     if (typeof window.saveTestOnline !== "function" || window.saveTestOnline.__an) return;
     var orig = window.saveTestOnline;
@@ -30,7 +37,7 @@
         var c = live && (t.isDraft === false || fresh) && col();
         if (c) {
           var at = whenTxt(t), nm = t.title || "Ek naya test";
-          c.doc("t_" + id).set({ type: "test", testId: String(id), title: at ? "Naya Test Schedule Hua!" : "Naya Test Publish Hua!", body: at ? nm + " — " + at + " se shuru hoga" : nm + " ab available hai", createdAt: ts(), createdBy: email() }).then(function () { window.SnapPush && window.SnapPush.send("t_" + id); }).catch(function () { /* pehle se bhej chuke hain (edit) — ignore */ });
+          c.doc("t_" + id).set(testNotifDoc(id, t, nm, at)).then(function () { window.SnapPush && window.SnapPush.send("t_" + id); }).catch(function () { /* pehle se bhej chuke hain (edit) — ignore */ });
         }
       } catch (e) {}
       return r;

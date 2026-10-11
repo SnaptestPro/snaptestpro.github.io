@@ -117,7 +117,7 @@
       var n = function (k) { return (c.A.items[bf] || []).filter(function (i) { return itemIn(i, cur, ch) && (Array.isArray(k) ? k.indexOf(i.kind) > -1 : i.kind === k); }).length; };
       return '<div class="bm-row' + (ch.status === "active" ? "" : " bx-off") + '"><div class="g"><b>Ch ' + (ch.number || ix + 1) + ": " + c0(ch.name) + "</b><small>🔴 " + n("class") + " • 🎬 " + n("recording") + " • 📄 " + n(["note", "material"]) + " • 📊 " + n("ppt") + "</small></div>" +
         '<div class="bm-act"><button class="bm-btn sec sm" data-cu="' + ix + '">↑</button><button class="bm-btn sec sm" data-cd="' + ix + '">↓</button><button class="bm-btn sec sm" data-ce="' + ch.id + '">Edit</button>' +
-        '<button class="bm-btn sec sm" data-ct="' + ch.id + '">' + (ch.status === "active" ? "Off" : "On") + '</button><button class="bm-btn sec sm" data-cp="' + ch.id + '">＋Content</button><button class="bm-btn red sm" data-cx="' + ch.id + '">Delete</button></div></div>';
+        '<button class="bm-btn sec sm" data-ct="' + ch.id + '">' + (ch.status === "active" ? "Off" : "On") + '</button><button class="bm-btn sec sm" data-cp="' + ch.id + '">＋Content</button><button class="bm-btn sec sm" data-ctst="' + ch.id + '">📝 Test</button><button class="bm-btn red sm" data-cx="' + ch.id + '">Delete</button></div></div>';
     }).join("") : '<div class="bm-empty">Is subject me abhi koi chapter nahi.</div>') : '<div class="bm-empty">Pehle subject chunein / banayein.</div>') + "</div></div>";
     m.innerHTML = h; bindBatch(c, m, function () { EXT.adminViews.struct.render(m, c); });
     var q = function (s, f) { m.querySelectorAll(s).forEach(function (b) { b.onclick = function () { f(b); }; }); };
@@ -137,6 +137,7 @@
       q("[data-cd]", function (b) { var i = +b.dataset.cd; if (i >= cur.chapters.length - 1) return; normOrder(cur.chapters, i, i + 1, c, inst, bf, cur.id).then(redraw); });
       q("[data-cx]", function (b) { delChapter(c, cur, cur.chapters.filter(function (x) { return x.id === b.dataset.cx; })[0], redraw); });
       q("[data-cp]", function (b) { var ch = cur.chapters.filter(function (x) { return x.id === b.dataset.cp; })[0]; c.A.f = { batch: bf, subject: cur.name, chapter: ch.name }; c.adminGo("note"); c.toast("Ab '+ Add' dabayein — Subject/Chapter pehle se chuna hua hai"); });
+      q("[data-ctst]", function (b) { var ch = cur.chapters.filter(function (x) { return x.id === b.dataset.ctst; })[0]; if (!ch) return; if (!window.SnapV169) return c.toast("Module load nahi hua — refresh karein"); window.SnapV169.chapterTest(c, bf, cur, ch, redraw); });
     }
   }
   /* order ko 1..n me normalize karke i<->j swap */
@@ -247,7 +248,7 @@
     }).catch(function (e) { m.innerHTML = '<div class="bm-empty">Load nahi hua (' + c0(e.code || e.message) + ")</div>"; });
   } };
   function drawTests(m, c, bf, tab, asg, links) {
-    var inst = c.A.inst;
+    var inst = c.A.inst; try { window.SnapV169 && window.SnapV169.backfill(links, bf); } catch (e) {}
     c.topBtn(tab === "assign" ? "+ New Assignment" : "+ Link Test", function () { tab === "assign" ? asgForm(c, null, bf, m) : linkForm(c, bf, m); });
     var h = batchBar(c, m) + '<div class="bm-tabs"><button data-tt="assign"' + (tab === "assign" ? ' class="on"' : "") + '>Assignments (' + asg.length + ')</button><button data-tt="tests"' + (tab === "tests" ? ' class="on"' : "") + '>Batch Tests (' + links.length + ")</button></div>";
     if (tab === "tests") {
@@ -264,8 +265,8 @@
     m.querySelectorAll("[data-tt]").forEach(function (b) { b.onclick = function () { c.A.f.tt = b.dataset.tt; EXT.adminViews.tests.render(m, c); }; });
     var ot = m.querySelector("#bx-ot"); ot && (ot.onclick = function (e) { e.preventDefault(); var a = document.getElementById("bm-admin"); a && a.remove(); typeof goAdmin === "function" && goAdmin("tests"); });
     var again = function () { return EXT.adminViews.tests.render(m, c); };
-    m.querySelectorAll("[data-lx]").forEach(function (b) { b.onclick = function () { var l = links[+b.dataset.lx]; if (!c.sure("Test ko batch se unlink karein? (test delete nahi hoga)")) return; sub(c, inst, bf, "testLinks").doc(l.id).delete().then(function () { c.audit("testlink.delete", l.id); again(); }); }; });
-    m.querySelectorAll("[data-ap]").forEach(function (b) { b.onclick = function () { var a = asg[+b.dataset.ap]; sub(c, inst, bf, "assignments").doc(a.id).update({ published: !a.published, updatedAt: c.FV().serverTimestamp() }).then(function () { c.audit("assignment.publish", a.id); again(); }); }; });
+    m.querySelectorAll("[data-lx]").forEach(function (b) { b.onclick = function () { var l = links[+b.dataset.lx]; if (!c.sure("Test ko batch se unlink karein? (test delete nahi hoga)")) return; sub(c, inst, bf, "testLinks").doc(l.id).delete().then(function () { c.audit("testlink.delete", l.id); try { window.SnapV169 && window.SnapV169.untagTest(l.testId, bf); } catch (e) {} again(); }); }; });
+    m.querySelectorAll("[data-ap]").forEach(function (b) { b.onclick = function () { var a = asg[+b.dataset.ap]; sub(c, inst, bf, "assignments").doc(a.id).update({ published: !a.published, updatedAt: c.FV().serverTimestamp() }).then(function () { c.audit("assignment.publish", a.id); if (!a.published) try { window.SnapV169 && window.SnapV169.assignmentPublished(a); } catch (e) {} again(); }); }; });
     m.querySelectorAll("[data-ae]").forEach(function (b) { b.onclick = function () { asgForm(c, asg[+b.dataset.ae], bf, m); }; });
     m.querySelectorAll("[data-ax]").forEach(function (b) { b.onclick = function () { var a = asg[+b.dataset.ax]; if (a.subs.length) return alert("Is assignment par " + a.subs.length + " submissions hain. Safe policy: delete ke bajay Unpublish karein (records surakshit rahenge)."); if (!c.sure('"' + a.title + '" delete karein?')) return; sub(c, inst, bf, "assignments").doc(a.id).delete().then(function () { c.audit("assignment.delete", a.id); again(); }); }; });
     m.querySelectorAll("[data-sb]").forEach(function (b) { b.onclick = function () { subsView(c, asg[+b.dataset.sb], bf, again); }; });
@@ -275,7 +276,7 @@
     if (!list.length) return c.toast("Abhi koi test maujood nahi — pehle Tests me test banayein");
     c.form("Batch se Test jodein", [{ k: "batchId", l: "Batch", t: "select", o: c.A.batches.map(function (b) { return [b.id, b.name]; }), r: 1 }, { k: "testId", l: "Test", t: "select", o: list, r: 1 }, { k: "subject", l: "Subject (optional)" }, { k: "chapter", l: "Chapter (optional)" }], { batchId: bf }, function (o) {
       var ve = EXT.validateItem(o, "test"); if (ve) { c.toast(ve); return false; } var d = { instituteId: c.A.inst, batchId: o.batchId, testId: o.testId, title: (ts[o.testId] && (ts[o.testId].title || ts[o.testId].name)) || o.testId, subject: o.subject || "", chapter: o.chapter || "", createdAt: c.FV().serverTimestamp(), createdBy: c.adminEmail() }; EXT.stampIds(d, o);
-      return sub(c, c.A.inst, o.batchId, "testLinks").add(d).then(function () { c.audit("testlink.create", o.testId); c.toast("✅ Test juda"); c.A.f.batch = o.batchId; EXT.adminViews.tests.render(m, c); });
+      return sub(c, c.A.inst, o.batchId, "testLinks").add(d).then(function () { c.audit("testlink.create", o.testId); c.toast("✅ Test juda"); try { window.SnapV169 && window.SnapV169.tagTest(o.testId, o.batchId, o.subject, o.chapter, true, d.title); } catch (e) {} c.A.f.batch = o.batchId; EXT.adminViews.tests.render(m, c); });
     });
   }
   function asgForm(c, a, bf, m) {

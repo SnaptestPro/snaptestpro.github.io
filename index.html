@@ -1179,14 +1179,19 @@
               <input id="test-negative" type="number" value="0.5" step="0.25" />
             </div>
           </div>
-          <div class="hidden">
+          <div>
             <div class="field-row">
               <label>Test Schedule (optional)</label>
               <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <input id="test-start-time" type="datetime-local" style="flex:1;" title="Test kab se available hoga" />
                 <input id="test-end-time" type="datetime-local" style="flex:1;" title="Test kab band hoga" />
               </div>
-              <small style="color:#6b7280;font-size:.78rem;">Blank chhodo = hamesha available. Start time se pehle test lock rahega.</small>
+              <small style="color:#6b7280;font-size:.78rem;">Blank chhodo = hamesha available. Start time se pehle test lock rahega (students ko Upcoming dikhega, syllabus ke saath notification jayega).</small>
+            </div>
+            <div class="field-row">
+              <label>Syllabus (optional)</label>
+              <textarea id="test-syllabus" rows="3" maxlength="600" placeholder="Is test me kya aayega — jaise: Surface Areas &amp; Volumes (Ch 12), Q 1–20"></textarea>
+              <small style="color:#6b7280;font-size:.78rem;">Students ko test card me aur notification me dikhega.</small>
             </div>
           </div>
 
@@ -2412,6 +2417,7 @@ B"></textarea>
 <script defer src="student-session.js?v=1"></script>
 <script defer src="batch-system.js?v=1"></script>
 <script defer src="batch-phase2.js?v=1"></script>
+<script defer src="batch-v169.js?v=1"></script>
 <script defer src="own-live.js?v=1"></script>
 <script defer src="id-card.js"></script>
 <script defer src="omr.js?v=2"></script>
