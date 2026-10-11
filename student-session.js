@@ -20,6 +20,10 @@
         });
       } catch (e) { return Promise.resolve(false); }
     },
+    /* logout par is device-uid ka session hata do (agla login naya bana dega) */
+    clear: function () {
+      try { var v = fb(); var u = v && v.auth && v.auth.currentUser; ok = false; if (u) v.db.collection("studentSessions").doc(u.uid).delete().catch(function () {}); } catch (e) {}
+    },
     /* login ke baad ye device-uid ka session abhi bhi maujood hai? (strict mode me batch kholne se pehle check) */
     check: function (mobile) {
       try {
