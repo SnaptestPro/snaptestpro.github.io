@@ -59,7 +59,8 @@
     /ResizeObserver loop/i, /^Script error\.?$/i, /chrome-extension:|moz-extension:|safari-extension:/i,
     /AbortError|The user aborted|The operation was aborted/i, /Non-Error promise rejection/i,
     /Failed to fetch|NetworkError|Load failed|network request failed/i,       // user ka internet — bug nahi
-    /ServiceWorker|service worker/i, /play\(\) request was interrupted/i, /Notification permission/i
+    /ServiceWorker|service worker/i, /play\(\) request was interrupted/i, /Notification permission/i,
+    /Failed to obtain primary lease/i, /Backfill Indexes/i                         // v177: Firestore multi-tab offline cache ka harmless warning (app ek se zyada tab/window me khula) — bug nahi
   ];
   function ignored(msg) { for (var i = 0; i < IGNORE.length; i++) if (IGNORE[i].test(msg)) return true; return false; }
 
