@@ -1,9 +1,9 @@
 {
   "apk": {
-    "build": 14,
-    "name": "1.0.14",
-    "url": "https://github.com/SnaptestPro/snaptestpro.github.io/releases/download/app-b14/SnapTestPro.apk",
-    "notes": "Rukiye toh sahi! 🛑 Aapki favourite app ab aur bhi power-packed ho gayi hai. Performance ko boost karne aur naye features ka maza lene ke liye turant app update karein!",
+    "build": 15,
+    "name": "1.0.15",
+    "url": "https://github.com/SnaptestPro/snaptestpro.github.io/releases/download/app-b15/SnapTestPro.apk",
+    "notes": "App ka naya version aaya hai.",
     "force": true
   }
 }
