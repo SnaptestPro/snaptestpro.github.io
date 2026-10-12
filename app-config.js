@@ -9,6 +9,9 @@ window.SNAP_CONFIG = {
   tagline: "Smart Practice • Better Result",
   version: "1.1",
   workerUrl: "https://cool-thunder-a280.vishnu1234stm.workers.dev",   // Cloudflare Worker (bank + push + owner alerts)
+  ownFiles: false,                                                    // Cloudflare R2 (card chahiye) band — file upload ab Google Drive se
+  googleClientId: "",                                                 // <-- yahan Google OAuth Web Client ID daalein (DRIVE_SETUP_HINDI.md dekhein). Khaali = Drive upload band
+  driveUpload: true,
   snapLive: false,                                                    // true tab karein jab Cloudflare R2 (LIVE_R2) set ho jaye — tab "SnapLive" option dikhega
   ownerAlertEmail: "vishnu1234stm@gmail.com",                         // is email se login par owner app me alerts ka push aata hai
   build: "168",

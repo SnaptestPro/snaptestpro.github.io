@@ -61,6 +61,18 @@
   function storage() { var v = window.vishnuFirebase; return v && v.storage; }
   function b64(buf) { var s = "", a = new Uint8Array(buf), k = 0x8000; for (var i = 0; i < a.length; i += k) s += String.fromCharCode.apply(null, a.subarray(i, i + k)); return btoa(s); }
   function uploadFile(file, inst, batchId, prog) {
+    var sd = window.SnapDrive;
+    if (sd && sd.ready()) {
+      var qc = window.SnapQuota ? window.SnapQuota.check(inst, file.size) : Promise.resolve({ ok: true });
+      return qc.then(function (q) {
+        if (!q.ok) { toast(q.msg); return Promise.reject(Object.assign(new Error(q.msg), { quota: true })); }
+        return sd.upload(file, { inst: inst, batchId: batchId }, prog).then(function (d) { window.SnapQuota && window.SnapQuota.add(inst, d.size); toast("✅ Upload ho gaya • Link apne-aap ban gaya"); return { url: d.url, driveId: d.id, fileName: d.name, fileType: d.type, fileSize: d.size }; })
+          .catch(function (e) { console.warn("[SnapDrive] fail:", e); toast("Google Drive upload nahi hua: " + (e && e.message || e) + " — doosre tareeke se try ho raha hai…"); return uploadFileOld(file, inst, batchId, prog); });
+      });
+    }
+    return uploadFileOld(file, inst, batchId, prog);
+  }
+  function uploadFileOld(file, inst, batchId, prog) {
     var sf = window.SnapFiles;
     if (sf && sf.ready()) return sf.upload(file, { inst: inst, batchId: batchId }, prog).then(function (of) { if (of.used) toast("✅ Upload ho gaya • Storage: " + Math.round(of.used / 1048576) + " MB / 1 GB"); return { ownFile: of, fileName: file.name, fileType: of.type || file.type || "", fileSize: of.size }; })
       .catch(function (e) { console.warn("[SnapFiles] apna storage fail — Firebase tareeka:", e); try { sf.noteFail(e); } catch (x) {} toast(e && (e.status === 507 || e.status === 413) ? e.message : "Apna storage nahi chala — Firebase se upload ho raha hai…"); return uploadFileFb(file, inst, batchId, prog); });
@@ -113,6 +125,7 @@
   function deleteFileOf(it) {
     try {
       if (it.ownFile && it.ownFile.key && window.SnapFiles) window.SnapFiles.remove(it.ownFile.key);
+      if (it.driveId && window.SnapDrive) window.SnapDrive.remove(it.driveId).then(function (ok) { if (ok && window.SnapQuota) window.SnapQuota.sub(A.inst, it.fileSize || 0); });
       if (it.storagePath && storage()) storage().ref(it.storagePath).delete().catch(function () {});
       if (it.fileId) { var fr = bref(A.inst, it.batchId).collection("files").doc(it.fileId); fr.collection("parts").get().then(function (q) { var wb = DB().batch(); q.docs.forEach(function (d) { wb.delete(d.ref); }); wb.delete(fr); return wb.commit(); }).catch(function () {}); }
     } catch (e) {}
@@ -439,7 +452,7 @@
     form((it ? "Edit " : "Add ") + kind, f, vals, function (o) {
       var ve = EXT.validateItem && EXT.validateItem(o, kind); if (ve) { toast(ve); return false; }
       if (o.url && !okUrl(o.url)) { toast("Link https:// se shuru hona chahiye"); return false; }
-      if (o.file && o.file.size > 52428800 && !(window.SnapFiles && window.SnapFiles.ready())) { toast("File 50MB se badi hai"); return false; }
+      if (o.file && o.file.size > 52428800 && !(window.SnapFiles && window.SnapFiles.ready()) && !(window.SnapDrive && window.SnapDrive.ready())) { toast("File 50MB se badi hai"); return false; }
       if (kind === "class" && !it && new Date(o.dt).getTime() < Date.now() - 36e5) { toast("Past ka time schedule nahi ho sakta"); return false; }
       if ((kind === "note" || kind === "material" || kind === "ppt") && !o.file && !o.url && !(it && hasFile(it))) { toast("File upload karein ya link daalein"); return false; }
       var up = Promise.resolve(null);
@@ -450,8 +463,8 @@
         if (kind === "note" || kind === "material") { data.cat = o.cat; data.kind = NOTE_TYPES.filter(function (x) { return x[0] === o.cat; })[0][1]; }
         if (upl) {
           data.url = o.url || "";
-          if (fi) { if (fi.ownFile) data.ownFile = fi.ownFile; else if (it && it.ownFile) data.ownFile = FV().delete(); data.url = (fi.storagePath || fi.ownFile) ? "" : (fi.url || "");   /* v168: Storage file ka permanent token-link save nahi hota; dekhte waqt rules ke baad resolve hota hai */ data.fileId = fi.fileId || ""; data.storagePath = fi.storagePath || ""; data.fileName = fi.fileName; data.fileType = fi.fileType; data.fileSize = fi.fileSize; }
-          else if (it && o.url && o.url !== it.url) { data.fileId = ""; data.storagePath = ""; data.fileName = ""; if (it.ownFile) data.ownFile = FV().delete(); }
+          if (fi) { if (fi.ownFile) data.ownFile = fi.ownFile; else if (it && it.ownFile) data.ownFile = FV().delete(); data.url = (fi.storagePath || fi.ownFile) ? "" : (fi.url || "");   /* v168: Storage file ka permanent token-link save nahi hota; dekhte waqt rules ke baad resolve hota hai */ data.fileId = fi.fileId || ""; data.storagePath = fi.storagePath || ""; if (fi.driveId) data.driveId = fi.driveId; else if (it && it.driveId) data.driveId = FV().delete(); data.fileName = fi.fileName; data.fileType = fi.fileType; data.fileSize = fi.fileSize; }
+          else if (it && o.url && o.url !== it.url) { data.fileId = ""; data.storagePath = ""; data.fileName = ""; if (it.ownFile) data.ownFile = FV().delete(); if (it.driveId) data.driveId = FV().delete(); }
           else if (it && !o.url && it.url) data.url = it.url;
         }
         var has = !!(data.url || data.fileId || data.storagePath || (fi && fi.ownFile) || (it && (it.fileId || it.storagePath || it.ownFile) && !fi));

@@ -17,11 +17,13 @@ Owner Panel sirf iss email se khulta hai: `+OWNER_TRUE_EMAIL+`
           <div class="owner-inst-actions">
             <button type="button" class="owner-mini-btn" onclick="ownerRenameInstitute('${a.id}', '${ownerEscAttr(a.name||"")}')">✏️ Rename</button>
             <button type="button" class="owner-mini-btn" onclick="ownerSetInstituteOwnerName('${a.id}', '${ownerEscAttr(a.ownerName||"")}')">👤 Owner Naam</button>
+            <button type="button" class="owner-mini-btn" onclick="ownerBrandingEdit('${a.id}')">🎨 Branding &amp; Plan</button>
             <button type="button" class="owner-mini-btn" onclick="ownerToggleInstitute('${a.id}', ${a.active===!1})">${a.active===!1?"▶️ Activate":"⏸️ Deactivate"}</button>
             <button type="button" class="owner-mini-btn owner-mini-danger" onclick="ownerDeleteInstitute('${a.id}')">🗑️ Remove</button>
           </div>
         </div>
 
+        ${ownerBrandInfoHtml(a)}
         <div class="owner-inst-classes">
           <span class="owner-classes-label">🎓 Allowed Classes:</span>
           ${ownerClassChipsHtml(a)}
@@ -101,3 +103,53 @@ Isse is institute se uska access turant band ho jayega. (Uska Firebase Auth logi
   };
   window.ownerClearAlerts=async function(){ if(!confirm("Saare alerts clear karein?"))return; try{await call("/alerts/clear","POST");window.ownerLoadAlerts()}catch(e){alert("Clear nahi hua: "+(e&&e.message||e))} };
 })();
+
+
+/* ===== v174: Branding & Plan (har institute ko apna look + storage limit) ===== */
+function ownerBrandInfoHtml(a){
+  const used=Math.round((a.storageUsedBytes||0)/1048576),lim=+a.storageLimitMB||0;
+  const bar=lim?`${used} / ${lim} MB`:`${used} MB (limit nahi)`;
+  const over=lim&&used>=lim;
+  return `<div class="muted-text" style="font-size:.76rem;margin:4px 0 8px;">`+
+    `${a.brandColor?`<span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:${ownerEsc(a.brandColor)};vertical-align:middle;margin-right:4px;"></span>`:""}`+
+    `📦 Plan: <b>${ownerEsc(a.plan||"Free")}</b> • 💾 Drive storage: <b style="${over?"color:#dc2626;":""}">${bar}</b> • 📄 ${a.storageFiles||0} files</div>`;
+}
+function ownerBrandingEdit(id){
+  const a=(typeof _ownerInstitutesCache!=="undefined"&&_ownerInstitutesCache[id])||{};
+  const old=document.getElementById("owner-brand-modal");old&&old.remove();
+  const m=document.createElement("div");m.id="owner-brand-modal";
+  m.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px;";
+  const plans=["Free","Basic","Pro","Premium","Custom"];
+  m.innerHTML=`<div style="background:#fff;color:#111;border-radius:14px;max-width:420px;width:100%;max-height:92vh;overflow:auto;padding:16px;">
+    <h3 style="margin:0 0 10px;">🎨 Branding &amp; Plan — ${ownerEsc(a.name||id)}</h3>
+    <label style="font-size:.8rem;font-weight:600;">App ka rang</label>
+    <input id="obr-color" type="color" value="${/^#[0-9a-f]{6}$/i.test(a.brandColor||"")?a.brandColor:"#4f46e5"}" style="width:100%;height:42px;margin:4px 0 10px;">
+    <label style="font-size:.8rem;font-weight:600;">Tagline (header ke neeche)</label>
+    <input id="obr-tag" type="text" maxlength="60" value="${ownerEscAttr(a.tagline||"")}" placeholder="jaise: Success Starts Here" style="width:100%;padding:8px;margin:4px 0 10px;box-sizing:border-box;">
+    <label style="font-size:.8rem;font-weight:600;">Logo (square, chhota)</label>
+    <div style="display:flex;gap:10px;align-items:center;margin:4px 0 10px;"><img id="obr-prev" src="${a.logoDataUrl||""}" style="width:52px;height:52px;object-fit:contain;border:1px solid #ddd;border-radius:8px;background:#fafafa;${a.logoDataUrl?"":"visibility:hidden;"}"><input id="obr-logo" type="file" accept="image/*"></div>
+    <label style="font-size:.8rem;font-weight:600;">Plan</label>
+    <select id="obr-plan" style="width:100%;padding:8px;margin:4px 0 10px;">${plans.map(p=>`<option ${p===(a.plan||"Free")?"selected":""}>${p}</option>`).join("")}</select>
+    <label style="font-size:.8rem;font-weight:600;">Drive storage limit (MB) — 0 = bina limit</label>
+    <input id="obr-lim" type="number" min="0" value="${+a.storageLimitMB||0}" style="width:100%;padding:8px;margin:4px 0 4px;box-sizing:border-box;">
+    <div class="muted-text" style="font-size:.72rem;margin-bottom:12px;">Abhi use: ${Math.round((a.storageUsedBytes||0)/1048576)} MB (${a.storageFiles||0} files). Ye limit sirf app ke through hue uploads par lagti hai.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;"><button type="button" id="obr-x" class="owner-mini-btn">Cancel</button><button type="button" id="obr-reset" class="owner-mini-btn">Usage reset</button><button type="button" id="obr-ok" class="owner-mini-btn" style="background:#4f46e5;color:#fff;">Save</button></div></div>`;
+  document.body.appendChild(m);
+  let logo=null;
+  m.querySelector("#obr-x").onclick=()=>m.remove();
+  m.querySelector("#obr-logo").onchange=e=>{
+    const f=e.target.files[0];if(!f)return;
+    const im=new Image(),u=URL.createObjectURL(f);
+    im.onload=()=>{const c=document.createElement("canvas"),sc=Math.min(1,256/Math.max(im.width,im.height));c.width=Math.round(im.width*sc);c.height=Math.round(im.height*sc);c.getContext("2d").drawImage(im,0,0,c.width,c.height);logo=c.toDataURL("image/png");if(logo.length>150000)logo=c.toDataURL("image/jpeg",.85);const p=m.querySelector("#obr-prev");p.src=logo;p.style.visibility="visible";URL.revokeObjectURL(u);};
+    im.onerror=()=>alert("Image nahi khuli");im.src=u;
+  };
+  m.querySelector("#obr-reset").onclick=async()=>{
+    if(!confirm("Is institute ka storage usage counter 0 kar du? (sirf tab jab counter galat ho gaya ho)"))return;
+    try{await ownerRetryOnPermissionDenied(()=>ownerGetDb().collection("institutes").doc(id).update({storageUsedBytes:0,storageFiles:0}));try{localStorage.removeItem("snap_brand_"+id)}catch(e){}alert("Usage reset ho gaya.");m.remove();}catch(e){alert("Nahi hua: "+(e.message||e));}
+  };
+  m.querySelector("#obr-ok").onclick=async()=>{
+    const d={brandColor:m.querySelector("#obr-color").value,tagline:m.querySelector("#obr-tag").value.trim(),plan:m.querySelector("#obr-plan").value,storageLimitMB:Math.max(0,+m.querySelector("#obr-lim").value||0)};
+    if(logo)d.logoDataUrl=logo;
+    try{await ownerRetryOnPermissionDenied(()=>ownerGetDb().collection("institutes").doc(id).update(d));try{localStorage.removeItem("snap_brand_"+id)}catch(e){}m.remove();alert("✅ Save ho gaya. Is institute ke admin/students ko agli baar app khulne par naya look dikhega.");}catch(e){alert("Save nahi hua: "+(e.message||e));}
+  };
+}

@@ -658,6 +658,12 @@ service cloud.firestore {
       allow update: if isAdmin() && instituteId == adminInstituteId() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requiresJoinCode']);
 
+      // (a3) v174: Drive upload ka storage-usage counter — admin sirf apne institute ke
+      //      storageUsedBytes / storageFiles badal sakta hai (limit/plan/brand sirf Owner).
+      //      Note: counter client-side maintain hota hai, isliye ye "soft" limit hai (kam sahi koshish).
+      allow update: if isAdmin() && instituteId == adminInstituteId() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['storageUsedBytes', 'storageFiles']);
+
       // (b) Har student ka ID Number ek institute-wide serial number
       //     (studentSerialCounter) se banta hai — student ka apna client
       //     hi (pehli baar registration/ID Card khulte waqt) ise ek

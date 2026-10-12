@@ -289,8 +289,10 @@
       var d = { instituteId: c.A.inst, batchId: o.batchId, title: o.title, desc: o.desc || "", subject: o.subject || "", chapter: o.chapter || "", due: o.dueTxt ? new Date(o.dueTxt).getTime() : 0, maxMarks: +o.maxMarks || 0, url: o.url || "", updatedAt: c.FV().serverTimestamp() }; EXT.stampIds(d, o);
       var upP = Promise.resolve(null);
       if (o.file) {
-        if (!(window.SnapFiles && window.SnapFiles.ready())) { c.toast("Apna storage abhi chalu nahi (internet / Worker R2) — link daalein"); return false; }
+        var sdv = window.SnapDrive && window.SnapDrive.ready();
+        if (!sdv && !(window.SnapFiles && window.SnapFiles.ready())) { c.toast("File storage abhi chalu nahi — link daalein"); return false; }
         c.toast("⏳ Upload ho raha hai… (band na karein)");
+        if (sdv) { upP = (window.SnapQuota ? window.SnapQuota.check(c.A.inst, o.file.size) : Promise.resolve({ ok: true })).then(function (q) { if (!q.ok) throw new Error(q.msg); return window.SnapDrive.upload(o.file, { inst: c.A.inst, batchId: o.batchId }, function (pc) { var bt = document.querySelector(".bm-sheet [data-s]"); bt && (bt.textContent = "Upload " + pc + "%"); }); }).then(function (dd) { window.SnapQuota && window.SnapQuota.add(c.A.inst, dd.size); d.url = dd.url; d.driveId = dd.id; d.fileName = dd.name; return null; }); } else
         upP = window.SnapFiles.upload(o.file, { inst: c.A.inst, batchId: o.batchId }, function (pc) { var bt = document.querySelector(".bm-sheet [data-s]"); bt && (bt.textContent = "Upload " + pc + "%"); });
       }
       var p = upP.then(function (of) {
