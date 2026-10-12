@@ -30,7 +30,7 @@
 
   var installedP = null;
   function installed() {
-    if (!installedP) installedP = cap.nativePromise("App", "getInfo", {}).then(function (i) { return { build: parseInt(i && i.build, 10) || 0, name: (i && i.version) || "" }; }).catch(function () { return { build: 0, name: "" }; });
+    if (!installedP) installedP = cap.nativePromise("App", "getInfo", {}).then(function (i) { return { build: parseInt(i && i.build, 10) || 0, name: (i && i.version) || "", id: (i && i.id) || "" }; }).catch(function () { return { build: 0, name: "" }; });
     return installedP;
   }
   function fetchInfo() {
@@ -54,7 +54,7 @@
       var inst = a[0], apk = (a[1] && a[1].apk) || {}, latest = parseInt(apk.build, 10) || 0;
       state.checked = true; state.installedBuild = inst.build; state.installedName = inst.name;
       state.build = latest; state.name = String(apk.name || ""); state.url = String(apk.url || ""); state.notes = String(apk.notes || "");
-      state.available = !!(inst.build && latest > inst.build && /^https:\/\/github\.com\//.test(state.url));
+      state.available = !!(inst.build && latest > inst.build && /^https:\/\/github\.com\//.test(state.url)) && !/^com\.snaptestpro\.i[a-z0-9]/.test(inst.id || "");   /* v175: institute APK ko main app ka update prompt nahi */
       state.force = !!(apk.force && state.available);
       try { localStorage.setItem(LAST_KEY, String(Date.now())); } catch (e) {}
       try { window.dispatchEvent(new CustomEvent("snap-apk-update", { detail: state })); } catch (e) {}

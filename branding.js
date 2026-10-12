@@ -21,6 +21,8 @@
   /* is device par abhi kaun sa institute? admin ho to uska, warna student ka (login ke baad) */
   function instId() {
     var id = null;
+    try { if (window.SnapLock) id = window.SnapLock.id(); } catch (e) {}
+    if (id) return id;
     try { if (typeof getCurrentAdminInstituteId === "function") id = getCurrentAdminInstituteId(); } catch (e) {}
     if (!id) { try { var s = typeof getStudentSession === "function" ? getStudentSession() : null; id = s && s.instituteId; } catch (e) {} }
     return id || null;
@@ -77,7 +79,7 @@
     fetch("manifest.webmanifest").then(function (r) { return r.json(); }).then(function (m) { baseManifest = m; go(m); }).catch(function () {});
   }
 
-  function pick(d) { var x = d || {}; return { name: x.name || "", logoDataUrl: x.logoDataUrl || "", brandColor: x.brandColor || "", tagline: x.tagline || "", plan: x.plan || "", storageLimitMB: +x.storageLimitMB || 0, storageUsedBytes: +x.storageUsedBytes || 0, t: Date.now() }; }
+  function pick(d) { var x = d || {}; return { active: x.active !== false, name: x.name || "", logoDataUrl: x.logoDataUrl || "", brandColor: x.brandColor || "", tagline: x.tagline || "", plan: x.plan || "", storageLimitMB: +x.storageLimitMB || 0, storageUsedBytes: +x.storageUsedBytes || 0, t: Date.now() }; }
 
   function load(id, force) {
     var c = jget(PFX + id);
@@ -114,7 +116,7 @@
     }, function () { return false; });
   }
 
-  window.SnapBrand = { refresh: refresh, load: load };
+  window.SnapBrand = { refresh: refresh, load: load, cached: function (id) { return jget(PFX + id); } };
   window.SnapQuota = { check: check, add: function (id, b) { return bump(id, b, 1); }, sub: function (id, b) { return bump(id, -Math.abs(b || 0), -1); } };
 
   /* shuru: pichla institute turant dikhao, phir login/session badalne par dobara */

@@ -18,6 +18,7 @@ Owner Panel sirf iss email se khulta hai: `+OWNER_TRUE_EMAIL+`
             <button type="button" class="owner-mini-btn" onclick="ownerRenameInstitute('${a.id}', '${ownerEscAttr(a.name||"")}')">✏️ Rename</button>
             <button type="button" class="owner-mini-btn" onclick="ownerSetInstituteOwnerName('${a.id}', '${ownerEscAttr(a.ownerName||"")}')">👤 Owner Naam</button>
             <button type="button" class="owner-mini-btn" onclick="ownerBrandingEdit('${a.id}')">🎨 Branding &amp; Plan</button>
+            <button type="button" class="owner-mini-btn" onclick="ownerApkInfo('${a.id}')">📱 APK / App Link</button>
             <button type="button" class="owner-mini-btn" onclick="ownerToggleInstitute('${a.id}', ${a.active===!1})">${a.active===!1?"▶️ Activate":"⏸️ Deactivate"}</button>
             <button type="button" class="owner-mini-btn owner-mini-danger" onclick="ownerDeleteInstitute('${a.id}')">🗑️ Remove</button>
           </div>
@@ -152,4 +153,30 @@ function ownerBrandingEdit(id){
     if(logo)d.logoDataUrl=logo;
     try{await ownerRetryOnPermissionDenied(()=>ownerGetDb().collection("institutes").doc(id).update(d));try{localStorage.removeItem("snap_brand_"+id)}catch(e){}m.remove();alert("✅ Save ho gaya. Is institute ke admin/students ko agli baar app khulne par naya look dikhega.");}catch(e){alert("Save nahi hua: "+(e.message||e));}
   };
+}
+
+
+/* ===== v175: Institute ka apna APK / app link ===== */
+function ownerApkInfo(id){
+  const a=(typeof _ownerInstitutesCache!=="undefined"&&_ownerInstitutesCache[id])||{};
+  const cfg=window.SNAP_CONFIG||{},repo=cfg.githubRepo||"SnaptestPro/snaptestpro.github.io",web=(cfg.webUrl||"https://snaptestpro.github.io/").replace(/\/?$/,"/");
+  const slug=String(id).toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,40),pkg="com.snaptestpro.i"+slug;
+  const link=web+"?inst="+encodeURIComponent(id),act="https://github.com/"+repo+"/actions/workflows/build-institute-apk.yml";
+  const old=document.getElementById("owner-apk-modal");old&&old.remove();
+  const m=document.createElement("div");m.id="owner-apk-modal";
+  m.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px;";
+  const row=(l,v)=>`<div style="margin:8px 0;"><div style="font-size:.74rem;color:#666;">${l}</div><div style="display:flex;gap:6px;"><input readonly value="${ownerEscAttr(v)}" style="flex:1;padding:7px;font-size:.78rem;min-width:0;"><button type="button" class="owner-mini-btn" data-copy="${ownerEscAttr(v)}">Copy</button></div></div>`;
+  m.innerHTML=`<div style="background:#fff;color:#111;border-radius:14px;max-width:440px;width:100%;max-height:92vh;overflow:auto;padding:16px;">
+    <h3 style="margin:0 0 4px;">📱 ${ownerEsc(a.name||id)} — APK / App Link</h3>
+    <div style="font-size:.78rem;margin-bottom:8px;">Status: <b style="color:${a.active===false?"#dc2626":"#16a34a"}">${a.active===false?"DEACTIVE (app band hai)":"ACTIVE"}</b> — Activate/Deactivate institute card ke button se.</div>
+    ${row("Institute ID (APK banate waqt ye daalna hai)",id)}
+    ${row("Is institute ka apna web/app link (bina APK ke bhi chalega)",link)}
+    ${row("APK ka package naam",pkg)}
+    <div style="font-size:.8rem;line-height:1.55;margin:10px 0;background:#f4f4ff;border-radius:10px;padding:10px;">
+      <b>APK kaise banayein:</b><br>1. Neeche "GitHub Actions kholo" dabao.<br>2. <b>Run workflow</b> dabao, <b>institute_id</b> me upar wali ID paste karo, Run.<br>3. 10-15 min baad us run ke Summary me APK ka download link milega.<br>4. Wo link/APK institute ko do. Logo, naam, rang apne-aap lag jayenge.<br>
+      <span style="color:#555;">Website update karte hi sab institute APK (Live mode me) update ho jaate hain.</span></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;"><button type="button" id="oap-x" class="owner-mini-btn">Band karo</button><a href="${act}" target="_blank" rel="noopener" class="owner-mini-btn" style="background:#4f46e5;color:#fff;text-decoration:none;padding:8px 12px;border-radius:8px;">GitHub Actions kholo</a></div></div>`;
+  document.body.appendChild(m);
+  m.querySelector("#oap-x").onclick=()=>m.remove();
+  m.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>{const t=b.getAttribute("data-copy");(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{b.textContent="✓"},()=>{prompt("Copy karein:",t)});});
 }

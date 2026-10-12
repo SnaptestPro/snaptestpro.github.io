@@ -12,6 +12,9 @@ window.SNAP_CONFIG = {
   ownFiles: false,                                                    // Cloudflare R2 (card chahiye) band — file upload ab Google Drive se
   googleClientId: "",                                                 // <-- yahan Google OAuth Web Client ID daalein (DRIVE_SETUP_HINDI.md dekhein). Khaali = Drive upload band
   driveUpload: true,
+  githubRepo: "SnaptestPro/snaptestpro.github.io",                   // Owner Panel ke "📱 APK" button ke liye
+  webUrl: "https://snaptestpro.github.io/",
+  appLock: true,                                                      // institute-APK / ?inst= link lock + "app band hai" screen (kill-switch)
   snapLive: false,                                                    // true tab karein jab Cloudflare R2 (LIVE_R2) set ho jaye — tab "SnapLive" option dikhega
   ownerAlertEmail: "vishnu1234stm@gmail.com",                         // is email se login par owner app me alerts ka push aata hai
   build: "168",
