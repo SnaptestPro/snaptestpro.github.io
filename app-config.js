@@ -14,6 +14,14 @@ window.SNAP_CONFIG = {
   driveUpload: true,
   githubRepo: "SnaptestPro/snaptestpro.github.io",                   // Owner Panel ke "📱 APK" button ke liye
   webUrl: "https://snaptestpro.github.io/",
+  graceDays: 3,                                                       // plan expire ke baad itne din app chalta rehta hai (rules me bhi 3 din)
+  plans: {                                                            // Owner Panel ke "Branding & Plan" ke preset — number aap badal sakte ho
+    Free:    { studentLimit: 30,   storageLimitMB: 500 },
+    Basic:   { studentLimit: 150,  storageLimitMB: 3000 },
+    Pro:     { studentLimit: 500,  storageLimitMB: 10000 },
+    Premium: { studentLimit: 2000, storageLimitMB: 30000 },
+    Custom:  {}
+  },
   appLock: true,                                                      // institute-APK / ?inst= link lock + "app band hai" screen (kill-switch)
   snapLive: false,                                                    // true tab karein jab Cloudflare R2 (LIVE_R2) set ho jaye — tab "SnapLive" option dikhega
   ownerAlertEmail: "vishnu1234stm@gmail.com",                         // is email se login par owner app me alerts ka push aata hai

@@ -180,6 +180,34 @@ service cloud.firestore {
     // jaata tha. Ab ye verification `students/{mobile}` ke CREATE rule
     // mein khud, server-side, unconditionally hoti hai — client ka
     // cache kuch bhi ho, koi farq nahi padta.
+    // ── v176: Plan expiry + Student limit — SERVER-SIDE (registration par) ─────────
+    // Owner Panel se institute par ye optional fields lagte hain:
+    //   active (false = band), planExpiresAt (epoch ms; 0/nahi = bina expiry), studentLimit (0/nahi = bina limit),
+    //   studentCount (counter). Naya registration tabhi banta hai jab institute active ho, plan expire na hua ho
+    //   (3 din grace), aur limit poori na ho. Limit wale institute me counter +1 usi batch me hona ZAROORI hai
+    //   (client registration ko batch me bhejta hai: student doc + institute counter) — rule getAfter() se verify karta hai.
+    function instRegistrationOpen(instituteId, mobile) {
+      return instituteId == null ||
+        !exists(/databases/$(database)/documents/institutes/$(instituteId)) ||
+        (
+          get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('active', true) != false &&
+          (
+            get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('planExpiresAt', 0) == 0 ||
+            request.time.toMillis() < get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('planExpiresAt', 0) + 259200000
+          ) &&
+          (
+            get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('studentLimit', 0) == 0 ||
+            (
+              get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('studentCount', 0) <
+                get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('studentLimit', 0) &&
+              getAfter(/databases/$(database)/documents/institutes/$(instituteId)).data.get('studentCount', 0) ==
+                get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('studentCount', 0) + 1 &&
+              getAfter(/databases/$(database)/documents/institutes/$(instituteId)).data.get('lastRegMobile', '') == mobile
+            )
+          )
+        );
+    }
+
     function instituteRequiresJoinCode(instituteId) {
       return instituteId != null &&
         exists(/databases/$(database)/documents/institutes/$(instituteId)) &&
@@ -474,6 +502,8 @@ service cloud.firestore {
           ('instituteId' in request.resource.data) ? request.resource.data.instituteId : null
         ) ||
         joinCodeVerifiedForRegistration(mobile, request.resource.data.instituteId)
+      ) && instRegistrationOpen(
+        ('instituteId' in request.resource.data) ? request.resource.data.instituteId : null, mobile
       );
 
       // ⚠️ FIX (v133): pehle "update" poori tarah khula tha
@@ -663,6 +693,18 @@ service cloud.firestore {
       //      Note: counter client-side maintain hota hai, isliye ye "soft" limit hai (kam sahi koshish).
       allow update: if isAdmin() && instituteId == adminInstituteId() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['storageUsedBytes', 'storageFiles']);
+
+      // (a4) v176: student registration counter — SIRF naya student banne ke saath (same batch me).
+      //      Counter +1 hi ho sakta hai, aur `lastRegMobile` wala student pehle exist nahi karna chahiye
+      //      par batch ke baad us institute ke naam se exist karna chahiye. Isliye counter bina student banaye
+      //      badhaya/ghataya nahi ja sakta. (Admin counter nahi chhed sakta; ghatne par Owner "Recount" karta hai.)
+      allow update: if isSignedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studentCount', 'lastRegMobile']) &&
+        request.resource.data.lastRegMobile is string &&
+        request.resource.data.get('studentCount', 0) == resource.data.get('studentCount', 0) + 1 &&
+        !exists(/databases/$(database)/documents/students/$(request.resource.data.lastRegMobile)) &&
+        existsAfter(/databases/$(database)/documents/students/$(request.resource.data.lastRegMobile)) &&
+        getAfter(/databases/$(database)/documents/students/$(request.resource.data.lastRegMobile)).data.instituteId == instituteId;
 
       // (b) Har student ka ID Number ek institute-wide serial number
       //     (studentSerialCounter) se banta hai — student ka apna client

@@ -7,7 +7,7 @@ Aapne sign-in kiya: `+n+`
 Owner Panel sirf iss email se khulta hai: `+OWNER_TRUE_EMAIL+`
 
 (Agar ye kisi Admin/institute ka email hai, to use Admin login se try karein, Owner Panel se nahi.)`);return}ownerRememberEmail(n),ownerSetLoggedInFlag(),ownerShowPanel()}catch(i){console.warn("[owner] login failed",i&&i.code),alert("Galat email ya password (ya ye email Owner ke roop mein authorize nahi hai).")}}async function ownerForgotPassword(){const e=ownerGetAuth();if(!e){alert("⚠️ Firebase Auth load nahi hua. Page reload karein.");return}let t=(document.getElementById("owner-email")?.value||"").trim();if(t||(t=(prompt("Apna Owner email address likhein — usi par password reset link bhejenge:",ownerGetRememberedEmail())||"").trim()),!!t){if(!ownerIsEmailLike(t)){alert("Sahi email address likhein.");return}try{await e.sendPasswordResetEmail(t),alert("✅ Agar ye email Owner account se registered hai, to reset link bhej diya gaya hai. Apna inbox (aur spam folder) check karein.")}catch(n){console.error("[owner] forgot-password failed",n),alert("Reset email bhejne mein dikkat hui: "+(n.message||n))}}}function ownerLogout(){if(confirm("Owner session se logout karein?")){try{const e=ownerGetAuth();e&&e.currentUser&&e.signOut().catch(()=>{})}catch{}ownerClearLoggedInFlag(),closeOwnerOverlay(),ownerShowLogin()}}function ownerStartListeners(){if(_ownerListenersStarted){ownerRenderList();return}const e=ownerGetDb();if(!e){alert("⚠️ Firestore load nahi hua.");return}_ownerListenersStarted=!0,e.collection("institutes").onSnapshot(t=>{_ownerInstitutesCache={},t.forEach(n=>{_ownerInstitutesCache[n.id]={id:n.id,...n.data()}}),ownerRenderList()},t=>{console.error("[owner] institutes listener error",t);const n=document.getElementById("owner-institutes-list");n&&(n.innerHTML=`<p class="muted-text">⚠️ Load nahi ho paaya: ${t.message||t}</p>`)}),e.collection("admins").onSnapshot(t=>{_ownerAdminsCache={},t.forEach(n=>{_ownerAdminsCache[n.id]={email:n.id,...n.data()}}),ownerRenderList()},t=>console.error("[owner] admins listener error",t))}function ownerRenderList(){const e=document.getElementById("owner-institutes-list");if(!e)return;const t=Object.values(_ownerInstitutesCache).sort((a,o)=>(a.name||"").localeCompare(o.name||"")),n={},r=[];if(Object.values(_ownerAdminsCache).forEach(a=>{a.instituteId&&_ownerInstitutesCache[a.instituteId]?(n[a.instituteId]=n[a.instituteId]||[]).push(a):r.push(a)}),t.length===0&&r.length===0){e.innerHTML='<p class="muted-text">Abhi koi institute add nahi hua. Upar wale form se pehla institute banayein.</p>';return}let i="";t.forEach(a=>{const o=n[a.id]||[];i+=`
-      <div class="owner-inst-card">
+      <div class="owner-inst-card" data-iid="${a.id}">
         <div class="owner-inst-head">
           <div>
             <strong>${ownerDecorateInstituteName(a.name||"(naam nahi)")}</strong>
@@ -107,13 +107,21 @@ Isse is institute se uska access turant band ho jayega. (Uska Firebase Auth logi
 
 
 /* ===== v174: Branding & Plan (har institute ko apna look + storage limit) ===== */
+function ownerFmtDate(ms){return new Date(ms).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric",timeZone:"Asia/Kolkata"})}
+function ownerExpState(a){
+  const e=+a.planExpiresAt||0;if(!e)return{k:"none",txt:"♾️ bina expiry",c:"#64748b"};
+  const d=Math.ceil((e-Date.now())/864e5);
+  if(d<0)return{k:"expired",txt:d>=-3?`⚠️ Expired (${-d} din pehle, grace me)`:`❌ Expired (${-d} din pehle)`,c:"#dc2626"};
+  if(d<=7)return{k:"soon",txt:`⏳ ${d} din bache (${ownerFmtDate(e)})`,c:"#d97706"};
+  return{k:"ok",txt:`✅ ${ownerFmtDate(e)} tak`,c:"#16a34a"};
+}
 function ownerBrandInfoHtml(a){
-  const used=Math.round((a.storageUsedBytes||0)/1048576),lim=+a.storageLimitMB||0;
-  const bar=lim?`${used} / ${lim} MB`:`${used} MB (limit nahi)`;
-  const over=lim&&used>=lim;
-  return `<div class="muted-text" style="font-size:.76rem;margin:4px 0 8px;">`+
+  const used=Math.round((a.storageUsedBytes||0)/1048576),lim=+a.storageLimitMB||0,sl=+a.studentLimit||0,sc=+a.studentCount||0,ex=ownerExpState(a);
+  const full=sl&&sc>=sl,over=lim&&used>=lim,bar=lim?`${used} / ${lim} MB`:`${used} MB`;
+  return `<div class="muted-text" style="font-size:.76rem;margin:4px 0 8px;line-height:1.75;">`+
     `${a.brandColor?`<span style="display:inline-block;width:11px;height:11px;border-radius:3px;background:${ownerEsc(a.brandColor)};vertical-align:middle;margin-right:4px;"></span>`:""}`+
-    `📦 Plan: <b>${ownerEsc(a.plan||"Free")}</b> • 💾 Drive storage: <b style="${over?"color:#dc2626;":""}">${bar}</b> • 📄 ${a.storageFiles||0} files</div>`;
+    `📦 <b>${ownerEsc(a.plan||"Free")}</b> • <span style="color:${ex.c};font-weight:700;">${ex.txt}</span><br>`+
+    `👥 <b style="${full?"color:#dc2626;":""}">${sc}${sl?" / "+sl:""}</b> students${full?" (limit poori)":""} • 💾 <b style="${over?"color:#dc2626;":""}">${bar}</b> • 📄 ${a.storageFiles||0} files</div>`;
 }
 function ownerBrandingEdit(id){
   const a=(typeof _ownerInstitutesCache!=="undefined"&&_ownerInstitutesCache[id])||{};
@@ -122,7 +130,7 @@ function ownerBrandingEdit(id){
   m.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:14px;";
   const plans=["Free","Basic","Pro","Premium","Custom"];
   m.innerHTML=`<div style="background:#fff;color:#111;border-radius:14px;max-width:420px;width:100%;max-height:92vh;overflow:auto;padding:16px;">
-    <h3 style="margin:0 0 10px;">🎨 Branding &amp; Plan — ${ownerEsc(a.name||id)}</h3>
+    <h3 style="margin:0 0 10px;">🎨 Branding, Plan &amp; Limits — ${ownerEsc(a.name||id)}</h3>
     <label style="font-size:.8rem;font-weight:600;">App ka rang</label>
     <input id="obr-color" type="color" value="${/^#[0-9a-f]{6}$/i.test(a.brandColor||"")?a.brandColor:"#4f46e5"}" style="width:100%;height:42px;margin:4px 0 10px;">
     <label style="font-size:.8rem;font-weight:600;">Tagline (header ke neeche)</label>
@@ -133,10 +141,18 @@ function ownerBrandingEdit(id){
     <select id="obr-plan" style="width:100%;padding:8px;margin:4px 0 10px;">${plans.map(p=>`<option ${p===(a.plan||"Free")?"selected":""}>${p}</option>`).join("")}</select>
     <label style="font-size:.8rem;font-weight:600;">Drive storage limit (MB) — 0 = bina limit</label>
     <input id="obr-lim" type="number" min="0" value="${+a.storageLimitMB||0}" style="width:100%;padding:8px;margin:4px 0 4px;box-sizing:border-box;">
+    <label style="font-size:.8rem;font-weight:600;">Student limit — 0 = bina limit</label>
+    <input id="obr-slim" type="number" min="0" value="${+a.studentLimit||0}" style="width:100%;padding:8px;margin:4px 0 10px;box-sizing:border-box;">
+    <label style="font-size:.8rem;font-weight:600;">Plan expiry date (khaali = bina expiry)</label>
+    <input id="obr-exp" type="date" value="${a.planExpiresAt>0?new Date(a.planExpiresAt+19800000).toISOString().slice(0,10):""}" style="width:100%;padding:8px;margin:4px 0 6px;box-sizing:border-box;">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;"><button type="button" class="owner-mini-btn" data-add="30">+30 din</button><button type="button" class="owner-mini-btn" data-add="90">+90 din</button><button type="button" class="owner-mini-btn" data-add="365">+1 saal</button><button type="button" class="owner-mini-btn" data-add="0">Expiry hatao</button></div>
     <div class="muted-text" style="font-size:.72rem;margin-bottom:12px;">Abhi use: ${Math.round((a.storageUsedBytes||0)/1048576)} MB (${a.storageFiles||0} files). Ye limit sirf app ke through hue uploads par lagti hai.</div>
     <div style="display:flex;gap:8px;justify-content:flex-end;"><button type="button" id="obr-x" class="owner-mini-btn">Cancel</button><button type="button" id="obr-reset" class="owner-mini-btn">Usage reset</button><button type="button" id="obr-ok" class="owner-mini-btn" style="background:#4f46e5;color:#fff;">Save</button></div></div>`;
   document.body.appendChild(m);
   let logo=null;
+  const preset=()=>{const pl=((window.SNAP_CONFIG||{}).plans||{})[m.querySelector("#obr-plan").value];if(pl&&pl.studentLimit!=null){m.querySelector("#obr-slim").value=pl.studentLimit;m.querySelector("#obr-lim").value=pl.storageLimitMB||0}};
+  m.querySelector("#obr-plan").onchange=preset;
+  m.querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>{const n=+b.getAttribute("data-add"),inp=m.querySelector("#obr-exp");if(!n){inp.value="";return}let base=inp.value?Date.parse(inp.value+"T00:00:00+05:30"):Date.now();if(!(base>Date.now()))base=Date.now();inp.value=new Date(base+n*864e5+19800000).toISOString().slice(0,10)});
   m.querySelector("#obr-x").onclick=()=>m.remove();
   m.querySelector("#obr-logo").onchange=e=>{
     const f=e.target.files[0];if(!f)return;
@@ -149,14 +165,70 @@ function ownerBrandingEdit(id){
     try{await ownerRetryOnPermissionDenied(()=>ownerGetDb().collection("institutes").doc(id).update({storageUsedBytes:0,storageFiles:0}));try{localStorage.removeItem("snap_brand_"+id)}catch(e){}alert("Usage reset ho gaya.");m.remove();}catch(e){alert("Nahi hua: "+(e.message||e));}
   };
   m.querySelector("#obr-ok").onclick=async()=>{
-    const d={brandColor:m.querySelector("#obr-color").value,tagline:m.querySelector("#obr-tag").value.trim(),plan:m.querySelector("#obr-plan").value,storageLimitMB:Math.max(0,+m.querySelector("#obr-lim").value||0)};
+    const d={brandColor:m.querySelector("#obr-color").value,tagline:m.querySelector("#obr-tag").value.trim(),plan:m.querySelector("#obr-plan").value,storageLimitMB:Math.max(0,+m.querySelector("#obr-lim").value||0),studentLimit:Math.max(0,Math.floor(+m.querySelector("#obr-slim").value||0)),planExpiresAt:(()=>{const v=m.querySelector("#obr-exp").value;const t=v?Date.parse(v+"T23:59:59+05:30"):0;return t>0?t:0})()};
     if(logo)d.logoDataUrl=logo;
     try{await ownerRetryOnPermissionDenied(()=>ownerGetDb().collection("institutes").doc(id).update(d));try{localStorage.removeItem("snap_brand_"+id)}catch(e){}m.remove();alert("✅ Save ho gaya. Is institute ke admin/students ko agli baar app khulne par naya look dikhega.");}catch(e){alert("Save nahi hua: "+(e.message||e));}
   };
 }
 
 
-/* ===== v175: Institute ka apna APK / app link ===== */
+/* ===== v176: Owner Dashboard (plan/expiry/students/storage), Recount, CSV, APK build button ===== */
+async function ownerWorkerCall(path,method,body){
+  const W=(window.SNAP_CONFIG&&window.SNAP_CONFIG.workerUrl)||"https://cool-thunder-a280.vishnu1234stm.workers.dev";
+  const u=firebase.auth().currentUser;if(!u)throw new Error("Owner login chahiye");
+  const r=await fetch(W+path,{method:method||"GET",headers:Object.assign({Authorization:"Bearer "+await u.getIdToken()},body?{"Content-Type":"application/json"}:{}),body:body?JSON.stringify(body):undefined});
+  const j=await r.json().catch(()=>({}));if(!r.ok||!j.ok)throw new Error(j.error||("HTTP "+r.status));return j;
+}
+let _ownerDashFilter="all";
+function ownerDashHtml(){
+  const L=Object.values(_ownerInstitutesCache);let act=0,off=0,soon=0,exp=0,stu=0,bytes=0,full=0;
+  L.forEach(a=>{a.active===false?off++:act++;const e=ownerExpState(a);if(e.k==="soon")soon++;if(e.k==="expired")exp++;stu+=+a.studentCount||0;bytes+=+a.storageUsedBytes||0;if(+a.studentLimit>0&&(+a.studentCount||0)>=+a.studentLimit)full++});
+  const card=(n,l,c)=>`<div style="flex:1 1 92px;min-width:92px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:8px;text-align:center;"><div style="font-size:1.15rem;font-weight:800;color:${c||"#111"};">${n}</div><div style="font-size:.68rem;color:#666;">${l}</div></div>`;
+  const chip=(k,l)=>`<button type="button" class="owner-mini-btn" data-f="${k}" style="${_ownerDashFilter===k?"background:#4f46e5;color:#fff;":""}">${l}</button>`;
+  return `<div style="margin:8px 0 14px;"><div style="display:flex;flex-wrap:wrap;gap:6px;">`+
+    card(L.length,"Total institutes")+card(act,"Active","#16a34a")+card(off,"Inactive",off?"#dc2626":"#111")+card(soon,"7 din me expire",soon?"#d97706":"#111")+card(exp,"Expired",exp?"#dc2626":"#111")+card(stu,"Total students")+card(full,"Limit poori",full?"#dc2626":"#111")+card((bytes/1073741824).toFixed(2)+" GB","Drive use")+
+    `</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center;">${chip("all","Sab")}${chip("soon","⏳ Jaldi expire")}${chip("expired","❌ Expired")}${chip("off","⛔ Inactive")}${chip("full","👥 Limit poori")}`+
+    `<span style="flex:1"></span><button type="button" class="owner-mini-btn" id="owner-recount-all">🔄 Student count sahi karo</button><button type="button" class="owner-mini-btn" id="owner-csv">⬇️ CSV</button></div><div id="owner-dash-msg" class="muted-text" style="font-size:.74rem;margin-top:4px;"></div></div>`;
+}
+function ownerDashApplyFilter(){
+  document.querySelectorAll("#owner-institutes-list .owner-inst-card").forEach(c=>{
+    const a=_ownerInstitutesCache[c.getAttribute("data-iid")]||{},e=ownerExpState(a);
+    const ok=_ownerDashFilter==="all"||(_ownerDashFilter==="soon"&&e.k==="soon")||(_ownerDashFilter==="expired"&&e.k==="expired")||(_ownerDashFilter==="off"&&a.active===false)||(_ownerDashFilter==="full"&&+a.studentLimit>0&&(+a.studentCount||0)>=+a.studentLimit);
+    c.style.display=ok?"":"none";
+  });
+}
+function ownerRenderDashboard(){
+  const list=document.getElementById("owner-institutes-list");if(!list)return;
+  let d=document.getElementById("owner-dash");if(!d){d=document.createElement("div");d.id="owner-dash";list.parentNode.insertBefore(d,list)}
+  d.innerHTML=ownerDashHtml();
+  d.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{_ownerDashFilter=b.getAttribute("data-f");ownerRenderDashboard()});
+  d.querySelector("#owner-recount-all").onclick=ownerRecountAll;d.querySelector("#owner-csv").onclick=ownerExportCsv;
+  ownerDashApplyFilter();
+}
+async function ownerRecountAll(){
+  const msg=document.getElementById("owner-dash-msg"),ids=Object.keys(_ownerInstitutesCache);if(!ids.length)return;
+  if(!confirm(ids.length+" institutes ke student count Firestore se ginkar sahi kiye jayenge (Worker se). Chalu karein?"))return;
+  let done=0;
+  try{
+    for(let i=0;i<ids.length;i+=20){
+      msg&&(msg.textContent="Count ho raha hai… "+done+" / "+ids.length);
+      const j=await ownerWorkerCall("/owner/recount","POST",{ids:ids.slice(i,i+20)});
+      Object.keys(j.counts||{}).forEach(k=>{if(_ownerInstitutesCache[k])_ownerInstitutesCache[k].studentCount=j.counts[k]});
+      done+=Math.min(20,ids.length-i);
+    }
+    msg&&(msg.textContent="✅ Sab institutes ka student count sahi ho gaya.");ownerRenderList();
+  }catch(e){msg&&(msg.textContent="❌ "+(e.message||e)+(/GITHUB|Worker|HTTP|Failed to fetch/i.test(e.message||"")?"":""))}
+}
+function ownerExportCsv(){
+  const q=v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"',rows=[["Naam","ID","Active","Plan","Expiry","Students","Student limit","Storage MB","Storage limit MB","Files"]];
+  Object.values(_ownerInstitutesCache).sort((a,b)=>(a.name||"").localeCompare(b.name||"")).forEach(a=>rows.push([a.name||"",a.id,a.active===false?"No":"Yes",a.plan||"Free",a.planExpiresAt>0?new Date(a.planExpiresAt+19800000).toISOString().slice(0,10):"",a.studentCount||0,a.studentLimit||0,Math.round((a.storageUsedBytes||0)/1048576),a.storageLimitMB||0,a.storageFiles||0]));
+  const b=new Blob(["\ufeff"+rows.map(r=>r.map(q).join(",")).join("\n")],{type:"text/csv"}),u=URL.createObjectURL(b),a=document.createElement("a");
+  a.href=u;a.download="snaptestpro-institutes-"+new Date().toISOString().slice(0,10)+".csv";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);
+}
+/* ownerRenderList ke baad dashboard + filter apne-aap */
+(function(){const _o=ownerRenderList;ownerRenderList=function(){const r=_o.apply(this,arguments);try{ownerRenderDashboard()}catch(e){console.warn("[owner dash]",e)}return r}})();
+
+/* ===== Institute ka apna APK / App Link (+ "APK banao" button) ===== */
 function ownerApkInfo(id){
   const a=(typeof _ownerInstitutesCache!=="undefined"&&_ownerInstitutesCache[id])||{};
   const cfg=window.SNAP_CONFIG||{},repo=cfg.githubRepo||"SnaptestPro/snaptestpro.github.io",web=(cfg.webUrl||"https://snaptestpro.github.io/").replace(/\/?$/,"/");
@@ -168,15 +240,37 @@ function ownerApkInfo(id){
   const row=(l,v)=>`<div style="margin:8px 0;"><div style="font-size:.74rem;color:#666;">${l}</div><div style="display:flex;gap:6px;"><input readonly value="${ownerEscAttr(v)}" style="flex:1;padding:7px;font-size:.78rem;min-width:0;"><button type="button" class="owner-mini-btn" data-copy="${ownerEscAttr(v)}">Copy</button></div></div>`;
   m.innerHTML=`<div style="background:#fff;color:#111;border-radius:14px;max-width:440px;width:100%;max-height:92vh;overflow:auto;padding:16px;">
     <h3 style="margin:0 0 4px;">📱 ${ownerEsc(a.name||id)} — APK / App Link</h3>
-    <div style="font-size:.78rem;margin-bottom:8px;">Status: <b style="color:${a.active===false?"#dc2626":"#16a34a"}">${a.active===false?"DEACTIVE (app band hai)":"ACTIVE"}</b> — Activate/Deactivate institute card ke button se.</div>
-    ${row("Institute ID (APK banate waqt ye daalna hai)",id)}
-    ${row("Is institute ka apna web/app link (bina APK ke bhi chalega)",link)}
+    <div style="font-size:.78rem;margin-bottom:8px;">Status: <b style="color:${a.active===false?"#dc2626":"#16a34a"}">${a.active===false?"DEACTIVE (app band hai)":"ACTIVE"}</b> • Plan: <b style="color:${ownerExpState(a).c}">${ownerExpState(a).txt}</b></div>
+    <div id="oap-st" style="font-size:.84rem;line-height:1.5;background:#f4f4ff;border-radius:10px;padding:10px;margin-bottom:8px;">APK status check ho raha hai…</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;"><button type="button" id="oap-go" class="owner-mini-btn" style="background:#4f46e5;color:#fff;">🚀 APK banao / update karo</button><button type="button" id="oap-rf" class="owner-mini-btn">🔄 Status</button></div>
+    ${row("Is institute ka web/app link (bina APK ke bhi chalega)",link)}
+    ${row("Institute ID",id)}
     ${row("APK ka package naam",pkg)}
-    <div style="font-size:.8rem;line-height:1.55;margin:10px 0;background:#f4f4ff;border-radius:10px;padding:10px;">
-      <b>APK kaise banayein:</b><br>1. Neeche "GitHub Actions kholo" dabao.<br>2. <b>Run workflow</b> dabao, <b>institute_id</b> me upar wali ID paste karo, Run.<br>3. 10-15 min baad us run ke Summary me APK ka download link milega.<br>4. Wo link/APK institute ko do. Logo, naam, rang apne-aap lag jayenge.<br>
-      <span style="color:#555;">Website update karte hi sab institute APK (Live mode me) update ho jaate hain.</span></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;"><button type="button" id="oap-x" class="owner-mini-btn">Band karo</button><a href="${act}" target="_blank" rel="noopener" class="owner-mini-btn" style="background:#4f46e5;color:#fff;text-decoration:none;padding:8px 12px;border-radius:8px;">GitHub Actions kholo</a></div></div>`;
+    <div style="font-size:.74rem;color:#555;margin:6px 0 10px;line-height:1.5;">Logo, naam, rang apne-aap lagte hain (pehle "🎨 Branding" me logo daal do). Website update karte hi Live-mode APK sab update ho jaate hain — naya APK sirf icon/naam badalne par chahiye.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;"><button type="button" id="oap-x" class="owner-mini-btn">Band karo</button><a href="${act}" target="_blank" rel="noopener" class="owner-mini-btn" style="text-decoration:none;padding:8px 12px;border-radius:8px;">GitHub Actions</a></div></div>`;
   document.body.appendChild(m);
-  m.querySelector("#oap-x").onclick=()=>m.remove();
-  m.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>{const t=b.getAttribute("data-copy");(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{b.textContent="✓"},()=>{prompt("Copy karein:",t)});});
+  const st=m.querySelector("#oap-st");let timer=null;
+  const stop=()=>{timer&&clearInterval(timer);timer=null};
+  m.querySelector("#oap-x").onclick=()=>{stop();m.remove()};
+  m.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>{const t=b.getAttribute("data-copy");(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{b.textContent="✓"},()=>{prompt("Copy karein:",t)})});
+  const show=(h)=>{if(document.body.contains(m))st.innerHTML=h};
+  async function refresh(){
+    try{
+      const j=await ownerWorkerCall("/owner/apk-status?instituteId="+encodeURIComponent(id)),r=j.run;
+      const dl=j.apkUrl?`<br>📥 <a href="${ownerEscAttr(j.apkUrl)}" target="_blank" rel="noopener"><b>APK download</b></a> <button type="button" class="owner-mini-btn" id="oap-cp">Link copy</button><br><span style="color:#666;font-size:.74rem;">${ownerEsc(j.version||"")}</span>`:"";
+      if(!r){show(j.apkUrl?"✅ APK tayyar hai."+dl:"Abhi tak is institute ka APK nahi bana. <b>🚀 APK banao</b> dabao.");}
+      else if(r.status!=="completed"){show("⏳ APK ban raha hai (10-15 min lagte hain)…"+(j.apkUrl?"<br>Pichla APK:"+dl:""));if(!timer)timer=setInterval(()=>{if(!document.body.contains(m))return stop();refresh()},20000)}
+      else{stop();show(r.conclusion==="success"?(j.apkUrl?"✅ APK tayyar hai!"+dl:`✅ Build ho gaya par release link nahi mila (keystore secret nahi hoga?) — <a href="${ownerEscAttr(r.url)}" target="_blank" rel="noopener">GitHub run kholo</a>`):`❌ Build fail hua — <a href="${ownerEscAttr(r.url)}" target="_blank" rel="noopener">logs dekhein</a>`+(j.apkUrl?"<br>Pichla chalta APK:"+dl:""))}
+      const cp=m.querySelector("#oap-cp");if(cp)cp.onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(j.apkUrl).then(()=>{cp.textContent="✓"})};
+    }catch(e){stop();show("⚠️ Status nahi mila: "+ownerEsc(e.message||e)+(/GITHUB_TOKEN/.test(e.message||"")?"<br>Guide ka 'Worker me GITHUB_TOKEN' step karein.":""))}
+  }
+  m.querySelector("#oap-rf").onclick=refresh;
+  m.querySelector("#oap-go").onclick=async()=>{
+    if(a.active===false&&!confirm("Ye institute abhi DEACTIVE hai — APK banega par app 'band hai' dikhayegi. Phir bhi banayein?"))return;
+    if(!confirm((a.name||id)+" ka APK banana shuru karein? (10-15 min lagte hain)"))return;
+    show("🚀 Build shuru kar raha hu…");
+    try{await ownerWorkerCall("/owner/apk","POST",{instituteId:id,appName:"",live:true});show("⏳ Build shuru ho gaya. Kuch second me status aayega…");setTimeout(refresh,8000)}
+    catch(e){show("❌ "+ownerEsc(e.message||e)+(/GITHUB_TOKEN/.test(e.message||"")?"<br>Guide ka 'Worker me GITHUB_TOKEN' step karein.":""))}
+  };
+  refresh();
 }
