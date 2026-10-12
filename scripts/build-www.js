@@ -4,7 +4,7 @@ const ROOT = path.join(__dirname, '..'), OUT = path.join(ROOT, 'www');
 const SKIP_DIR = new Set(['node_modules', 'android', 'www', 'scripts', '.git', '.github', 'push-worker']);
 const SKIP_EXT = new Set(['.md', '.bat', '.keystore', '.jks', '.gs', '.apk', '.aab', '.zip']);
 const SKIP_FILES = new Set(['package.json', 'package-lock.json', 'capacitor.config.js', 'firebase.json',
-  'firestore.rules', '_headers', 'sitemap.xml', 'robots.txt', 'OWNER_CLOUD_FUNCTIONS_optional.js', '.gitignore']);
+  'firestore.rules', '_headers', 'sitemap.xml', 'robots.txt', 'OWNER_CLOUD_FUNCTIONS_optional.js', '.gitignore', 'institute-icon.img']);
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
 let n = 0;
@@ -23,4 +23,11 @@ let h = fs.readFileSync(idx, 'utf8');
 const marker = "if ('serviceWorker' in navigator) {\n    let swRegistration = null;";
 if (h.includes(marker)) { h = h.replace(marker, "if (false && 'serviceWorker' in navigator) {\n    let swRegistration = null;"); fs.writeFileSync(idx, h); console.log('SW registration disabled in app copy'); }
 else console.warn('WARN: SW marker not found — index.html me SW code badla hai, app me SW chalu rahega');
+// v175: institute APK — INSTITUTE_ID set ho to app us institute se lock ho jaati hai
+const lockId = (process.env.INSTITUTE_ID || '').trim();
+if (lockId) {
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(lockId)) { console.error('INSTITUTE_ID galat hai:', lockId); process.exit(1); }
+  fs.writeFileSync(path.join(OUT, 'lock-config.js'), 'window.SNAP_LOCK_INSTITUTE = ' + JSON.stringify(lockId) + ';\n');
+  console.log('app locked to institute:', lockId);
+}
 console.log('www ready:', n, 'files');

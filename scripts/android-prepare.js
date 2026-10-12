@@ -38,8 +38,10 @@ fs.writeFileSync(g, b);
 // 3) Icon: icon-512-maskable.png se (Capacitor ka default icon hata dete hain)
 (async () => {
   let sharp; try { sharp = require('sharp'); } catch (e) { console.warn('sharp nahi mila — default icon rahega'); return; }
-  const src = path.join(ROOT, 'icon-512-maskable.png');
-  if (!fs.existsSync(src)) { console.warn('icon-512-maskable.png nahi mila'); return; }
+  const custom = (process.env.ICON_FILE || '').trim();
+  const src = custom && fs.existsSync(custom) ? custom : path.join(ROOT, 'icon-512-maskable.png');
+  if (!fs.existsSync(src)) { console.warn('icon nahi mila'); return; }
+  const isCustom = src === custom; console.log(isCustom ? 'institute icon use ho raha hai' : 'default icon');
   const res = path.join(A, 'src/main/res');
   fs.rmSync(path.join(res, 'mipmap-anydpi-v26'), { recursive: true, force: true });
   const sizes = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
@@ -47,7 +49,11 @@ fs.writeFileSync(g, b);
     const dir = path.join(res, 'mipmap-' + d);
     fs.mkdirSync(dir, { recursive: true });
     for (const f of ['ic_launcher.png', 'ic_launcher_round.png', 'ic_launcher_foreground.png'])
-      await sharp(src).resize(s, s).png().toFile(path.join(dir, f));
+      if (isCustom) {
+        const inner = Math.round(s * 0.78), pad = Math.floor((s - inner) / 2), pad2 = s - inner - pad, W = { r: 255, g: 255, b: 255, alpha: 1 };
+        const buf = await sharp(src).resize(inner, inner, { fit: 'contain', background: W }).flatten({ background: W }).png().toBuffer();
+        await sharp(buf).extend({ top: pad, bottom: pad2, left: pad, right: pad2, background: W }).png().toFile(path.join(dir, f));
+      } else await sharp(src).resize(s, s).png().toFile(path.join(dir, f));
   }
   console.log('icons generated');
 })();
