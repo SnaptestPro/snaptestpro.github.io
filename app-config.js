@@ -10,7 +10,7 @@ window.SNAP_CONFIG = {
   version: "1.1",
   workerUrl: "https://cool-thunder-a280.vishnu1234stm.workers.dev",   // Cloudflare Worker (bank + push + owner alerts)
   ownFiles: false,                                                    // Cloudflare R2 (card chahiye) band — file upload ab Google Drive se
-  googleClientId: "",                                                 // <-- yahan Google OAuth Web Client ID daalein (DRIVE_SETUP_HINDI.md dekhein). Khaali = Drive upload band
+  googleClientId: "572828202591-m5qmveqf7pbvksbn9gcer0upo2pn9id2.apps.googleusercontent.com",                                                 // <-- yahan Google OAuth Web Client ID daalein (DRIVE_SETUP_HINDI.md dekhein). Khaali = Drive upload band
   driveUpload: true,
   githubRepo: "SnaptestPro/snaptestpro.github.io",                   // Owner Panel ke "📱 APK" button ke liye
   webUrl: "https://snaptestpro.github.io/",
