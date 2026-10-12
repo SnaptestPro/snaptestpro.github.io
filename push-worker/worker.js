@@ -634,8 +634,116 @@ async function handleFiles(request, env, pathname, ctx) {
   throw new HttpErr(404, 'Unknown files endpoint');
 }
 
+
+/* ---------- v176: Owner endpoints — APK build (GitHub Actions trigger), APK status, student recount ----------
+   Secrets/vars (Cloudflare > Worker > Settings > Variables and Secrets):
+     GITHUB_TOKEN (Secret)  GitHub fine-grained token: repo "snaptestpro.github.io", permissions: Actions = Read and write, Contents = Read-only
+     GITHUB_REPO  (Text)    optional — default "SnaptestPro/snaptestpro.github.io"
+     GITHUB_REF   (Text)    optional — default "main"
+   Sirf OWNER_EMAILS wale logged-in owner ke Firebase token se chalte hain. */
+async function ownerOnly(request, env) {
+  if (!env.SERVICE_ACCOUNT_JSON) throw new HttpErr(500, 'SERVICE_ACCOUNT_JSON secret set nahi hai');
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), projectId = env.PROJECT_ID || sa.project_id;
+  const user = await verifyIdToken((request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, ''), projectId);
+  const email = String(user.email || '').toLowerCase();
+  const owners = String(env.OWNER_EMAILS || 'vishnu1234stm@gmail.com,vishnu1234stmp@gmail.com').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean);
+  if (!email || owners.indexOf(email) < 0) throw new HttpErr(403, 'Sirf owner');
+  return { sa, projectId, email };
+}
+const instIdOk = (x) => /^[A-Za-z0-9_-]{1,100}$/.test(String(x || ''));
+const slugOf = (id) => String(id).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40) || 'inst';
+function ghHeaders(env) {
+  if (!env.GITHUB_TOKEN) throw new HttpErr(501, 'GITHUB_TOKEN secret Worker me set nahi hai (guide dekhein)');
+  return { Authorization: 'Bearer ' + env.GITHUB_TOKEN, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'snaptestpro-owner' };
+}
+async function handleOwner(request, env, pathname) {
+  const o = await ownerOnly(request, env);
+  const repo = env.GITHUB_REPO || 'SnaptestPro/snaptestpro.github.io', wf = 'build-institute-apk.yml';
+
+  if (pathname === '/owner/apk' && request.method === 'POST') {
+    let b; try { b = JSON.parse(await request.text()); } catch (e) { throw new HttpErr(400, 'Bad JSON'); }
+    if (!instIdOk(b.instituteId)) throw new HttpErr(400, 'Institute ID galat hai');
+    const r = await fetch('https://api.github.com/repos/' + repo + '/actions/workflows/' + wf + '/dispatches', {
+      method: 'POST', headers: { ...ghHeaders(env), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref: env.GITHUB_REF || 'main', inputs: { institute_id: String(b.instituteId), app_name: String(b.appName || '').slice(0, 40), live_mode: b.live === false ? 'false' : 'true' } })
+    });
+    if (r.status !== 204) throw new HttpErr(502, 'GitHub ne build shuru nahi kiya (' + r.status + '): ' + (await r.text()).slice(0, 200));
+    return { ok: true, started: true };
+  }
+
+  if (pathname === '/owner/apk-status' && request.method === 'GET') {
+    const id = new URL(request.url).searchParams.get('instituteId');
+    if (!instIdOk(id)) throw new HttpErr(400, 'Institute ID galat hai');
+    const h = ghHeaders(env);
+    const rr = await fetch('https://api.github.com/repos/' + repo + '/actions/workflows/' + wf + '/runs?per_page=40', { headers: h });
+    if (!rr.ok) throw new HttpErr(502, 'GitHub runs padh nahi paaye (' + rr.status + ')');
+    const runs = ((await rr.json()).workflow_runs || []).filter((x) => String(x.display_title || '').split(' ')[1] === id);
+    const run = runs[0] || null;
+    const out = { ok: true, run: run ? { status: run.status, conclusion: run.conclusion, url: run.html_url, at: run.created_at } : null, apkUrl: '', version: '' };
+    const rel = await fetch('https://api.github.com/repos/' + repo + '/releases?per_page=60', { headers: h });
+    if (rel.ok) {
+      const pre = 'inst-' + slugOf(id) + '-b';
+      const r1 = ((await rel.json()) || []).find((x) => String(x.tag_name || '').indexOf(pre) === 0);
+      const a = r1 && (r1.assets || []).find((x) => /\.apk$/i.test(x.name || ''));
+      if (a) { out.apkUrl = a.browser_download_url; out.version = r1.name || r1.tag_name; out.releasedAt = r1.published_at; }
+    }
+    return out;
+  }
+
+  if (pathname === '/owner/recount' && request.method === 'POST') {
+    let b; try { b = JSON.parse(await request.text()); } catch (e) { throw new HttpErr(400, 'Bad JSON'); }
+    const ids = (Array.isArray(b.ids) ? b.ids : []).filter(instIdOk).slice(0, 20);      // free plan: 50 subrequest limit
+    if (!ids.length) throw new HttpErr(400, 'ids khaali');
+    const at = await googleAccessToken(o.sa), base = 'https://firestore.googleapis.com/v1/projects/' + o.projectId + '/databases/(default)/documents';
+    const counts = {};
+    await Promise.all(ids.map(async (id) => { counts[id] = await recountInst(at, base, id); }));
+    return { ok: true, counts };
+  }
+  throw new HttpErr(404, 'Unknown owner route');
+}
+
+
+async function recountInst(at, base, id) {
+  const q = await fetch(base + ':runAggregationQuery', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ structuredAggregationQuery: { aggregations: [{ alias: 'n', count: {} }],
+      structuredQuery: { from: [{ collectionId: 'students' }], where: { fieldFilter: { field: { fieldPath: 'instituteId' }, op: 'EQUAL', value: { stringValue: id } } } } } })
+  });
+  if (q.status === 429) throw new HttpErr(503, 'Firestore ka aaj ka quota khatam hai — baad me try karein');
+  if (!q.ok) throw new HttpErr(502, 'Count fail ' + q.status);
+  const j = await q.json(), af = (((j[0] || {}).result || {}).aggregateFields || {}), n = Number(af.n && af.n.integerValue) || 0;
+  const p = await fetch(base + '/institutes/' + encodeURIComponent(id) + '?updateMask.fieldPaths=studentCount&updateMask.fieldPaths=studentCountAt&currentDocument.exists=true', {
+    method: 'PATCH', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields: { studentCount: { integerValue: String(n) }, studentCountAt: { timestampValue: new Date().toISOString() } } })
+  });
+  if (!p.ok && p.status !== 404) throw new HttpErr(502, 'Count save fail ' + p.status);
+  return n;
+}
+/* Raat ka auto-recount: sirf unn institutes ka jinpar studentLimit laga hai (counter drift, jaise admin ne students delete kiye).
+   Roz (IST) ek baar, har cron run me 15 institutes — BANK_KV chahiye (pehle se hai). Cron pehle se reminders ke liye chalta hai. */
+async function nightlyRecount(env) {
+  if (!env.BANK_KV || !env.SERVICE_ACCOUNT_JSON) return;
+  const day = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
+  let st; try { st = JSON.parse((await env.BANK_KV.get('recount_state')) || '{}'); } catch (e) { st = {}; }
+  if (st.day === day && st.done) return;
+  if (st.day !== day) st = { day, cursor: 0, done: false };
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), projectId = env.PROJECT_ID || sa.project_id, at = await googleAccessToken(sa);
+  const base = 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/(default)/documents';
+  const r = await fetch(base + ':runQuery', { method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'institutes' }], select: { fields: [{ fieldPath: '__name__' }] },
+      where: { fieldFilter: { field: { fieldPath: 'studentLimit' }, op: 'GREATER_THAN', value: { integerValue: '0' } } } } }) });
+  if (!r.ok) return;
+  const ids = ((await r.json()) || []).map((x) => x.document && x.document.name.split('/').pop()).filter(Boolean);
+  const slice = ids.slice(st.cursor, st.cursor + 15);
+  for (const id of slice) { try { await recountInst(at, base, id); } catch (e) { console.log('recount fail', id, e && e.message); } }
+  st.cursor += slice.length; st.done = st.cursor >= ids.length;
+  await env.BANK_KV.put('recount_state', JSON.stringify(st));
+}
+
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(sendReminders(env).catch((e) => console.log('reminder fail', e && e.message))); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(sendReminders(env).catch((e) => console.log('reminder fail', e && e.message))); ctx.waitUntil(nightlyRecount(env).catch((e) => console.log('recount fail', e && e.message))); },
+  // v176: roz ek baar student-count sahi karo (limit wale institutes)
+  // (upar wali line ke saath hi chalta hai)
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const pathname = new URL(request.url).pathname.replace(/\/+$/, '') || '/';
@@ -646,6 +754,7 @@ export default {
       if (pathname === '/alert') return json(await handleAlert(request, env));
       if (pathname === '/alerts' || pathname === '/alerts/clear') return json(await handleAlertsList(request, env, pathname));
       if (pathname === '/broadcast') return json(await handleBroadcast(request, env));
+      if (pathname.indexOf('/owner/') === 0) return json(await handleOwner(request, env, pathname));
       if (request.method !== 'POST') return json({ ok: true, service: 'snaptestpro-push' });
       return json(await handle(request, env));
     }
