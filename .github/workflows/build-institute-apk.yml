@@ -1,5 +1,8 @@
 name: Build Institute APK
 
+# run-name: Owner Panel isi title se "is institute ka build kahan tak pahuncha" dhoondhta hai (pehla shabd APK, doosra institute id) — mat badlo
+run-name: APK ${{ inputs.institute_id }} ${{ inputs.app_name }}
+
 # Ek institute ka APK (alag naam, logo, package) banata hai — poora code wahi, repo wahi.
 # GitHub > Actions > "Build Institute APK" > Run workflow > institute_id daalo (Owner Panel > institute > "📱 APK" me milti hai).
 # NOTE: ye workflow app-version.json ko TOUCH NAHI karta, isliye main app ke users ko galat APK update nahi jata.
