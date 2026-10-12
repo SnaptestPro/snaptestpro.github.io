@@ -36,3 +36,11 @@ Cloudflare R2 ke liye payment method (card) chahiye, isliye Worker ab **Workers 
 - Notes / PDF / PPT / photos / assignment ki files ke liye kaafi hai.
 - **Recording / lecture video:** YouTube par **Unlisted** upload karke uska link "Recorded Lecture" ke link-box me daalein (unlimited, free). Live class: "Meri app ke andar (Jitsi)" ya "Doosri app ka link (YouTube Live / Meet / Zoom)" — dono free. SnapLive (apna live + auto recording) sirf R2 ke saath chalta hai, isliye abhi band hi rakhein.
 - Agar kabhi R2 mil gaya: bas `LIVE_R2` bind kar dein — limit hat jaayegi, KV ki purani files bhi chalti rahengi.
+
+---
+## v172 — PDF viewer app ke andar ("too large" fix)
+Apni storage ki PDF ab app ke andar **pdf.js** (Mozilla, Apache-2.0, free) se khulti hai — Google viewer ki ~25 MB limit se "too large" nahi aata.
+- Badi PDF turant: sirf wahi pages (HTTP Range) mangwata hai jo screen par dikhte hain; 57 MB ki 90-page test PDF me pehla page ~ kuch MB me khul gayi.
+- Page-by-page (screen ki chaudai), − / + zoom, page number, ⬇ aur ↗ (phone ke viewer me kholein).
+- pdf.js sirf pehli PDF kholne par load hota hai — app ki start-up speed par asar nahi. Files: `pdf-viewer.js`, `vendor/pdfjs/pdf.min.js`, `vendor/pdfjs/pdf.worker.min.js`, `vendor/pdfjs/LICENSE.txt` (**vendor folder bhi upload karein**).
+- Link wali PDF pehle jaisi (Google viewer). Apni storage ki 25 MB se badi PPT/DOC ka preview nahi banta (Google ki limit) — ⬇ se download, ya PDF banake daalein.

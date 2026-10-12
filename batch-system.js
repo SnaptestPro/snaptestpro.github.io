@@ -100,7 +100,12 @@
   }
   function openItem(it, inst) {
     if (it.ownKey && window.SnapLive) return window.SnapLive.play(it, ctx());
-    if (it.ownFile && window.SnapFiles) return viewer(it.title, window.SnapFiles.urlOf(it.ownFile), { name: it.ownFile.name || it.fileName, mime: it.ownFile.type });
+    if (it.ownFile && window.SnapFiles) {
+      var ou = window.SnapFiles.urlOf(it.ownFile), on = it.ownFile.name || it.fileName || "";
+      /* v172: apni storage ki PDF app ke andar (pdf.js) — Google viewer ki ~25MB limit se "too large" nahi aata */
+      if (window.SnapPdf && (/pdf/i.test(it.ownFile.type || "") || /\.pdf$/i.test(on))) return window.SnapPdf.open(it.title, ou, { name: on, size: it.ownFile.size });
+      return viewer(it.title, ou, { name: on, mime: it.ownFile.type });
+    }
     if (it.fileId) { toast("File load ho rahi hai…"); return loadChunked(inst, it.batchId, it.fileId).then(function (f) { viewer(it.title, URL.createObjectURL(f.blob), { mime: f.type, name: f.name }); }).catch(function (e) { toast("File nahi khuli: " + (e.message || e.code)); }); }
     if (!it.url && it.storagePath && storage()) { toast("File load ho rahi hai…"); return storage().ref(it.storagePath).getDownloadURL().then(function (u) { viewer(it.title, u, { name: it.fileName }); }).catch(function (e) { toast("File nahi khuli (permission/network): " + (e.code || e.message)); }); }
     viewer(it.title, it.url, { name: it.fileName });
