@@ -147,7 +147,7 @@ function ownerBrandingEdit(id){
     <input id="obr-exp" type="date" value="${a.planExpiresAt>0?new Date(a.planExpiresAt+19800000).toISOString().slice(0,10):""}" style="width:100%;padding:8px;margin:4px 0 6px;box-sizing:border-box;">
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;"><button type="button" class="owner-mini-btn" data-add="30">+30 din</button><button type="button" class="owner-mini-btn" data-add="90">+90 din</button><button type="button" class="owner-mini-btn" data-add="365">+1 saal</button><button type="button" class="owner-mini-btn" data-add="0">Expiry hatao</button></div>
     <div class="muted-text" style="font-size:.72rem;margin-bottom:12px;">Abhi use: ${Math.round((a.storageUsedBytes||0)/1048576)} MB (${a.storageFiles||0} files). Ye limit sirf app ke through hue uploads par lagti hai.</div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;"><button type="button" id="obr-x" class="owner-mini-btn">Cancel</button><button type="button" id="obr-reset" class="owner-mini-btn">Usage reset</button><button type="button" id="obr-ok" class="owner-mini-btn" style="background:#4f46e5;color:#fff;">Save</button></div></div>`;
+    <div style="display:flex;gap:8px;justify-content:flex-end;"><button type="button" id="obr-x" class="owner-mini-btn">Cancel</button><button type="button" id="obr-msg" class="owner-mini-btn">📋 Renew message</button><button type="button" id="obr-reset" class="owner-mini-btn">Usage reset</button><button type="button" id="obr-ok" class="owner-mini-btn" style="background:#4f46e5;color:#fff;">Save</button></div></div>`;
   document.body.appendChild(m);
   let logo=null;
   const preset=()=>{const pl=((window.SNAP_CONFIG||{}).plans||{})[m.querySelector("#obr-plan").value];if(pl&&pl.studentLimit!=null){m.querySelector("#obr-slim").value=pl.studentLimit;m.querySelector("#obr-lim").value=pl.storageLimitMB||0}};
@@ -159,6 +159,11 @@ function ownerBrandingEdit(id){
     const im=new Image(),u=URL.createObjectURL(f);
     im.onload=()=>{const c=document.createElement("canvas"),sc=Math.min(1,256/Math.max(im.width,im.height));c.width=Math.round(im.width*sc);c.height=Math.round(im.height*sc);c.getContext("2d").drawImage(im,0,0,c.width,c.height);logo=c.toDataURL("image/png");if(logo.length>150000)logo=c.toDataURL("image/jpeg",.85);const p=m.querySelector("#obr-prev");p.src=logo;p.style.visibility="visible";URL.revokeObjectURL(u);};
     im.onerror=()=>alert("Image nahi khuli");im.src=u;
+  };
+  m.querySelector("#obr-msg").onclick=()=>{
+    const v=m.querySelector("#obr-exp").value,ds=v?new Date(Date.parse(v+"T00:00:00+05:30")).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric",timeZone:"Asia/Kolkata"}):"jald hi";
+    const t=`Namaste! ${a.name||"Aapke institute"} ka SnapTest Pro (${m.querySelector("#obr-plan").value} plan) ${ds} ko khatam ho raha hai. Students ka access na ruke, isliye kripya renew kara lein. Renew ke liye mujhe reply karein. Dhanyavaad!`;
+    (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{alert("✅ Message copy ho gaya — WhatsApp me paste karke bhej dein.")},()=>{prompt("Copy karein:",t)});
   };
   m.querySelector("#obr-reset").onclick=async()=>{
     if(!confirm("Is institute ka storage usage counter 0 kar du? (sirf tab jab counter galat ho gaya ho)"))return;

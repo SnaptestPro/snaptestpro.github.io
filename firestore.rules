@@ -601,8 +601,12 @@ service cloud.firestore {
     }
 
     match /studentRecords/{docId} {
-      allow get, create, update: if isSignedIn();
+      // v178: pehle koi bhi signed-in (anonymous visitor bhi) kisi bhi result ko BADAL sakta tha.
+      //       Student sirf naya result BANATA hai (add) — update/grading sirf admin karta hai (app me yahi hota hai).
+      //       Padhna abhi khula hai kyunki rank board / student ki apni history list query se chalti hai.
+      allow get, create: if isSignedIn();
       allow list: if isSignedIn();
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
