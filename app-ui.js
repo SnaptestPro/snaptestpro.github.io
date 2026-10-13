@@ -126,7 +126,6 @@
     var d = document.createElement("div"); d.id = "sn-set";
     d.innerHTML =
       '<div class="sn-h">🎨 Appearance</div>' +
-      '<div class="sn-srow"><div><b>Theme</b><small>App ka rang badlein</small></div><button type="button" class="btn-secondary" data-s="theme">Chunein</button></div>' +
       '<div class="sn-srow"><div><b>Text size</b><small>Padhne mein aasani ke liye</small></div><div class="sn-seg" id="sn-ts">' +
       [["90", "Chhota"], ["100", "Normal"], ["112", "Bada"]].map(function (x) { return '<button type="button" data-v="' + x[0] + '"' + (x[0] === ts ? ' class="on"' : "") + ">" + x[1] + "</button>"; }).join("") + "</div></div>" +
       (wakeOK ? '<div class="sn-h">📝 Exam</div><div class="sn-srow"><div><b>Exam ke dauran screen on rakhein</b><small>Test dete waqt screen apne aap band nahi hogi</small></div><label class="sn-sw"><input type="checkbox" id="sn-wake"' + (wake ? " checked" : "") + "><i></i></label></div>" : "") +
@@ -148,8 +147,7 @@
         d.querySelectorAll("#sn-ts button").forEach(function (x) { x.classList.toggle("on", x === b); }); return;
       }
       var a = b.dataset.s;
-      if (a === "theme") { window.ThemeManager && ThemeManager.togglePicker(); }
-      else if (a === "help" || a === "about") { window.snShowPage(a, "settings"); }
+      if (a === "help" || a === "about") { window.snShowPage(a, "settings"); }
       else if (a === "update") {
         var webCheck = function () {
           if (!navigator.serviceWorker) return toast("Is device par update check available nahi hai.");

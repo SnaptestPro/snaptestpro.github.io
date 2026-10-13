@@ -1,16 +1,31 @@
-## Hi there 👋
+# SnapTest Pro
 
-<!--
-**SnaptestPro/snaptestpro** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+![CI](https://github.com/SnaptestPro/snaptestpro.github.io/actions/workflows/ci.yml/badge.svg)
 
-Here are some ideas to get you started:
+Multi-institute test, practice and OMR-scanning platform for coaching institutes.
+Roles: **Owner**, **Admin** (institute), **Student**. Vanilla JS PWA on GitHub Pages + Firebase
+(Firestore, Auth, Storage, FCM) + Cloudflare Worker (push, question bank, owner alerts) + Capacitor Android APK.
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+## Folder map
+| Path | What |
+|---|---|
+| `index.html`, `script.js`, `*.js` | Student/Admin web app (see `docs/ARCHITECTURE.md`) |
+| `owner-app.html`, `owner-*.js` | Owner-only app |
+| `question-generator.html`, `qgen-*` | Question paper generator |
+| `liquid-glass*.css` | The one and only UI theme (iOS Liquid Glass) |
+| `worker.js`, `push-worker/` | Cloudflare Worker |
+| `firestore.rules`, `storage.rules` | Security rules |
+| `scripts/` | Build + test helper scripts |
+| `tests/` | `unit/` (Node tests), `security-rules.test.js` (emulator) |
+| `version.json` | Single source of truth for version/build |
+
+## Run tests
+```
+npm install
+npm test                 # all unit tests
+npm run test:rules       # needs Java 17 + firebase emulator
+npm run stamp:check      # versions in sync?
+npm run build:www && npm run check:precache
+```
+## Release
+See `docs/RELEASE.md`.

@@ -13,7 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
 <link rel="stylesheet" href="qgen-style.css?v=20260708-noback"/>
-<link rel="stylesheet" href="theme-picker.css"/>
+<link rel="stylesheet" href="liquid-glass-qgen.css?v=1">
 </head>
 <body>
 
@@ -31,7 +31,6 @@
         </div>
       </div>
       <button class="menu-btn" onclick="toggleSidebar()">☰</button>
-      <button class="menu-btn" onclick="ThemeManager.togglePicker()" title="Theme" style="margin-left:4px">🎨</button>
     </div>
 
     <!-- Tab Switcher -->
@@ -432,9 +431,6 @@ Model Answer: समाजवाद एक आर्थिक व्यवस्
 <script src="firebase-config.js"></script>
 <script src="qgen-admin-gate.js"></script>
 <script src="subject-resolver.js"></script>
-<script src="theme-palette.js"></script>
-<script src="live-theme-effects.js"></script>
-<script src="theme-manager.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.iife.js"></script>
 <!-- omr.js: only used here for its buildOMRSheetDocx() builder (exposed on
      window), so the "🎯 OMR Sheet (Blank)" button can generate a bubble
@@ -457,16 +453,6 @@ function updateDraftEditPreview() {
 }
 </script>
 
-<!-- ═════════════ THEME PICKER MODAL ═════════════ -->
-<div id="theme-picker-modal" onclick="if(event.target===this)ThemeManager.hidePicker()">
-  <div class="theme-picker-panel">
-    <div class="theme-picker-header">
-      <h3>🎨 Choose Your Theme (100+ Themes · 10 Live Animated)</h3>
-      <button class="theme-picker-close" onclick="ThemeManager.hidePicker()">✕</button>
-    </div>
-    <div id="theme-picker-grid"></div>
-  </div>
-</div>
 
 </body>
 </html>

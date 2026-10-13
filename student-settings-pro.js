@@ -144,9 +144,8 @@
     },
     display: function (done) {
       var ts = localStorage.getItem("sn_textsize") || "100", wakeOK = !!navigator.wakeLock, wake = localStorage.getItem("sn_wake") === "1";
-      done("Display & Exam", "Theme, text size aur exam setting",
+      done("Display & Exam", "Text size aur exam setting",
         '<div class="ssp-card"><h4>' + ico("palette") + ' Appearance</h4><div style="height:10px"></div>' +
-        '<div class="ssp-srow"><div class="ssp-tile" style="background:' + TILE.pur + '">' + ico("palette") + '</div><div class="ssp-tx"><b style="font-size:.9rem;display:block">Theme</b><small style="color:#64748b;font-size:.76rem">App ka rang badlein (100+ themes)</small></div><button type="button" class="ssp-mini" style="background:#f97316;color:#fff" data-sgo="theme">Chunein</button></div>' +
         '<div style="padding-top:12px"><div style="display:flex;align-items:center;gap:12px"><div class="ssp-tile" style="background:' + TILE.tea + '">' + ico("type") + '</div><div class="ssp-tx"><b style="font-size:.9rem;display:block">Text size</b><small style="color:#64748b;font-size:.76rem">Padhne mein aasani ke liye</small></div></div><div class="ssp-seg" id="ssp-ts">' +
         [["90", "Chhota"], ["100", "Normal"], ["112", "Bada"]].map(function (x) { return '<button type="button" data-sts="' + x[0] + '"' + (x[0] === ts ? ' class="on"' : "") + ">" + x[1] + "</button>"; }).join("") + "</div></div></div>" +
         (wakeOK ? '<div class="ssp-card"><h4>' + ico("book") + ' Exam</h4><div style="height:10px"></div><div class="ssp-srow"><div class="ssp-tx"><b style="font-size:.9rem;display:block">Exam ke dauran screen on rakhein</b><small style="color:#64748b;font-size:.76rem">Test dete waqt screen apne aap band nahi hogi</small></div><label class="ssp-sw"><input type="checkbox" id="ssp-wake"' + (wake ? " checked" : "") + "><i></i></label></div></div>" : ""));
@@ -208,7 +207,6 @@
       openPage(k); return;
     }
     if (g === "back") { ev.preventDefault(); closePage(); }
-    else if (g === "theme") { try { window.ThemeManager && ThemeManager.togglePicker(); } catch (e) {} }
     else if (g === "sync") { if (window.OfflineSync) OfflineSync.syncNow(); else toast("Sync available nahi"); }
     else if (g === "apkdl") { if (window.SnapAppUpdate) SnapAppUpdate.show(); }
     else if (g === "update") {
@@ -243,7 +241,7 @@
     var m = document.createElement("div"); m.id = "ssp-menu"; m.className = "ssp-wrap";
     m.innerHTML = '<div class="ssp-hero"><div class="ssp-av" id="ssp-hero-av">S</div><div style="position:relative;min-width:0"><b id="ssp-hero-nm">Student</b><small id="ssp-hero-sub">Student</small><span class="ssp-pill" id="ssp-hero-st" style="background:#ffedd5;color:#c2410c;display:none"><i></i></span></div></div>' +
       '<div class="ssp-sec">ACCOUNT</div><div class="ssp-grp">' + row("user", "ind", "Profile & ID Card", "ID Card, photo, class, session", "profile") + "</div>" +
-      '<div class="ssp-sec">PREFERENCES</div><div class="ssp-grp">' + row("bell", "amb", "Notifications", "Naye test ka alert • " + (pnOn() ? "ON" : "OFF"), "notif", "ssp-pn-sub") + row("palette", "pur", "Display & Exam", "Theme, text size, screen on", "display") + "</div>" +
+      '<div class="ssp-sec">PREFERENCES</div><div class="ssp-grp">' + row("bell", "amb", "Notifications", "Naye test ka alert • " + (pnOn() ? "ON" : "OFF"), "notif", "ssp-pn-sub") + row("palette", "pur", "Display & Exam", "Text size, screen on", "display") + "</div>" +
       '<div class="ssp-sec">DATA</div><div class="ssp-grp">' + row("phone", "idg", "App & Data", syncSub(), "data", "ssp-data-sub") + "</div>" +
       '<div class="ssp-sec">SUPPORT</div><div class="ssp-grp">' + row("help", "blu", "Help & Support", "Call / WhatsApp / Email, FAQ", "help") + row("info", "gry", "About App", "Version " + esc((C().version || "1.0") + (C().build ? " (build " + C().build + ")" : "")), "about") + "</div>" +
       '<button type="button" class="ssp-row ssp-logout" id="ssp-logout"><span class="ssp-ic" style="background:' + TILE.red + '">' + ico("out") + '</span><span class="ssp-tx"><b style="color:#b91c1c">Logout</b><small>Is device se logout karein</small></span></button>';

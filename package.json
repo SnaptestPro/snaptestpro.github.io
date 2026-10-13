@@ -1,12 +1,17 @@
 {
   "name": "snaptestpro-app",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "description": "SnapTest Pro - web (Firebase Hosting) + Android app (Capacitor, built on GitHub Actions)",
   "scripts": {
-    "build:www": "node scripts/build-www.js",
+    "stamp": "node scripts/stamp-version.js",
+    "stamp:check": "node scripts/stamp-version.js --check",
+    "build:www": "node scripts/stamp-version.js && node scripts/build-www.js",
+    "check:precache": "node scripts/check-precache.js",
     "android:add": "npx cap add android && node scripts/android-prepare.js",
     "android:sync": "node scripts/build-www.js && npx cap sync android && node scripts/android-prepare.js",
+    "test": "node scripts/run-unit-tests.js",
+    "test:unit": "node scripts/run-unit-tests.js",
     "test:rules": "firebase emulators:exec --only firestore,storage \"node tests/security-rules.test.js\""
   },
   "dependencies": {
@@ -21,6 +26,9 @@
     "firebase": "^10.14.0"
   },
   "devDependencies": {
-    "sharp": "^0.33.5"
+    "sharp": "^0.33.5",
+    "@firebase/rules-unit-testing": "^3.0.4",
+    "firebase-tools": "13.29.1",
+    "eslint": "^8.57.0"
   }
 }

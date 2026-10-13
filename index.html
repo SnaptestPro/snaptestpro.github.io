@@ -63,7 +63,7 @@
   </script>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#1e1b4b" />
+  <meta name="theme-color" content="#dfe9ff" />
   <!-- PERF FIX: splash-screen.jpg hi is page ka LCP (Largest Contentful
        Paint) element hai, lekin <body> mein kaafi neeche (~165 lines)
        likha hai. Preload karne se browser HTML parse hote hi (turant)
@@ -155,11 +155,9 @@
        hai, font/theme aane par seamlessly switch ho jaata hai). -->
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Cinzel:wght@700&display=swap" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="styles.css?v=10" media="print" onload="this.media='all';window.__stylesReady=1" onerror="this.media='all';window.__stylesReady=1">
-  <link rel="stylesheet" href="theme-picker.css" media="print" onload="this.media='all'">
   <noscript>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Cinzel:wght@700&display=swap">
     <link rel="stylesheet" href="styles.css?v=10">
-    <link rel="stylesheet" href="theme-picker.css">
   </noscript>
   <!-- PERF FIX: yeh 3 CSS files sirf Admin/Owner-side panels
        (Creative Dashboard cards, Exam Manager, ID Card generator) ke
@@ -197,6 +195,7 @@
   <!-- KaTeX CSS: print-media trick se non-render-blocking bana diya. -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"></noscript>
+  <link rel="stylesheet" href="liquid-glass.css?v=1">
 </head>
 <body>
 
@@ -279,17 +278,6 @@
         <button id="app-install-modal-action-btn" type="button" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-weight:600;cursor:pointer;font-size:.9rem;">⬇️ Install Karein</button>
         <button type="button" onclick="dismissAppInstallModal()" style="background:#f3f4f6;color:#374151;border:none;border-radius:10px;padding:10px 20px;cursor:pointer;font-size:.9rem;">Baad Mein</button>
       </div>
-    </div>
-  </div>
-
-  <!-- ═════════════ THEME PICKER MODAL ═════════════ -->
-  <div id="theme-picker-modal" onclick="if(event.target===this)ThemeManager.hidePicker()">
-    <div class="theme-picker-panel">
-      <div class="theme-picker-header">
-        <h3>🎨 Choose Your Theme (100+ Themes · 10 Live Animated)</h3>
-        <button class="theme-picker-close" onclick="ThemeManager.hidePicker()">✕</button>
-      </div>
-      <div id="theme-picker-grid"></div>
     </div>
   </div>
 
@@ -1945,13 +1933,6 @@ B"></textarea>
           <button type="button" class="btn-primary" onclick="saveInstituteJoinCode()">💾 Code Save Karein</button>
           <button type="button" class="btn-secondary" onclick="disableInstituteJoinCode()" style="margin-left:8px;">🚫 Protection Hatayein</button>
         </div>
-        <div class="card" style="background:linear-gradient(135deg,#faf5ff,#f3e8ff);border:1.5px solid #d8b4fe;margin-bottom:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-          <div>
-            <strong style="color:#6b21a8;">🎨 App Theme</strong>
-            <p style="font-size:.82rem;color:#581c87;margin-top:3px;">Poore app ke liye 100+ themes mein se koi bhi chunein.</p>
-          </div>
-          <button type="button" class="btn-primary" style="background:linear-gradient(135deg,#9333ea,#7e22ce);" onclick="ThemeManager.togglePicker()">🎨 Theme Chunein</button>
-        </div>
         <div class="card" style="background:linear-gradient(135deg,#eff6ff,#dbeafe);border:1.5px solid #93c5fd;margin-bottom:12px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
           <div>
             <strong style="color:#1e40af;">📥 Firebase Question Bank Seed</strong>
@@ -2288,9 +2269,6 @@ B"></textarea>
 <script defer src="read-diet.js?v=1"></script>
 <script defer src="firebase-config.js"></script>
 <script defer src="app-config.js"></script>
-<script defer src="theme-palette.js"></script>
-<script defer src="live-theme-effects.js"></script>
-<script defer src="theme-manager.js"></script>
 
 <!-- PERF FIX: 5 question-bank files (176 KiB combined — mathematics
      akela 118 KiB) yahan se hata di gayi. Inka data sirf ek baar,
