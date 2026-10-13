@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
+<script>if(/[?&]owner=1(&|$)/.test(location.search))location.replace("owner-app.html");</script>
 <!-- v144: Android APK (Capacitor WebView) detect — website par kuch nahi badalta, sirf app me install button/popup chhupte hain
      aur Back button app ke andar peeche jata hai. -->
 <script>
@@ -993,9 +994,7 @@
            sake. Student/Admin isko normally kabhi use nahi karenge, aur
            ye chhota/subtle hai (koi bada button nahi), isliye header
            mein pehle jaisa clutter/confusion bhi nahi hota. -->
-      <a href="owner-app.html" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:14px;padding-top:12px;border-top:1px dashed rgba(0,0,0,.12);color:#78550a;font-size:.78rem;text-decoration:none;font-weight:600;">
-        🏢 Owner hain? Yahan se login karein →
-      </a>
+
     </form>
 
     <!-- ── ADMIN PANEL ── -->
@@ -1971,13 +1970,7 @@ B"></textarea>
             <button id="admin-logout-btn" type="button" class="btn-primary" style="background:linear-gradient(135deg,#64748b,#334155);">🚪 Admin Logout</button>
           </div>
         </div>
-        <div class="card" style="background:linear-gradient(135deg,#eef2ff,#e0e7ff);border:1.5px solid #a5b4fc;margin-bottom:12px;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-          <div>
-            <strong style="color:#3730a3;">🏢 Owner Panel</strong>
-            <p style="font-size:.82rem;color:#312e81;margin-top:3px;">Har institute ka admin add/manage karein (sirf product owner ke liye).</p>
-          </div>
-          <button type="button" class="btn-primary" style="background:linear-gradient(135deg,#4f46e5,#4338ca);" onclick="__openOwnerPanelSafe()">🏢 Owner Panel Kholein</button>
-        </div>
+        
       </div>
 
       <!-- 3D SOLIDS LAB (v125) -->
@@ -2284,81 +2277,7 @@ B"></textarea>
 </div>
 <!-- /solution-screen -->
 
-<!-- ═══════════════ OWNER PANEL (full-screen overlay) ═══════════════
-     Admin Panel se bilkul alag, alag login — sirf OWNER_EMAIL wala
-     Firebase account (firestore.rules mein isOwner() dekhein) ise
-     use kar sakta hai. Khulta hai ?owner=1 URL se, ya Admin Settings
-     tab ke "Owner Panel" link se. -->
-<div id="owner-overlay-bg" class="hidden" style="position:fixed;inset:0;background:rgba(15,15,30,.6);z-index:10000;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 12px;">
-  <div style="background:#fff;border-radius:16px;max-width:640px;width:100%;padding:22px 20px;box-shadow:0 12px 40px rgba(0,0,0,.35);position:relative;">
-    <button type="button" onclick="closeOwnerOverlay()" style="position:absolute;top:14px;right:14px;background:#f3f4f6;border:none;border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:1rem;">✕</button>
-
-    <!-- Owner Login -->
-    <form id="owner-login-box" class="hidden" onsubmit="return ownerLogin(event)">
-      <h2 class="section-title">🏢 Owner Login</h2>
-      <p class="muted-text" style="margin-bottom:14px;">Sirf product owner ke liye — har institute ka admin yahan se manage hota hai.</p>
-      <div class="field-row">
-        <label>Owner Email</label>
-        <input id="owner-email" type="email" placeholder="Owner ka email" autocomplete="off" />
-      </div>
-      <div class="field-row">
-        <label>Password</label>
-        <input id="owner-password" type="password" placeholder="Password" autocomplete="off" />
-      </div>
-      <button type="submit" class="btn-primary">Login</button>
-    </form>
-
-    <!-- Owner Panel -->
-    <div id="owner-panel-box" class="hidden">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">
-        <h2 class="section-title" style="margin:0;">🏢 Owner Panel</h2>
-        <button type="button" class="owner-mini-btn" onclick="ownerLogout()">🚪 Logout</button>
-      </div>
-      <div id="owner-logged-in-as" style="font-size:.75rem;color:#64748b;margin-bottom:10px;"></div>
-      <p class="muted-text" style="margin-bottom:14px;">Har institute ka admin yahan se dekhein aur control karein.</p>
-
-      <a href="owner-app.html" target="_blank" rel="noopener" style="display:block;text-align:center;background:linear-gradient(135deg,#b48214,#78550a);color:#fff;font-weight:700;font-size:.85rem;border-radius:10px;padding:10px 14px;text-decoration:none;margin-bottom:16px;">
-        📲 Owner App Install Karein (alag standalone app)
-      </a>
-
-      <div class="card" style="margin-bottom:16px;padding:14px;">
-        <strong style="display:block;margin-bottom:8px;">+ Naya Institute</strong>
-        <form onsubmit="return ownerAddInstituteSubmit(event)" style="display:flex;gap:8px;flex-wrap:wrap;">
-          <input id="owner-new-institute-name" type="text" placeholder="Institute ka naam" required style="flex:1;min-width:160px;" />
-          <input id="owner-new-institute-owner-name" type="text" placeholder="Institute ke Owner ka naam" required style="flex:1;min-width:160px;" />
-          <div style="width:100%;font-size:.76rem;color:#64748b;margin-top:2px;">🎓 Ye Institute kin Classes ke liye eligible hai:</div>
-          <div id="owner-new-institute-classes"></div>
-          <button type="submit" class="btn-primary" style="white-space:nowrap;">+ Add Karein</button>
-        </form>
-      </div>
-
-      <div id="owner-institutes-list"></div>
-    </div>
-  </div>
-</div>
-
-<style>
-  .owner-inst-card{background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:12px;padding:12px 14px;margin-bottom:12px;}
-  .owner-inst-card-orphan{background:#fffbeb;border-color:#fcd34d;}
-  .owner-inst-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;}
-  .owner-inst-actions,.owner-admin-actions{display:flex;gap:6px;flex-wrap:wrap;}
-  .owner-admin-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;margin-bottom:6px;}
-  .owner-admin-email{font-size:.88rem;font-weight:600;color:#1e293b;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-  .owner-badge{font-size:.7rem;font-weight:700;border-radius:999px;padding:2px 9px;}
-  .owner-badge-on{background:#dcfce7;color:#15803d;}
-  .owner-badge-off{background:#fee2e2;color:#b91c1c;}
-  .owner-mini-btn{background:#eef2ff;color:#3730a3;border:none;border-radius:8px;padding:6px 10px;font-size:.78rem;font-weight:600;cursor:pointer;}
-  .owner-mini-primary{background:#4f46e5;color:#fff;}
-  .owner-mini-danger{background:#fee2e2;color:#b91c1c;}
-  .owner-add-admin-form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
-  .owner-add-admin-form input{flex:1;min-width:160px;padding:7px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;}
-  .owner-inst-classes{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;margin-bottom:10px;}
-  .owner-classes-label{font-size:.78rem;font-weight:700;color:#334155;margin-right:2px;}
-  .owner-class-chip{display:inline-flex;align-items:center;gap:5px;font-size:.76rem;font-weight:600;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;padding:4px 10px 4px 8px;cursor:pointer;}
-  .owner-class-chip input{margin:0;}
-  .owner-class-chip-on{background:#eef2ff;color:#3730a3;border-color:#c7d2fe;}
-  #owner-new-institute-classes{display:flex;flex-wrap:wrap;gap:6px;width:100%;margin-top:2px;}
-</style>
+<!-- v179: Owner Panel ab alag Owner APK / owner-app.html me hai — main app me nahi. -->
 
 <!-- Firebase SDKs -->
 <script defer src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -2479,8 +2398,7 @@ B"></textarea>
       // v120: ab local (same-origin) owner-panel.js aur exam-manager.js
       // bhi isi on-demand loader se load hoti hain — pehle dono
       // <script defer> se har page load par eager download hoti thin.
-      ownerPanel:  ["owner-panel.js"],
-      examManager: ["exam-manager.js?v=5"],
+            examManager: ["exam-manager.js?v=5"],
       // v125: 3D Solids Lab — React + Three.js + Babel-standalone (JSX
       // ko browser mein hi compile karta hai, kyunki app khud koi
       // build-step use nahi karta) — sab kuch sirf tabhi load hota hai
@@ -2534,15 +2452,7 @@ B"></textarea>
       ];
     }
 
-    // v120: Owner Panel aur Exam Manager ke entry-point buttons ke liye
-    // safe wrapper — inline onclick us function ko seedha call karta
-    // tha jo pehle hamesha pehle se load hoti thi; ab pehle library
-    // ensure karke, load hone ke baad hi asli function call karta hai.
-    window.__openOwnerPanelSafe = function () {
-      window.__ensureLib("ownerPanel").then(function () {
-        if (typeof window.openOwnerOverlay === "function") window.openOwnerOverlay();
-      });
-    };
+    // v179: Owner Panel entry hata diya (alag Owner APK). Exam Manager ke liye safe wrapper neeche rehta hai.
     window.__examgrOpenAddSafe = function () {
       window.__ensureLib("examManager").then(function () {
         if (typeof window.examgrOpenAdd === "function") window.examgrOpenAdd();
