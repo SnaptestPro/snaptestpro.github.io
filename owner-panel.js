@@ -89,7 +89,7 @@ Isse is institute se uska access turant band ho jayega. (Uska Firebase Auth logi
   function esc(x){return String(x==null?"":x).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
   function ago(t){var m=Math.floor((Date.now()-t)/6e4);return m<1?"abhi":m<60?m+" min":m<1440?Math.floor(m/60)+" ghante":Math.floor(m/1440)+" din"}
   async function call(path,method){
-    var u=firebase.auth().currentUser; if(!u)throw new Error("Owner login chahiye");
+    var u=(ownerGetAuth().currentUser||firebase.auth().currentUser); if(!u||!u.email)throw new Error("Owner login chahiye");
     var r=await fetch(W+path,{method:method||"GET",headers:{Authorization:"Bearer "+await u.getIdToken()}}), j=await r.json().catch(function(){return{}});
     if(!r.ok||!j.ok)throw new Error(j.error||("HTTP "+r.status)); return j;
   }
@@ -100,7 +100,7 @@ Isse is institute se uska access turant band ho jayega. (Uska Firebase Auth logi
       box.innerHTML=a.length?a.map(function(x){var c=x.sev==="critical"?"#b91c1c":x.sev==="error"?"#c2410c":"#64748b";
         return '<div style="border-top:1px solid #e2e8f0;padding:7px 0"><b style="color:'+c+'">'+esc((x.sev||"").toUpperCase())+'</b> • '+esc(x.role||"")+"/"+esc(x.plat||"")+" • "+ago(x.t)+" pehle<br>"+esc(x.msg)+
           '<div style="color:#64748b;font-size:.7rem">'+[x.src,x.screen,x.inst&&("inst: "+x.inst),"app "+x.app,x.net].filter(Boolean).map(esc).join(" • ")+"</div></div>"}).join(""):"✅ Koi alert nahi.";
-    }catch(e){box.textContent="Alerts nahi mile: "+(e&&e.message||e)+" (Worker me BANK_KV + SERVICE_ACCOUNT_JSON set hona chahiye)"}
+    }catch(e){var m=String(e&&e.message||e);box.textContent="Alerts nahi mile: "+m+(/Sirf owner/i.test(m)?" — Owner email Worker ki OWNER_EMAILS list me nahi hai (Cloudflare > Worker > Settings > Variables)":/BANK_KV|SERVICE_ACCOUNT/i.test(m)?" — Worker me BANK_KV + SERVICE_ACCOUNT_JSON set karein":"")}
   };
   window.ownerClearAlerts=async function(){ if(!confirm("Saare alerts clear karein?"))return; try{await call("/alerts/clear","POST");window.ownerLoadAlerts()}catch(e){alert("Clear nahi hua: "+(e&&e.message||e))} };
 })();
@@ -180,7 +180,7 @@ function ownerBrandingEdit(id){
 /* ===== v176: Owner Dashboard (plan/expiry/students/storage), Recount, CSV, APK build button ===== */
 async function ownerWorkerCall(path,method,body){
   const W=(window.SNAP_CONFIG&&window.SNAP_CONFIG.workerUrl)||"https://cool-thunder-a280.vishnu1234stm.workers.dev";
-  const u=firebase.auth().currentUser;if(!u)throw new Error("Owner login chahiye");
+  const u=(ownerGetAuth().currentUser||firebase.auth().currentUser);if(!u||!u.email)throw new Error("Owner login chahiye");
   const r=await fetch(W+path,{method:method||"GET",headers:Object.assign({Authorization:"Bearer "+await u.getIdToken()},body?{"Content-Type":"application/json"}:{}),body:body?JSON.stringify(body):undefined});
   const j=await r.json().catch(()=>({}));if(!r.ok||!j.ok)throw new Error(j.error||("HTTP "+r.status));return j;
 }

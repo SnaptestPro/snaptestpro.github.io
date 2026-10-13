@@ -24,7 +24,7 @@
   async function sync() {
     if (busy) return; busy = true;
     try {
-      var u = window.firebase && firebase.auth && firebase.auth().currentUser, want = !!(u && isOwnerEmail(u.email)), have = localStorage.getItem(SUB) === "1";
+      var u = (typeof ownerGetAuth === "function" && ownerGetAuth().currentUser) || (window.firebase && firebase.auth && firebase.auth().currentUser), want = !!(u && isOwnerEmail(u.email)), have = localStorage.getItem(SUB) === "1";
       if (want === have) return;
       if (want) {
         var p = await native("checkPermissions"); if (p.receive !== "granted") p = await native("requestPermissions");
