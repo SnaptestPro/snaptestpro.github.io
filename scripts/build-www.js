@@ -7,6 +7,16 @@ const SKIP_FILES = new Set(['package.json', 'package-lock.json', 'capacitor.conf
   'firestore.rules', '_headers', 'sitemap.xml', 'robots.txt', 'OWNER_CLOUD_FUNCTIONS_optional.js', '.gitignore', 'institute-icon.img']);
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
+// v179: OWNER_APP=1 -> sirf Owner app ki files (owner-app.html -> index.html). Student/Admin ka code shamil nahi hota.
+if (process.env.OWNER_APP === '1') {
+  const need = ['owner-app.html', 'styles.css', 'firebase-config.js', 'app-config.js', 'owner-panel.js', 'owner-push.js', 'app-bridge.js',
+    'manifest-owner.webmanifest', 'icon-192-owner.png', 'icon-512-owner.png', 'icon-192-maskable-owner.png', 'icon-512-maskable-owner.png'];
+  for (const f of need) {
+    if (!fs.existsSync(path.join(ROOT, f))) { console.error('Owner app ki file nahi mili:', f); process.exit(1); }
+    fs.copyFileSync(path.join(ROOT, f), path.join(OUT, f === 'owner-app.html' ? 'index.html' : f));
+  }
+  console.log('www ready (OWNER APP):', need.length, 'files'); process.exit(0);
+}
 let n = 0;
 (function walk(dir, rel) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
