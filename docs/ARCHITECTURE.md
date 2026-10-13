@@ -1,0 +1,7 @@
+# Architecture (Phase 0 summary)
+- **Readable source for `script.js`?** NO. `script.js` is a single minified bundle (669 lines, longest line ~29k chars); no source folder or source map exists. Only `solids-lab-source.jsx` has a source. -> Phase 8 Path B (Prettier, then gradual modules). If you have the original source elsewhere, please locate it.
+- **index.html script order:** app-bridge, error-reporter, Firebase compat 9.22 (app/auth/firestore/storage), read-meter, read-diet, firebase-config, app-config, subject-resolver, bank-idb, pdf-import, **script.js**, admin-notify, admin-settings-pro, upgrade, whatsapp-poll-export, student-features, student-session, batch-system/phase2/v169, snap-files, drive-upload, lock-config, app-lock, branding, pdf-viewer, own-live, id-card, omr, push-notifications, native-push, app-update, offline-sync, back-button-guard, app-ui, student-settings-pro.
+- **Other entry pages:** `owner-app.html` (owner-panel, owner-push, owner-ui), `question-generator.html` (qgen-app, booklet-print).
+- **Worker:** `workerUrl` in `app-config.js`; used for bank, push, owner alerts. `worker.js` and `push-worker/worker.js` differ (duplicate to resolve in Phase 7).
+- **Deploy targets:** GitHub Pages (repo root) and Capacitor `www/` via `scripts/build-www.js` (copies all except md/gs/zip/rules etc.; owner APK copies only a whitelist).
+- Per-file collection/global maps: to be completed during Phase 3/8 when each script is read in detail.
