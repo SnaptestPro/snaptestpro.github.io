@@ -740,8 +740,47 @@ async function nightlyRecount(env) {
   await env.BANK_KV.put('recount_state', JSON.stringify(st));
 }
 
+
+/* v178: roz subah (IST 9 ke baad) owner ko ek push: kaun se institutes ka plan 7 din me khatam hoga / ho chuka.
+   Wahi owner_alerts topic (jaisa error alerts) + optional Telegram. Din me ek hi baar (KV). Kuch na ho to push nahi. */
+async function dailyExpiryDigest(env) {
+  if (!env.BANK_KV || !env.SERVICE_ACCOUNT_JSON) return;
+  const ist = new Date(Date.now() + 330 * 60000), day = ist.toISOString().slice(0, 10);
+  if (ist.getUTCHours() < 9) return;
+  if ((await env.BANK_KV.get('expiry_digest_day')) === day) return;
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), projectId = env.PROJECT_ID || sa.project_id, at = await googleAccessToken(sa);
+  const base = 'https://firestore.googleapis.com/v1/projects/' + projectId + '/databases/(default)/documents', now = Date.now();
+  const r = await fetch(base + ':runQuery', { method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ structuredQuery: { from: [{ collectionId: 'institutes' }],
+      where: { compositeFilter: { op: 'AND', filters: [
+        { fieldFilter: { field: { fieldPath: 'planExpiresAt' }, op: 'GREATER_THAN', value: { integerValue: '0' } } },
+        { fieldFilter: { field: { fieldPath: 'planExpiresAt' }, op: 'LESS_THAN', value: { integerValue: String(now + 7 * 864e5) } } }] } }, limit: 60 } }) });
+  if (!r.ok) return;
+  const soon = [], gone = [];
+  for (const x of ((await r.json()) || [])) {
+    const f = x.document && x.document.fields; if (!f) continue;
+    if (f.active && f.active.booleanValue === false) continue;
+    const e = Number(f.planExpiresAt && f.planExpiresAt.integerValue) || 0, nm = (f.name && f.name.stringValue) || '?', d = Math.ceil((e - now) / 864e5);
+    (d < 0 ? gone : soon).push({ nm, d });
+  }
+  await env.BANK_KV.put('expiry_digest_day', day, { expirationTtl: 3 * 86400 });
+  if (!soon.length && !gone.length) return;
+  soon.sort((a, b) => a.d - b.d);
+  const body = [soon.length ? '⏳ Jaldi khatam (' + soon.length + '): ' + soon.slice(0, 8).map((x) => x.nm + (x.d <= 0 ? ' (aaj)' : ' (' + x.d + ' din)')).join(', ') : '',
+    gone.length ? '❌ Expired (' + gone.length + '): ' + gone.slice(0, 8).map((x) => x.nm + ' (' + (-x.d) + ' din pehle)').join(', ') : ''].filter(Boolean).join('\n').slice(0, 400);
+  const title = '📅 SnapTest Pro — Renewal reminder';
+  try {
+    await fetch('https://fcm.googleapis.com/v1/projects/' + projectId + '/messages:send', { method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: { topic: 'owner_alerts', notification: { title, body }, data: { type: 'owner_digest' }, android: { priority: 'HIGH', ttl: '43200s', notification: { sound: 'default', channel_id: 'snap_updates' } } } }) });
+  } catch (e) {}
+  try {
+    if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) await fetch('https://api.telegram.org/bot' + env.TELEGRAM_BOT_TOKEN + '/sendMessage', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text: title + '\n\n' + body }) });
+  } catch (e) {}
+}
+
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(sendReminders(env).catch((e) => console.log('reminder fail', e && e.message))); ctx.waitUntil(nightlyRecount(env).catch((e) => console.log('recount fail', e && e.message))); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(sendReminders(env).catch((e) => console.log('reminder fail', e && e.message))); ctx.waitUntil(nightlyRecount(env).catch((e) => console.log('recount fail', e && e.message))); ctx.waitUntil(dailyExpiryDigest(env).catch((e) => console.log('digest fail', e && e.message))); },
   // v176: roz ek baar student-count sahi karo (limit wale institutes)
   // (upar wali line ke saath hi chalta hai)
   async fetch(request, env, ctx) {
