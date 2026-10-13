@@ -1,0 +1,39 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm run stamp:check
+      - run: npm test
+  rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - run: npm install --no-audit --no-fund --ignore-scripts --no-save @firebase/rules-unit-testing@3 firebase@10 firebase-tools@13.29.1
+      - run: npx firebase emulators:exec --only firestore,storage --project demo-snaptest "node tests/security-rules.test.js"
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm run build:www
+      - run: node scripts/check-precache.js www
+  lint:
+    runs-on: ubuntu-latest
+    continue-on-error: true   # warnings only for now
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npx --yes eslint@8 --no-eslintrc --env browser,es2022,node --parser-options ecmaVersion:2022 --rule '{"no-undef":"warn","no-unreachable":"warn"}' scripts tests/unit
