@@ -207,6 +207,7 @@
 
   /* ---------- page shell ---------- */
   function openPage(key) {
+    if (key === "recfix") { (async function () { try { var r = await window.SnapRecordsBackfill({ dry: true }); if (!r.recordsToFix) { toast("Sab results pehle se theek hain ✅ (" + r.students + " students check hue)"); return; } if (confirm(r.recordsToFix + " purane results me institute tag lagana hai (" + r.students + " students). Karein?")) { var a = await window.SnapRecordsBackfill({ dry: false }); toast("Done ✅ " + a.recordsToFix + " results fix hue"); } } catch (e) { toast("Fix nahi hua: " + (e.message || e)); } })(); return; }
     if (key === "owner") { try { if (typeof window.__openOwnerPanelSafe === "function") window.__openOwnerPanelSafe(); else toast("Owner Panel available nahi"); } catch (e) {} return; }
     var f = pages[key]; if (!f) return;
     giveBack();
@@ -251,7 +252,7 @@
         m = document.createElement("div"); m.id = "asp-menu"; m.className = "asp-wrap";
         m.innerHTML = '<div class="asp-hero"><div class="asp-av" id="asp-hero-av">' + esc(initials((user() || {}).email)) + '</div><div><b id="asp-hero-nm">Admin</b><small id="asp-hero-sub">' + esc((user() || {}).email || "Admin") + '</small><span class="asp-pill" id="asp-hero-st"><i></i>Institute Active</span></div></div>' +
           '<div class="asp-sec">ACCOUNT</div><div class="asp-grp">' + row("user", "ind", "Profile & Institute", "ID Card, email, institute, status", "profile") + row("key", "tea", "Institute Join Code", "Student registration ki suraksha", "joincode").replace("<small>", '<small id="asp-jc-sub">') + row("lock", "orc", "Admin Password", "Change password, recovery info", "pwd") + '</div>' +
-          '<div class="asp-sec">MANAGE</div><div class="asp-grp">' + row("bell", "amb", "Notifications", "Students ko push bhejna, status", "notif") + row("phone", "idg", "App & Data", apkState() ? "Naya APK aaya hai — update karein" : "Update, cache, bank, seed", "data").replace("<small>", '<small id="asp-data-sub">') + '</div>' +
+          '<div class="asp-sec">MANAGE</div><div class="asp-grp">' + row("bell", "amb", "Notifications", "Students ko push bhejna, status", "notif") + row("shield", "blu", "Result Privacy Fix", "Purane results me institute tag lagayein", "recfix") + row("phone", "idg", "App & Data", apkState() ? "Naya APK aaya hai — update karein" : "Update, cache, bank, seed", "data").replace("<small>", '<small id="asp-data-sub">') + '</div>' +
           '<div class="asp-sec">SUPPORT</div><div class="asp-grp">' + row("help", "blu", "Help & Support", "Call / WhatsApp / Email, FAQ", "help") + row("info", "gry", "About App", "Version " + esc((C().version || "") + (C().build ? " (" + C().build + ")" : "")), "about") + row("shield", "pnk", "Privacy & Terms", "Aapke data ke baare me", "privacy") + '</div>' +
           '<div class="asp-sec">OWNER</div><div class="asp-grp">' + row("crown", "ind", "Owner Panel", "Har institute ka admin manage karein", "owner") + '</div>' +
           '<button type="button" class="asp-row asp-logout" id="asp-logout"><span class="asp-ic" style="background:' + TILE.red + '">' + ico("out") + '</span><span class="asp-tx"><b style="color:#b91c1c">Admin Logout</b><small>Is device se admin logout</small></span></button>';

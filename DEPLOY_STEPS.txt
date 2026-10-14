@@ -1,17 +1,6 @@
-SIRF BADLI HUI FILES (aapki ORIGINAL zip ke muqable) — Liquid Glass + Phase 0,1,2
-=================================================================================
-1) Ye zip ke andar ki saari files apne repo me usi folder-path par COPY/REPLACE karo.
-2) Neeche DELETE_THESE.txt me jo files hain unhe repo se DELETE karo.
-3) Commit + push. (CI pehli baar chalega: Actions tab me dekho.)
-
-CHECK KARNA (deploy ke baad, phone me):
- - App kholo, hard refresh / purani cache saaf (Settings > Cache saaf). Naya cache naam: snaptestpro-v184
- - Student login: pura app Liquid Glass dikhe (glass cards, neeche floating tab bar)
- - Settings me ab "Theme" wali row nahi honi chahiye (Student + Admin dono)
- - Admin > Settings: "App Theme" card gayab ho
- - Exam screen, Result screen, Admin panels, Batch screens: text padhne me aaye
- - Question Generator page: glass look, aur paper print/preview normal
- - Owner app: neeche glass tab bar
- - GitHub > Actions: "CI" workflow chale (unit/build green; rules job pehli baar chale to result dekho)
- - app-config.js me version 1.2.0, build 184
-Agar koi screen me text dikhna band ho to screen ka naam bhejo.
+PHASE 3 DELTA — sirf 7 badli files (pichli FULL zip ke upar)
+Copy/replace: sw.js, firestore.rules, index.html, admin-settings-pro.js, records-lockdown.js (NAYI),
+tests/security-rules.test.js, docs/PHASE3_PRIVACY.md (NAYI)
+Kuch delete nahi karna.
+Phase 3 DEFAULT OFF hai: deploy ke baad app bilkul pehle jaisa chalega.
+Poore steps aur rollback: docs/PHASE3_PRIVACY.md
