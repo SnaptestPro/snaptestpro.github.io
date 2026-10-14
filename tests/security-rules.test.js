@@ -140,6 +140,23 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await t("Student config/privacy NAHI badal sakta", () => assertFails(d(stuA, "config/privacy").set({ recordsLockdown: false })));
   await env.withSecurityRulesDisabled(async (c) => { await c.firestore().doc("config/privacy").set({ recordsLockdown: false }); });
 
+  console.log("\nPhase 4 — Worker-verified login (custom token claim) + secrets lockdown");
+  const custA = env.authenticatedContext("s_9999", { role: "student", mobile: "9999", instituteId: A }).firestore();   // Worker custom token: session doc ki zaroorat nahi
+  const custFake = env.authenticatedContext("s_x", { role: "student" }).firestore();                                   // claim me mobile nahi
+  await env.withSecurityRulesDisabled(async (c) => { await c.firestore().doc("config/privacy").set({ recordsLockdown: true }); });
+  await t("Custom-token student (bina session doc) apni history padh sakta hai", () => assertSucceeds(col(custA, "studentRecords").where("mobile", "==", "9999").get()));
+  await t("Custom-token student doosre ki history NAHI padh sakta", () => assertFails(col(custA, "studentRecords").where("mobile", "==", "8888").get()));
+  await t("Custom-token student apne institute ka rank board padh sakta hai", () => assertSucceeds(col(custA, "studentRecords").where("instituteId", "==", A).get()));
+  await t("Mobile claim ke bina custom-token user kuch NAHI padh sakta", () => assertFails(col(custFake, "studentRecords").where("instituteId", "==", A).get()));
+  await env.withSecurityRulesDisabled(async (c) => { await c.firestore().doc("config/privacy").set({ recordsLockdown: false, secretsLockdown: false }); });
+  await t("secretsLockdown OFF: admin A apne student ka secret padh sakta hai (purana behaviour)", () => assertSucceeds(d(adminA, "studentSecrets/9999").get()));
+  await env.withSecurityRulesDisabled(async (c) => { await c.firestore().doc("config/privacy").set({ recordsLockdown: false, secretsLockdown: true }); });
+  await t("secretsLockdown ON: admin A bhi studentSecrets NAHI padh sakta", () => assertFails(d(adminA, "studentSecrets/9999").get()));
+  await t("secretsLockdown ON: koi student apna secret NAHI padh/likh sakta", async () => { await assertFails(d(custA, "studentSecrets/9999").get()); await assertFails(d(custA, "studentSecrets/9999").set({ hash: "x" }, { merge: true })); });
+  await t("secretsLockdown ON: naya secret create NAHI ho sakta (client se)", () => assertFails(d(anon, "studentSecrets/5555").set({ hash: "x" })));
+  await t("secretsLockdown ON: admin A student ko delete kar sakta hai (account delete chalta rahe)", () => assertSucceeds(d(adminA, "studentSecrets/7777").delete()));
+  await env.withSecurityRulesDisabled(async (c) => { await c.firestore().doc("config/privacy").set({ recordsLockdown: false, secretsLockdown: false }); });
+
   console.log("\nStorage");
   const stor = (ctx) => ctx.storage();
   const adminAs = env.authenticatedContext("ua", { email: "adminA@x.com" }), stuAs = env.authenticatedContext("uid9999"), stuBs = env.authenticatedContext("uid8888");
