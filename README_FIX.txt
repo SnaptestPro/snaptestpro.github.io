@@ -1,4 +1,3 @@
-FIX: sirf firestore.rules replace karo (repo me).
-Pichle Phase 3 zip me galti se institutes/batches ke rules hat gaye the. Ye file original ke upar sirf studentRecords wala hissa badalti hai.
-Agar pichli (galat) firestore.rules Firebase Console me Publish kar di thi, to ye file dobara Publish karo.
-Phir GitHub Actions me CI / rules green hona chahiye.
+Ye 5 files repo me usi jagah replace karo: server-auth.js, version.json, sw.js, app-config.js, package.json
+Fix: admin ek hi browser me login ho aur wahin student login test karein to ab admin logout / "Is email se koi admin account nahi" alert nahi aayega.
+Test phir se: Chrome me https://snaptestpro.github.io/?serverauth=1

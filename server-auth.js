@@ -20,7 +20,9 @@
     enabled: enabled,
     login: async function (mobile, password) {
       var j = await post("/student/login", { mobile: mobile, password: password });
-      await auth().signInWithCustomToken(j.token);
+      /* Agar isi browser me Admin (email) login hai to usko replace NA karein (warna admin logout + "admin account nahi" alert aata hai). */
+      var cu = auth() && auth().currentUser;
+      if (!(cu && cu.email)) await auth().signInWithCustomToken(j.token);
       return j.student;
     },
     register: function (mobile, password, pin) { return post("/student/register", { mobile: mobile, password: password, pin: pin }); },
