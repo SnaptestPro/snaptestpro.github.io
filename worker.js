@@ -634,12 +634,187 @@ async function handleFiles(request, env, pathname, ctx) {
   throw new HttpErr(404, 'Unknown files endpoint');
 }
 
+/* ---------- Phase 4: Student auth (PBKDF2 + rate limit + Firebase custom token) ----------
+   Endpoints (POST, JSON):  /student/login  /student/register  /student/set-pin  /student/reset-with-pin  /student/admin-reset
+   Zaroori bindings: BANK_KV (rate limit), SERVICE_ACCOUNT_JSON (already hai).
+   Optional vars:  PBKDF2_ITER (default 30000; paid plan par 100000+ kar sakte hain),
+                   DELETE_LEGACY_HASH = "1"  (jab saare purane APK update ho jayein tab — purana SHA-256 hash login ke baad hata deta hai). */
+const AUTH_ORIGINS = ['https://snaptestpro.github.io', 'https://localhost', 'http://localhost', 'capacitor://localhost', 'ionic://localhost'];
+const AUTH_DEV = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+const WEAK_PW = ['123456', '1234567', '12345678', '123456789', '1234567890', 'password', 'qwerty', '111111', '000000', '123123', 'abcdef', 'abc123', '654321', 'iloveyou', 'password1'];
+const sFld = (f, k) => (f && f[k] && (f[k].stringValue !== undefined ? f[k].stringValue : '')) || '';
+async function sha256hex(s) { return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(s)))).map((x) => x.toString(16).padStart(2, '0')).join(''); }
+function ctEq(a, b) { a = String(a); b = String(b); if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
+const pbkTarget = (env) => Math.max(10000, Math.min(600000, Number(env.PBKDF2_ITER) || 30000));
+async function pbkdf2(secret, salt, iter) {
+  const k = await crypto.subtle.importKey('raw', te.encode(secret), 'PBKDF2', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: iter }, k, 256));
+}
+async function pwMake(env, secret) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iter = pbkTarget(env);
+  return 'pbkdf2$' + iter + '$' + b64u(salt) + '$' + b64u(await pbkdf2(secret, salt, iter));
+}
+async function pwCheck(stored, secret) {
+  const p = String(stored || '').split('$');
+  if (p.length !== 4 || p[0] !== 'pbkdf2') return false;
+  const iter = Number(p[1]); if (!(iter >= 1000 && iter <= 1000000)) return false;
+  return ctEq(b64u(await pbkdf2(secret, unb64u(p[2]), iter)), p[3]);
+}
+const pwIter = (stored) => Number(String(stored || '').split('$')[1]) || 0;
+function pwPolicy(pw) {
+  if (typeof pw !== 'string' || pw.length < 6) throw new HttpErr(400, 'Password kam se kam 6 characters ka rakhein.');
+  if (pw.length > 100) throw new HttpErr(400, 'Password bahut lamba hai.');
+  if (WEAK_PW.indexOf(pw.toLowerCase()) >= 0 || /^(.)\1+$/.test(pw)) throw new HttpErr(400, 'Ye password bahut aasan hai — koi mushkil password chunein.');
+}
+function authKV(env) { if (!env.BANK_KV) throw new HttpErr(500, 'BANK_KV binding set nahi hai'); return env.BANK_KV; }
+async function rlCheck(env, list) {
+  const kv = authKV(env), now = Date.now();
+  for (const [key, limit] of list) {
+    const v = await kv.get(key, 'json');
+    if (v && v.n >= limit && now < v.until) { const mins = Math.max(1, Math.ceil((v.until - now) / 60000)); const e = new HttpErr(429, 'Bahut zyada galat koshish. ' + mins + ' minute baad dobara try karein.'); e.retryAfter = Math.ceil((v.until - now) / 1000); throw e; }
+  }
+}
+async function rlFail(env, list) {
+  const kv = authKV(env), now = Date.now();
+  for (const [key, limit, windowSec] of list) {
+    let v = await kv.get(key, 'json'); if (!v || now > v.until) v = { n: 0, until: now + windowSec * 1000 };
+    v.n++; await kv.put(key, JSON.stringify(v), { expirationTtl: Math.max(60, Math.ceil((v.until - now) / 1000) + 60) });
+    if (v.n === limit) console.log('[auth] lockout', key);
+  }
+}
+async function rlClear(env, keys) { const kv = authKV(env); for (const k of keys) { try { if (await kv.get(k)) await kv.delete(k); } catch (e) {} } }
+const fsUrl = (pid) => 'https://firestore.googleapis.com/v1/projects/' + pid + '/databases/(default)/documents/';
+async function fsSetFields(env, path, setObj, delKeys) {
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), at = await googleAccessToken(sa), pid = env.PROJECT_ID || sa.project_id;
+  const fields = {}; for (const k of Object.keys(setObj)) fields[k] = typeof setObj[k] === 'boolean' ? { booleanValue: setObj[k] } : (setObj[k] instanceof Date ? { timestampValue: setObj[k].toISOString() } : { stringValue: String(setObj[k]) });
+  const mask = Object.keys(setObj).concat(delKeys || []).map((k) => 'updateMask.fieldPaths=' + encodeURIComponent(k)).join('&');
+  const r = await fetch(fsUrl(pid) + path + '?' + mask, { method: 'PATCH', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) });
+  if (!r.ok) throw new HttpErr(502, 'Firestore write fail ' + r.status);
+}
+async function mintCustomToken(env, uid, claims) {
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), now = Math.floor(Date.now() / 1000);
+  const key = await crypto.subtle.importKey('pkcs8', unb64u(sa.private_key.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '')), RS, false, ['sign']);
+  const head = b64u(te.encode(JSON.stringify({ alg: 'RS256', typ: 'JWT' })));
+  const body = b64u(te.encode(JSON.stringify({ iss: sa.client_email, sub: sa.client_email, aud: 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit', iat: now, exp: now + 3000, uid, claims })));
+  return head + '.' + body + '.' + b64u(await crypto.subtle.sign(RS.name, key, te.encode(head + '.' + body)));
+}
+function authOrigin(request) {
+  const o = request.headers.get('Origin'); if (!o) return '';
+  if (AUTH_ORIGINS.indexOf(o) >= 0 || AUTH_DEV.test(o)) return o;
+  throw new HttpErr(403, 'Origin allowed nahi hai');
+}
+const mobileOf = (x) => { const m = String(x || '').replace(/\D/g, '').slice(-10); return /^\d{10}$/.test(m) ? m : ''; };
+const GENERIC_BAD = 'Mobile number ya password galat hai.';
+
+async function authLogin(request, env, body) {
+  const mobile = mobileOf(body.mobile), password = typeof body.password === 'string' ? body.password : '';
+  if (!mobile || !password || password.length > 200) throw new HttpErr(400, 'Sahi mobile number aur password likhein.');
+  const ip = request.headers.get('CF-Connecting-IP') || '0', rm = 'rl:m:' + mobile, ri = 'rl:ip:' + ip;
+  const fails = [[rm, 5, 900], [ri, 20, 3600]];
+  await rlCheck(env, [[rm, 5], [ri, 20]]);
+  let sec = await fsGetFields(env, 'studentSecrets/' + mobile), st = await fsGetFields(env, 'students/' + mobile), ok = false, upgrade = false, legacyFromStudent = false;
+  if (st) {
+    if (sec && sFld(sec, 'pw')) ok = await pwCheck(sFld(sec, 'pw'), password);
+    else if (sec && sFld(sec, 'hash')) { ok = ctEq(await sha256hex(password), sFld(sec, 'hash')); upgrade = ok; }
+    else if (!sec && sFld(st, 'hash')) { ok = ctEq(await sha256hex(password), sFld(st, 'hash')); upgrade = ok; legacyFromStudent = ok; }
+  }
+  if (!ok) { await rlFail(env, fails); throw new HttpErr(401, GENERIC_BAD); }
+  await rlClear(env, [rm]);
+  const del = env.DELETE_LEGACY_HASH === '1' ? ['hash'] : [];
+  if (upgrade) {
+    const set = { pw: await pwMake(env, password), updatedAt: new Date() };
+    if (legacyFromStudent) { if (sFld(st, 'pinHash')) set.pinHash = sFld(st, 'pinHash'); }
+    await fsSetFields(env, 'studentSecrets/' + mobile, set, del);
+    if (legacyFromStudent) await fsSetFields(env, 'students/' + mobile, { hasPin: !!sFld(st, 'pinHash') }, ['hash', 'pinHash']);
+  } else if (sec && pwIter(sFld(sec, 'pw')) < pbkTarget(env)) {
+    await fsSetFields(env, 'studentSecrets/' + mobile, { pw: await pwMake(env, password), updatedAt: new Date() }, []);   // iteration upgrade
+  }
+  const instituteId = sFld(st, 'instituteId'), classId = sFld(st, 'classId');
+  const hasPin = !!(sec && (sFld(sec, 'pin') || sFld(sec, 'pinHash'))) || (st.hasPin && st.hasPin.booleanValue === true) || !!sFld(st, 'pinHash');
+  return { ok: true, token: await mintCustomToken(env, 's_' + mobile, { role: 'student', mobile, instituteId }), student: { name: sFld(st, 'name'), mobile, instituteId: instituteId || null, classId: classId || null, hasPin } };
+}
+async function authRegister(request, env, body) {
+  const mobile = mobileOf(body.mobile), password = body.password, pin = String(body.pin || '');
+  if (!mobile) throw new HttpErr(400, 'Sahi 10-digit mobile number likhein.');
+  pwPolicy(password);
+  if (!/^\d{4}$/.test(pin)) throw new HttpErr(400, 'Security PIN theek 4 digit ka hona chahiye.');
+  const ip = request.headers.get('CF-Connecting-IP') || '0', rr = 'rl:reg:' + ip;
+  await rlCheck(env, [[rr, 10]]);
+  const sec = await fsGetFields(env, 'studentSecrets/' + mobile);
+  if (sec && (sFld(sec, 'pw') || sFld(sec, 'hash')) && await fsGetFields(env, 'students/' + mobile)) { await rlFail(env, [[rr, 10, 3600]]); throw new HttpErr(409, 'Is mobile number par account pehle se bana hua hai. Login karein.'); }
+  await fsSetFields(env, 'studentSecrets/' + mobile, { pw: await pwMake(env, password), pin: await pwMake(env, pin), updatedAt: new Date() }, ['hash', 'pinHash']);
+  await rlFail(env, [[rr, 10, 3600]]);
+  return { ok: true };
+}
+async function authSetPin(request, env, body) {
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), u = await verifyIdToken(body.idToken, env.PROJECT_ID || sa.project_id), mobile = mobileOf(body.mobile), pin = String(body.pin || '');
+  if (!mobile || u.role !== 'student' || u.mobile !== mobile) throw new HttpErr(403, 'Pehle login karein.');
+  if (!/^\d{4}$/.test(pin)) throw new HttpErr(400, 'PIN theek 4 digit ka hona chahiye.');
+  const sec = await fsGetFields(env, 'studentSecrets/' + mobile);
+  if (sec && (sFld(sec, 'pin') || sFld(sec, 'pinHash'))) throw new HttpErr(409, 'PIN pehle se set hai. Badalne ke liye "Password bhool gaye" use karein.');
+  await fsSetFields(env, 'studentSecrets/' + mobile, { pin: await pwMake(env, pin), updatedAt: new Date() }, []);
+  await fsSetFields(env, 'students/' + mobile, { hasPin: true }, []);
+  return { ok: true };
+}
+async function authResetWithPin(request, env, body) {
+  const mobile = mobileOf(body.mobile), pin = String(body.pin || ''), np = body.newPassword;
+  if (!mobile || !/^\d{4}$/.test(pin)) throw new HttpErr(400, 'Sahi mobile number aur 4 digit PIN likhein.');
+  pwPolicy(np);
+  const ip = request.headers.get('CF-Connecting-IP') || '0', rp = 'rl:p:' + mobile, ri = 'rl:ip:' + ip;
+  await rlCheck(env, [[rp, 5], [ri, 20]]);
+  const sec = await fsGetFields(env, 'studentSecrets/' + mobile), st = await fsGetFields(env, 'students/' + mobile);
+  let ok = false;
+  if (sec && st) { if (sFld(sec, 'pin')) ok = await pwCheck(sFld(sec, 'pin'), pin); else if (sFld(sec, 'pinHash')) ok = ctEq(await sha256hex(pin), sFld(sec, 'pinHash')); }
+  if (!ok) { await rlFail(env, [[rp, 5, 900], [ri, 20, 3600]]); throw new HttpErr(401, 'Mobile number ya Security PIN galat hai (ya PIN set nahi hai).'); }
+  await fsSetFields(env, 'studentSecrets/' + mobile, { pw: await pwMake(env, np), pin: await pwMake(env, pin), updatedAt: new Date() }, ['hash', 'pinHash']);
+  await fsSetFields(env, 'students/' + mobile, { hasPin: true }, ['hash', 'pinHash']);
+  await rlClear(env, [rp, 'rl:m:' + mobile]);
+  return { ok: true };
+}
+async function authAdminReset(request, env, body) {
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), u = await verifyIdToken(body.idToken, env.PROJECT_ID || sa.project_id), email = String(u.email || '').toLowerCase(), mobile = mobileOf(body.mobile);
+  if (!email || !mobile) throw new HttpErr(403, 'Admin email login chahiye.');
+  pwPolicy(body.newPassword);
+  const owners = String(env.OWNER_EMAILS || 'vishnu1234stm@gmail.com,vishnu1234stmp@gmail.com').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean);
+  const st = await fsGetFields(env, 'students/' + mobile), sec = await fsGetFields(env, 'studentSecrets/' + mobile);
+  if (!st && !sec) throw new HttpErr(404, 'Ye mobile number kisi student ke record mein nahi mila.');
+  if (owners.indexOf(email) < 0) {
+    const a = await adminFields(env, email);
+    if (!a || !(a.active && a.active.booleanValue === true)) throw new HttpErr(403, 'Aap admin nahi hain ya account band hai.');
+    const ai = sFld(a, 'instituteId'), si = sFld(st, 'instituteId');
+    if (si && ai !== si) throw new HttpErr(403, 'Ye student aapke institute ka nahi hai.');
+  }
+  await fsSetFields(env, 'studentSecrets/' + mobile, { pw: await pwMake(env, body.newPassword), updatedAt: new Date() }, ['hash']);
+  if (st) await fsSetFields(env, 'students/' + mobile, {}, ['hash']).catch(() => {});
+  await rlClear(env, ['rl:m:' + mobile, 'rl:p:' + mobile]);
+  return { ok: true };
+}
+async function handleStudentAuth(request, env, pathname) {
+  let origin = '';
+  const out = (o, status) => new Response(JSON.stringify(o), { status: status || 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': origin || 'null', 'Vary': 'Origin', 'Cache-Control': 'no-store', ...(o && o.retryAfter ? { 'Retry-After': String(o.retryAfter) } : {}) } });
+  try {
+    origin = authOrigin(request);
+    if (request.method !== 'POST') throw new HttpErr(405, 'POST chahiye');
+    if (!env.SERVICE_ACCOUNT_JSON) throw new HttpErr(500, 'SERVICE_ACCOUNT_JSON secret set nahi hai');
+    let body; try { body = JSON.parse(await request.text()); } catch (e) { throw new HttpErr(400, 'Bad JSON'); }
+    if (!body || typeof body !== 'object') throw new HttpErr(400, 'Bad JSON');
+    const r = pathname === '/student/login' ? await authLogin(request, env, body)
+      : pathname === '/student/register' ? await authRegister(request, env, body)
+      : pathname === '/student/set-pin' ? await authSetPin(request, env, body)
+      : pathname === '/student/reset-with-pin' ? await authResetWithPin(request, env, body)
+      : pathname === '/student/admin-reset' ? await authAdminReset(request, env, body)
+      : (() => { throw new HttpErr(404, 'Unknown student endpoint'); })();
+    return out(r);
+  } catch (e) { return out({ ok: false, error: e.message || String(e), ...(e.retryAfter ? { retryAfter: e.retryAfter } : {}) }, e.status || 500); }
+}
+
 export default {
   async scheduled(event, env, ctx) { ctx.waitUntil(sendReminders(env).catch((e) => console.log('reminder fail', e && e.message))); },
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const pathname = new URL(request.url).pathname.replace(/\/+$/, '') || '/';
     try {
+      if (pathname.indexOf('/student/') === 0) return await handleStudentAuth(request, env, pathname);
       if (pathname === '/bank' || pathname === '/bank/meta') return await handleBank(request, env, pathname);
       if (pathname.indexOf('/live/') === 0) return await handleLive(request, env, pathname);
       if (pathname.indexOf('/files/') === 0) return await handleFiles(request, env, pathname, ctx);

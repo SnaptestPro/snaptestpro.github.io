@@ -1,6 +1,4 @@
-PHASE 3 DELTA — sirf 7 badli files (pichli FULL zip ke upar)
-Copy/replace: sw.js, firestore.rules, index.html, admin-settings-pro.js, records-lockdown.js (NAYI),
-tests/security-rules.test.js, docs/PHASE3_PRIVACY.md (NAYI)
-Kuch delete nahi karna.
-Phase 3 DEFAULT OFF hai: deploy ke baad app bilkul pehle jaisa chalega.
-Poore steps aur rollback: docs/PHASE3_PRIVACY.md
+PHASE 4 DELTA — pichli "FULL_phase3_fixed" zip ke upar sirf badli files.
+Is zip ki saari files repo me usi path par copy/replace karo. Kuch delete nahi karna.
+Cloudflare Worker me push-worker/worker.js ka naya code alag se paste karna hai.
+serverAuth abhi false hai: app pehle jaisa chalega. Poore steps: docs/PHASE4_AUTH.md

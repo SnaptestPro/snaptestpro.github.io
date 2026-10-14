@@ -269,10 +269,17 @@ service cloud.firestore {
     // Ye institute ke batchSettings/security.strict == true hone par hi lagu hota hai (default OFF => purana behaviour, koi login nahi tootta).
     // ══════════════════════════════════════════════════════════════
     function sessMobile() {
-      return request.auth != null &&
-        exists(/databases/$(database)/documents/studentSessions/$(request.auth.uid))
-        ? get(/databases/$(database)/documents/studentSessions/$(request.auth.uid)).data.mobile
-        : null;
+      // Phase 4: Worker-verified login (custom token) me mobile token ke andar hota hai (forge nahi ho sakta).
+      return request.auth == null ? null :
+        (request.auth.token.get('mobile', null) != null ? request.auth.token.mobile :
+          (exists(/databases/$(database)/documents/studentSessions/$(request.auth.uid))
+            ? get(/databases/$(database)/documents/studentSessions/$(request.auth.uid)).data.mobile
+            : null));
+    }
+    // Phase 4: config/privacy.secretsLockdown = true => koi client (admin bhi) studentSecrets nahi padh/likh sakta; sab Worker se.
+    function secretsLockdown() {
+      return exists(/databases/$(database)/documents/config/privacy) &&
+        get(/databases/$(database)/documents/config/privacy).data.get('secretsLockdown', false) == true;
     }
     function instStrict(instituteId) {
       return exists(/databases/$(database)/documents/institutes/$(instituteId)/batchSettings/security) &&
@@ -566,12 +573,12 @@ service cloud.firestore {
       // koi bhi active admin, kisi bhi doosre institute ke student ka
       // password yahan se reset karke uske account mein "ghus" sakta
       // tha.
-      allow read: if isAdmin() && studentBelongsToAdmin(mobile);
+      allow read: if !secretsLockdown() && isAdmin() && studentBelongsToAdmin(mobile);
 
       // Registration (aur legacy-account migration) — pehli baar create.
-      allow create: if isSignedIn();
+      allow create: if !secretsLockdown() && isSignedIn();
 
-      allow update: if (isAdmin() && studentBelongsToAdmin(mobile)) ||
+      allow update: if !secretsLockdown() && ((isAdmin() && studentBelongsToAdmin(mobile)) ||
         (
           // (a) LOGIN proof: client bhejta hai lastLoginProof = sha256(entered
           // password); tabhi accept hoga jab ye stored "hash" se match kare.
@@ -595,7 +602,7 @@ service cloud.firestore {
           'pinHash' in resource.data &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hash', 'pinProof']) &&
           request.resource.data.pinProof == resource.data.pinHash
-        );
+        ));
 
       allow delete: if isAdmin() && studentBelongsToAdmin(mobile);
     }
