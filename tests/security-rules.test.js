@@ -117,6 +117,29 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await t("B ka student B ka published item padh sakta hai (strict OFF)", () => assertSucceeds(d(stuB, `${PB}/batches/b1/items/n1`).get()));
   await t("Strict OFF me doubts band (private data)", () => assertFails(d(stuB, `${PB}/batches/b1/doubts/x`).set({ ...doubt("8888"), instituteId: B })));
 
+  console.log("\nPhase 3 — studentRecords privacy (lockdown switch)");
+  await env.withSecurityRulesDisabled(async (c) => {
+    const db = c.firestore();
+    await db.doc("studentRecords/r1").set({ mobile: "9999", instituteId: A, testId: "t1", score: 5 });
+    await db.doc("studentRecords/r2").set({ mobile: "7777", instituteId: A, testId: "t1", score: 3 });
+    await db.doc("studentRecords/r3").set({ mobile: "8888", instituteId: B, testId: "t2", score: 9 });
+  });
+  await t("Lockdown OFF: purana behaviour (koi bhi signed-in list kar sakta hai)", () => assertSucceeds(col(anon, "studentRecords").get()));
+  await env.withSecurityRulesDisabled(async (c) => { await c.firestore().doc("config/privacy").set({ recordsLockdown: true }); });
+  await t("Lockdown ON: bina session wala (anonymous) list NAHI kar sakta", () => assertFails(col(anon, "studentRecords").get()));
+  await t("Lockdown ON: anonymous single result NAHI padh sakta", () => assertFails(d(anon, "studentRecords/r1").get()));
+  await t("Lockdown ON: student apni history padh sakta hai (where mobile)", () => assertSucceeds(col(stuA, "studentRecords").where("mobile", "==", "9999").get()));
+  await t("Lockdown ON: student doosre ki history NAHI padh sakta", () => assertFails(col(stuA, "studentRecords").where("mobile", "==", "8888").get()));
+  await t("Lockdown ON: student apne institute ka rank board padh sakta hai", () => assertSucceeds(col(stuA, "studentRecords").where("instituteId", "==", A).where("testId", "==", "t1").get()));
+  await t("Lockdown ON: student doosre institute ke records NAHI padh sakta", () => assertFails(col(stuA, "studentRecords").where("instituteId", "==", B).get()));
+  await t("Lockdown ON: bina filter ka poora list student ko NAHI milta", () => assertFails(col(stuA, "studentRecords").get()));
+  await t("Lockdown ON: doosre institute ka student A ka record NAHI padh sakta", () => assertFails(d(stuB, "studentRecords/r1").get()));
+  await t("Lockdown ON: admin A records padh sakta hai", () => assertSucceeds(col(adminA, "studentRecords").where("instituteId", "==", A).get()));
+  await t("Lockdown ON: student naya result bana sakta hai", () => assertSucceeds(col(stuA, "studentRecords").add({ mobile: "9999", instituteId: A, testId: "t1", score: 7 })));
+  await t("Student result update/delete NAHI kar sakta", async () => { await assertFails(d(stuA, "studentRecords/r1").update({ score: 100 })); await assertFails(d(stuA, "studentRecords/r1").delete()); });
+  await t("Student config/privacy NAHI badal sakta", () => assertFails(d(stuA, "config/privacy").set({ recordsLockdown: false })));
+  await env.withSecurityRulesDisabled(async (c) => { await c.firestore().doc("config/privacy").set({ recordsLockdown: false }); });
+
   console.log("\nStorage");
   const stor = (ctx) => ctx.storage();
   const adminAs = env.authenticatedContext("ua", { email: "adminA@x.com" }), stuAs = env.authenticatedContext("uid9999"), stuBs = env.authenticatedContext("uid8888");
