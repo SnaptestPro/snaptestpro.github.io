@@ -421,14 +421,54 @@
     box.querySelectorAll("[data-xl]").forEach(function (x) { x.onclick = function () { var i = its.filter(function (k) { return k.id === x.dataset.xl; })[0]; EXT.hooks.join(i, b.id); c.joinLive(i); }; });
   }
 
+  /* v199 SPEED: Subjects tab ab saved data se TURANT khulta hai (memory ya phone me saved), fresh data peeche se aata hai
+     (2 min me ek hi baar) aur screen sirf tab badalti hai jab subjects/chapters/progress sach me badle. */
+  var XK = function (c, b) { var m = me(); return "snap_bm_x_" + (m ? m.mobile : "") + "_" + b; };
+  function xSig(b) { try { var st = X.struct[b]; return JSON.stringify([(st ? st.subjects : []).map(function (s) { return [s.id, s.name, s.order, (s.chapters || []).map(function (h) { return [h.id, h.name, h.order]; })]; }), Object.keys(X.prog[b] || {}).length, X.nAsg && X.nAsg[b]]); } catch (e) { return String(Date.now()); } }
+  function xWarm(c, b) {
+    if (X.struct[b] && X.struct[b].stu) return true;
+    try {
+      var D = window.SnapDiet, z = D && D.cget && D.cget(XK(c, b), 14 * 864e5); z = z && z.items; if (!z || !Array.isArray(z.subjects)) return false;
+      X.struct[b] = { subjects: z.subjects, stu: true, at: 0 }; if (!X.prog[b]) X.prog[b] = z.prog || {}; X.nAsg = X.nAsg || {}; X.nAsg[b] = z.nAsg || 0; return true;
+    } catch (e) { return false; }
+  }
+  function xSave(c, b) { try { var D = window.SnapDiet; if (D && D.cset && X.struct[b]) D.cset(XK(c, b), 0, { subjects: X.struct[b].subjects, prog: X.prog[b] || {}, nAsg: (X.nAsg && X.nAsg[b]) || 0 }); } catch (e) {} }
+  /* network se fresh lena: struct + progress + assignments count ek saath; fail ho to purana data bana rehta hai */
+  function xRefresh(c, inst, b) {
+    X.fetched = X.fetched || {}; X.nAsg = X.nAsg || {};
+    if (X.fetched[b] && Date.now() - X.fetched[b] < 120000) return Promise.resolve(false);
+    X.fetched[b] = Date.now();
+    var before = xSig(b), had = !!X.struct[b];
+    return Promise.all([
+      loadStruct(c, inst, b, true).then(function () { return true; }, function () { return false; }),
+      progRef(c, b).get().then(function (d) { var sv = (d.exists && d.data().done) || {}; X.prog[b] = Object.assign({}, sv, X.prog[b] || {}); return true; }, function () { return false; }),
+      sub(c, inst, b, "assignments").where("published", "==", true).get().then(function (q) { X.nAsg[b] = q.docs.length; return true; }, function () { return false; })
+    ]).then(function (ok) {
+      if (!ok[0] && !had) X.struct[b] = { subjects: [], at: Date.now() };
+      if (!ok[0] && !ok[1] && !ok[2]) X.fetched[b] = 0;
+      if (ok[0]) xSave(c, b);
+      return xSig(b) !== before;
+    });
+  }
+  EXT.prefetchBatch = function (bt, c) { try { var m = me(); if (!m || !bt) return; return xRefresh(c, c.S.inst, bt.id); } catch (e) {} };
   EXT.studentTabs.subjects = { label: "Subjects", render: function (b, box, c) {
     var inst = c.S.inst, v = X.sv; if (v.b !== b.id) { v = X.sv = { b: b.id }; }
-    Promise.all([ensure(c, inst, b.id, true), loadProg(c, b.id), sub(c, inst, b.id, "assignments").where("published", "==", true).get().then(function (q) { return q.docs.length; }).catch(function () { return 0; })]).then(function (r) {
-      var subs = X.struct[b.id].subjects; v.nAsg = r[2];
+    X.nAsg = X.nAsg || {};
+    function paint() {
+      var subs = (X.struct[b.id] && X.struct[b.id].subjects) || []; v.nAsg = X.nAsg[b.id] || 0;
       if (v.cid) { var s = subs.filter(function (x) { return x.id === v.sid; })[0], ch = s && s.chapters.filter(function (x) { return x.id === v.cid; })[0]; if (s && ch) return chapterPage(c, b, box, s, ch); }
       if (v.sid) { var s2 = v.sid.indexOf("legacy:") === 0 ? subjectsFor(c, b.id).filter(function (x) { return x.name === v.sid.slice(7); })[0] : subs.filter(function (x) { return x.id === v.sid; })[0]; if (s2) return subjectPage(c, b, box, s2); }
       dashPage(c, b, box, subs);
-    }).catch(function (e) { box.innerHTML = '<div class="bm-empty">Load nahi hua. Internet check karein.</div>'; });
+    }
+    var warm = xWarm(c, b.id), drawn = false;
+    if (warm) { try { paint(); drawn = true; } catch (e) { console.warn(e); } }
+    var sg = drawn ? xSig(b.id) : "";
+    xRefresh(c, inst, b.id).then(function (changed) {
+      if (drawn && !changed && xSig(b.id) === sg) return;
+      if (!box.isConnected) return;
+      var cur = SB.ctx().S; if (cur.cur !== b.id) return;
+      paint();
+    }).catch(function (e) { if (!drawn) box.innerHTML = '<div class="bm-empty">Load nahi hua. Internet check karein.</div>'; });
   } };
   function rerender(c, b, box) { EXT.studentTabs.subjects.render(b, box, c); }
   function dashPage(c, b, box, subs) {

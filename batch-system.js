@@ -596,41 +596,91 @@ function vPay(m) {
   /* =================== STUDENT =================== */
   var S = { batches: [], items: {}, mine: [], cur: null, tab: "overview" };
   function sess() { try { return getStudentSession(); } catch (e) { return null; } }
+  /* v199 SPEED: batch dabate hi phone me saved data se list TURANT dikhti hai (0 wait); fresh data peeche se aata hai
+     aur screen sirf tab badalti hai jab kuch sach me badla ho. Saved data na ho (pehli baar) to pehle jaisa Loading. */
+  var SNAP_K = function (m) { return "snap_bm_snap_" + String(m); };
+  function sigOf() {
+    try {
+      return JSON.stringify([(S.batches || []).map(function (b) { var l = liveOf(b), n = nextOf(b); return [b.id, b.name, b.enrolledCount || 0, b.type, b.image ? b.image.length : 0, (S.items[b.id] || []).length, l ? l.id : 0, n ? n.id + ms(n.scheduledAt) : 0]; }),
+        (S.avail || []).map(function (b) { return [b.id, b.name, b.enrolledCount || 0, b.fee || 0, b.enrollment || "", b.limit || 0]; })]);
+    } catch (e) { return String(Date.now()); }
+  }
+  function reqSig() { try { return JSON.stringify((S.avail || []).map(function (b) { return [b.id, b.req || null]; })); } catch (e) { return ""; } }
+  function persistSnap() {
+    try {
+      var s = sess(), D = window.SnapDiet; if (!s || !D || !D.cset || !S.inst) return;
+      D.cset(SNAP_K(s.mobile), 0, { inst: S.inst, mine: S.mine || [], batches: S.batches || [], avail: S.avail || [], reqs: S.reqs || {} });
+    } catch (e) {}
+  }
+  function applyReqCache() {
+    S.reqs = S.reqs || {}; var all = true;
+    (S.avail || []).forEach(function (b) { if (Object.prototype.hasOwnProperty.call(S.reqs, b.id)) b.req = S.reqs[b.id]; else all = false; });
+    S.reqDone = all && (S.avail || []).length > 0 ? true : !(S.avail || []).length; S.reqFresh = false; S.reqBusy = false;
+  }
+  function hydrate(s) {
+    try {
+      var D = window.SnapDiet; if (!D || !D.cget) return false;
+      var c = D.cget(SNAP_K(s.mobile), 7 * 864e5), z = c && c.items; if (!z || !z.inst || !Array.isArray(z.batches)) return false;
+      S.inst = z.inst; S.mine = z.mine || []; S.batches = z.batches; S.avail = z.avail || []; S.reqs = z.reqs || {}; S.items = S.items || {};
+      S.batches.forEach(function (b) { var it = D.cget("snap_diet_items_S_" + String(s.mobile) + "_" + b.id); if (it && it.items) S.items[b.id] = it.items; else if (!S.items[b.id]) S.items[b.id] = []; });
+      try { window.SnapV169 && window.SnapV169.setMine(S.mine); } catch (e) {}
+      applyReqCache(); return true;
+    } catch (e) { return false; }
+  }
   function openStudent() {
     var s = sess(); if (!s) return;
     var o = $("#bm-student"); if (!o) { o = document.createElement("div"); o.id = "bm-student"; document.body.appendChild(o); }
-    o.classList.remove("bm-hidden"); setNav(true); S.cur = null;
-    o.innerHTML = '<div class="bm-sh"><b>My Batches</b></div><div class="bm-empty">Loading…</div>';
-    loadMine().then(sHome).catch(function (e) { console.warn(e); o.innerHTML = '<div class="bm-sh"><b>My Batches</b></div><div class="bm-empty">Batches load nahi hue. Internet check karein.</div>'; });
+    o.classList.remove("bm-hidden"); setNav(true); S.cur = null; S.inHome = true;
+    var forced = !!S.force, warm = hydrate(s), seq = S.seq = (S.seq || 0) + 1;
+    if (warm) sHome(); else o.innerHTML = '<div class="bm-sh"><b>My Batches</b></div><div class="bm-empty">Loading…</div>';
+    var before = warm ? sigOf() : "";
+    loadMine().then(function () {
+      if (seq !== S.seq) return;
+      persistSnap();
+      if (!warm || forced || sigOf() !== before) { if (S.inHome !== false) sHome(); }
+    }).catch(function (e) {
+      console.warn(e);
+      if (!warm && seq === S.seq) o.innerHTML = '<div class="bm-sh"><b>My Batches</b></div><div class="bm-empty">Batches load nahi hue. Internet check karein.</div>';
+    });
   }
   function closeStudent() { var o = $("#bm-student"); o && o.classList.add("bm-hidden"); setNav(false); }
   function setNav(on) { var n = $("#sn-nav"); if (!n) return; n.querySelectorAll("button").forEach(function (b) { b.classList.toggle("on", on && b.dataset.k === "batch"); }); }
+  function fetchAllBatches(ver) {
+    var fq = function () { return bref(S.inst).where("published", "==", true).get(); };
+    return window.SnapDiet ? window.SnapDiet.cached("snap_diet_avail_" + S.inst, "batches", fq, ver, false) : fq().then(function (q) { return q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); });
+  }
   function loadMine() {
     var s = sess(), db = DB(); if (!db) return Promise.reject();
+    var force = !!S.force; S.force = false;
     return authReady().then(function () { return Promise.resolve(typeof ensureMyInstituteId === "function" ? ensureMyInstituteId() : s.instituteId); }).then(function (inst) {
       S.inst = inst; if (!inst) { S.batches = []; S.avail = []; return; }
-      return db.collection("students").doc(String(s.mobile)).get().then(function (d) {
-        S.mine = (d.exists && d.data().batchIds) || []; try { window.SnapV169 && window.SnapV169.setMine(S.mine); } catch (e) {}
-        return Promise.all(S.mine.map(function (id) { return bref(inst, id).get().then(function (b) { return b.exists ? Object.assign({ id: b.id }, b.data()) : null; }).catch(function () { return null; }); }));
-      }).then(function (bs) {
-        S.batches = bs.filter(function (b) { return b && b.published; });
-        /* v170 read-diet: items tabhi padhe jaate hain jab admin ne badlaav kiya ho (ver doc) — warna phone ka cache */
-        var force = !!S.force; S.force = false;
-        return (window.SnapDiet ? window.SnapDiet.ver(inst, force) : Promise.resolve(null)).then(function (ver) {
-          S.ver = ver;
-          return Promise.all(S.batches.map(function (b) {
-            var fq = function () { return bref(inst, b.id).collection("items").where("published", "==", true).get(); };
-            var p = window.SnapDiet ? window.SnapDiet.cached("snap_diet_items_S_" + String(s.mobile) + "_" + b.id, "b_" + b.id, fq, ver, force) : fq().then(function (q) { return q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); });
-            return p.then(function (arr) { S.items[b.id] = arr; }).catch(function () { S.items[b.id] = []; });
+      /* v199: student doc, version doc aur Available list ek SAATH (pehle ek ke baad ek) */
+      var stuP = db.collection("students").doc(String(s.mobile)).get();
+      var verP = (window.SnapDiet ? window.SnapDiet.ver(inst, force) : Promise.resolve(null)).then(function (v) { S.ver = v; return v; });
+      var allP = verP.then(fetchAllBatches).catch(function () { return []; });
+      return stuP.then(function (d) {
+        var mine = S.mine = (d.exists && d.data().batchIds) || []; try { window.SnapV169 && window.SnapV169.setMine(S.mine); } catch (e) {}
+        /* batch docs aur items ek saath; items ke liye batch docs ka intezaar nahi */
+        var bP = Promise.all(mine.map(function (id) { return bref(inst, id).get().then(function (b) { return b.exists ? Object.assign({ id: b.id }, b.data()) : null; }).catch(function () { return null; }); }));
+        var iP = verP.then(function (ver) {
+          return Promise.all(mine.map(function (id) {
+            var fq = function () { return bref(inst, id).collection("items").where("published", "==", true).get(); };
+            var p = window.SnapDiet ? window.SnapDiet.cached("snap_diet_items_S_" + String(s.mobile) + "_" + id, "b_" + id, fq, ver, force) : fq().then(function (q) { return q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); });
+            return p.then(function (arr) { S.items[id] = arr; }).catch(function () { S.items[id] = []; });
           }));
-        }).then(loadAvail);
+        });
+        return Promise.all([bP, iP, allP]).then(function (r) {
+          S.batches = r[0].filter(function (b) { return b && b.published; });
+          S.avail = (r[2] || []).filter(function (b) { return mine.indexOf(b.id) < 0; });
+          applyReqCache();
+        });
       });
     });
   }
   function loadPay() { return pref(S.inst).get().then(function (d) { S.pay = d.exists ? d.data() : null; }).catch(function () { S.pay = null; }); }
   function loadAvail() { return loadAvail0(); }
   /* v170: request-status aur payment doc tabhi padhe jaate hain jab student "Available" tab kholta hai */
-  function loadReqs() { var s = sess(); return Promise.all([loadPay()].concat((S.avail || []).map(function (b) { return bref(S.inst, b.id).collection("requests").doc(String(s.mobile)).get().then(function (r) { b.req = r.exists ? r.data().status : null; }).catch(function () {}); }))); }
+  function loadReqs() { var s = sess(); S.reqs = S.reqs || {}; return Promise.all([loadPay()].concat((S.avail || []).map(function (b) { return bref(S.inst, b.id).collection("requests").doc(String(s.mobile)).get().then(function (r) { b.req = r.exists ? r.data().status : null; S.reqs[b.id] = b.req; }).catch(function () {}); }))); }
   function payForm(b) {
     var p = S.pay || {}, s = sess(); if (!p.qr && !p.upiId) return toast("Institute ne abhi payment setup nahi kiya — admin se sampark karein");
     var md = document.createElement("div"); md.className = "bm-modal"; var up = p.upiId ? "upi://pay?pa=" + encodeURIComponent(p.upiId) + "&pn=" + encodeURIComponent(p.payeeName || "Institute") + "&am=" + b.fee + "&cu=INR&tn=" + encodeURIComponent((b.name || "Batch").slice(0, 40)) : "";
@@ -651,10 +701,8 @@ function vPay(m) {
     };
   }
   function loadAvail0() {
-    var s = sess(), mine = S.mine || [];
-    var fq = function () { return bref(S.inst).where("published", "==", true).get(); };
-      var p = window.SnapDiet ? window.SnapDiet.cached("snap_diet_avail_" + S.inst, "batches", fq, S.ver, false) : fq().then(function (q) { return q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); });
-      return p.then(function (all) { S.avail = all.filter(function (b) { return mine.indexOf(b.id) < 0; }); S.reqDone = false; S.reqBusy = false; }).catch(function () { S.avail = []; });
+    var mine = S.mine || [];
+    return fetchAllBatches(S.ver).then(function (all) { S.avail = all.filter(function (b) { return mine.indexOf(b.id) < 0; }); applyReqCache(); }).catch(function () { S.avail = []; });
   }
   function reqEnroll(id) {
     var b0 = S.avail.filter(function (x) { return x.id === id; })[0]; if (b0 && b0.fee > 0) return payForm(b0);
@@ -665,7 +713,8 @@ function vPay(m) {
   function nextOf(b) { var n = Date.now() - 36e5; return (S.items[b.id] || []).filter(function (i) { return i.kind === "class" && i.status === "upcoming" && ms(i.scheduledAt) >= n; }).sort(function (a, c) { return ms(a.scheduledAt) - ms(c.scheduledAt); })[0]; }
   function sHome() {
     var o = $("#bm-student"), live = S.batches.map(liveOf).filter(Boolean), h = S.h || "my", av = S.avail || [], body;
-      if (h === "avail" && !S.reqDone && !S.reqBusy) { S.reqBusy = true; loadReqs().then(function () { S.reqDone = true; S.reqBusy = false; sHome(); }, function () { S.reqDone = true; S.reqBusy = false; sHome(); }); }
+      S.inHome = true;
+      if (h === "avail" && !S.reqFresh && !S.reqBusy) { S.reqBusy = true; var was = S.reqDone ? reqSig() : "", fin = function () { S.reqBusy = false; S.reqFresh = true; var first = !S.reqDone; S.reqDone = true; persistSnap(); if (S.inHome !== false && (first || reqSig() !== was)) sHome(); }; loadReqs().then(fin, fin); }
     if (h === "my") body = S.batches.length ? S.batches.map(function (b) { var l = liveOf(b), n = nextOf(b); return '<div class="bm-bcard" data-b="' + b.id + '">' + (b.image ? '<img class="bx-bimg" src="' + esc(b.image) + '" alt="">' : "") + '<span class="bm-tag"' + (l ? ' style="background:#ef4444"' : "") + '>' + (l ? "Live Now" : { live: "Live Batch", recorded: "Recorded", hybrid: "Hybrid" }[b.type] || "Batch") + '</span><b>' + esc(b.name) + '</b><small>' + esc(subjOf(b).join(" • ")) + '</small><div class="bm-meta"><span>👥 ' + (b.enrolledCount || 0) + (b.limit ? "/" + b.limit : "") + '</span><span>' + (n ? "⏰ " + fdate(n.scheduledAt) : "Koi upcoming class nahi") + '</span></div></div>'; }).join("") :
       '<div class="bm-empty">Abhi aap kisi batch me enrolled nahi hain.<br>"Available" tab se enroll request bhejein.</div>';
     else body = av.length ? av.map(function (b) {
@@ -685,7 +734,7 @@ function vPay(m) {
   function tabsAll() { var x = Object.keys(EXT.studentTabs).map(function (k) { return [k, EXT.studentTabs[k].label]; }); return [TABS0[0]].concat(x, TABS0.slice(1)); }
   function sJoin(it) { fire("join", it, S.cur); joinLive(it); }
   function sBatch(id) {
-    var b = S.batches.filter(function (x) { return x.id === id; })[0], o = $("#bm-student"); if (!b) return sHome(); S.cur = id;
+    var b = S.batches.filter(function (x) { return x.id === id; })[0], o = $("#bm-student"); if (!b) return sHome(); S.cur = id; S.inHome = false;
     var its = S.items[id] || [], l = liveOf(b), n = nextOf(b);
     var body = "", tab = S.tab, xt = EXT.studentTabs[tab];
     if (tab === "overview") body = '<div class="bm-bhero"><b>' + esc(b.name) + '</b><p>' + esc(b.desc || subjOf(b).join(" • ")) + '</p></div>' + (l ? '<div class="bm-next"><div>🔴 Live: ' + esc(l.title) + '</div><button data-j>Join Now</button></div>' : n ? '<div class="bm-next"><div>Next Live Class<br><b>' + fdate(n.scheduledAt) + '</b></div></div>' : "") +
@@ -726,5 +775,26 @@ function vPay(m) {
     if (ag && !ag.querySelector("[data-bm]")) { var d = document.createElement("button"); d.type = "button"; d.className = "cd-card cd-indigo"; d.dataset.bm = "1"; d.innerHTML = '<div class="cd-card-top"><div class="cd-icon-circle">🎓</div><span class="cd-badge">New</span></div><div class="cd-card-title">Batch Management</div><div class="cd-card-sub">Batches, live classes, recordings, notes</div><div class="cd-card-bottom"><span class="cd-arrow-btn">→</span></div>'; d.onclick = openAdmin; ag.appendChild(d); }
   }
   setInterval(hook, 1500);
-  window.SnapBatch = { openAdmin: openAdmin, openStudent: openStudent, ext: EXT, ctx: ctx };
+  /* v199: app khulne ke baad (idle me) batches pehle se load — taaki Batch dabate hi sab ready mile.
+     Sirf unke liye jinhone Batch pehle kabhi khola hai (saved data hai), aur 10 min me ek hi baar. */
+  var PF = { t: 0, busy: false };
+  function prefetch() {
+    try {
+      var s = sess(); if (!s || PF.busy || !DB()) return;
+      if (Date.now() - PF.t < 600000) return;
+      var D = window.SnapDiet; if (!D || !D.cget || !D.cget(SNAP_K(s.mobile), 7 * 864e5)) return;
+      var o = $("#bm-student"); if (o && !o.classList.contains("bm-hidden")) return;
+      PF.busy = true; PF.t = Date.now();
+      loadMine().then(function () {
+        persistSnap();
+        var jobs = [];
+        if ((S.avail || []).length <= 6) jobs.push(loadReqs().then(function () { S.reqFresh = true; S.reqDone = true; persistSnap(); }).catch(function () {}));
+        try { var pb = EXT.prefetchBatch; if (pb) (S.batches || []).slice(0, 3).forEach(function (b) { jobs.push(Promise.resolve(pb(b, ctx())).catch(function () {})); }); } catch (e) {}
+        return Promise.all(jobs);
+      }).catch(function () {}).then(function () { PF.busy = false; });
+    } catch (e) { PF.busy = false; }
+  }
+  function schedPrefetch() { if (PF.sched || !window.requestAnimationFrame) return; PF.sched = true; setTimeout(function () { PF.sched = false; var f = function () { prefetch(); }; window.requestIdleCallback ? requestIdleCallback(f, { timeout: 4000 }) : f(); }, 3500); }
+  setInterval(function () { try { if ($("#sn-nav") && sess()) schedPrefetch(); } catch (e) {} }, 5000);
+  window.SnapBatch = { openAdmin: openAdmin, openStudent: openStudent, ext: EXT, ctx: ctx, prefetch: prefetch };
 })();
