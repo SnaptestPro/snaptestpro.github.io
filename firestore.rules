@@ -227,7 +227,7 @@ service cloud.firestore {
     function instituteRequiresJoinCode(instituteId) {
       return instituteId != null &&
         exists(/databases/$(database)/documents/institutes/$(instituteId)) &&
-        get(/databases/$(database)/documents/institutes/$(instituteId)).data.requiresJoinCode == true;
+        get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('requiresJoinCode', false) == true;
     }
 
     // Registration ke turant pehle (30 min ke andar) `instituteJoinCodeChecks/{mobile}`
