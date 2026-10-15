@@ -69,6 +69,9 @@ try {
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     window.vishnuFirebase.appCheckReady = startFirebaseAppCheck();
     window.vishnuFirebase.db = firebase.firestore();
+    /* v200: kuch mobile network/WebView me Firestore ka normal connection atak jaata hai ("Backend didn't respond within 10 seconds").
+       Auto-detect ON: atakne par SDK khud long-polling par chala jaata hai. Fail ho to app pehle jaisa chalta hai. */
+    try { window.vishnuFirebase.db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (error) { console.warn("Firestore long-polling setting skip", error && error.message); }
     try { window.vishnuFirebase.storage = firebase.storage(); }
     catch (error) { console.warn("Firebase Storage unavailable", error); }
 

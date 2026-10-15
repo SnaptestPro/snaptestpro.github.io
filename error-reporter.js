@@ -70,6 +70,8 @@
     /AbortError|The user aborted|The operation was aborted/i, /Non-Error promise rejection/i,
     /Failed to fetch|NetworkError|Load failed|network request failed/i,       // user ka internet — bug nahi
     /ServiceWorker|service worker/i, /play\(\) request was interrupted/i, /Notification permission/i,
+    /Could not reach Cloud Firestore backend|Backend didn't respond within|operate in offline mode|client is offline/i,   // v200: user ke slow/toote internet ka SDK message — bug nahi
+    /^(unavailable|deadline-exceeded):/i,
     /Failed to obtain primary lease/i, /Backfill Indexes/i                         // v177: Firestore multi-tab offline cache ka harmless warning (app ek se zyada tab/window me khula) — bug nahi
   ];
   function ignored(msg) { for (var i = 0; i < IGNORE.length; i++) if (IGNORE[i].test(msg)) return true; return false; }
@@ -140,7 +142,8 @@
     try {
       if (e && e.target && e.target !== window && (e.target.src || e.target.href)) {            // script/css/img load fail
         var u = e.target.src || e.target.href;
-        if (/^(https?:)?\/\/(www\.gstatic\.com|cdnjs\.cloudflare\.com|fonts\.)/.test(u) || u.indexOf(location.origin) === 0)
+        /* v200: sirf asli .js/.css file ka load fail (page-URL / image wagairah slow internet me fail hote hain — bug nahi) */
+        if ((/^(https?:)?\/\/(www\.gstatic\.com|cdnjs\.cloudflare\.com|fonts\.)/.test(u) || u.indexOf(location.origin) === 0) && /\.(m?js|css)$/i.test(String(u).split(/[?#]/)[0]))
           report("resource", "Load fail: " + String(u).slice(0, 150), { src: u }, /firebase|script\.js|index\.html/i.test(u) ? "critical" : "warn");
         return;
       }
@@ -189,7 +192,7 @@
         if (done) return; done = true;
         try {
           var day = new Date().toISOString().slice(0, 10);
-          if (lcp > 4000 && ls(SLOW_KEY) !== day) { ls(SLOW_KEY, day); report("slow", "Slow startup: LCP " + Math.round(lcp) + "ms", { ctx: "net=" + conn() }, "warn"); }
+          if (lcp > 10000 && ls(SLOW_KEY) !== day) { ls(SLOW_KEY, day); report("slow", "Slow startup: LCP " + Math.round(lcp) + "ms", { ctx: "net=" + conn() }, "warn"); }
         } catch (e) {}
       };
       document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") check(); });
