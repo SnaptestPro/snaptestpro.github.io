@@ -9,6 +9,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - run: npm install --no-audit --no-fund --ignore-scripts --no-save jsdom@24 acorn@8
       - run: npm run stamp:check
       - run: npm test
   rules:
