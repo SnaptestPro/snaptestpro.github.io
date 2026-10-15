@@ -3,6 +3,7 @@
 (function () {
   var h = document.documentElement;
   try { var q = /[?&]lite=([01])/.exec(location.search); if (q) localStorage.setItem("snap_lite", q[1]); } catch (e) {}
+  try { var sq = /[?&]scanq=(hi|std|low)/.exec(location.search); if (sq) localStorage.setItem("snap_scan_q", sq[1]); } catch (e) {}
   function low() { try { var m = navigator.deviceMemory, c = navigator.hardwareConcurrency; return (m && m <= 4) || (c && c <= 4); } catch (e) { return false; } }
   var pref = null; try { pref = localStorage.getItem("snap_lite"); } catch (e) {}
   if (pref === "1" || (pref !== "0" && low())) h.classList.add("lg-lite");

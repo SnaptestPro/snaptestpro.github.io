@@ -1,5 +1,4 @@
-Yahan sirf wo files hain jo aapke abhi ke (Phase 4 v2) repo se alag hain: Phase 5 (XSS/CSP) + LAG FIX.
+SCAN CAMERA QUALITY FIX — pichli (lagfix) zip ke upar sirf badli files.
 Saari files repo me usi path par copy/replace karo. Kuch delete nahi karna.
-.github/workflows/ci.yml bhi badli hai (agar upload na ho to GitHub par seedha edit kar lein).
-LAG FIX check: Exam Management > OMR Scan camera kholo — ab smooth hona chahiye.
-Zabardasti lite mode: app URL ke aage ?lite=1 ; band karne ke liye ?lite=0
+Phir Chrome me cache clear karke Exam Management > OMR Scan kholo.
+Quality zabardasti badalni ho: app URL ke aage ?scanq=hi  (sabse zyada) / ?scanq=std / ?scanq=low (purani, kam)
