@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://accounts.google.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https: wss: blob: data:; frame-src 'self' https: blob: data:; worker-src 'self' blob: https://cdnjs.cloudflare.com; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script src="safe-html.js"></script>
+<script src="perf-lite.js"></script>
 <script>if(/[?&]owner=1(&|$)/.test(location.search))location.replace("owner-app.html");</script>
 <!-- v144: Android APK (Capacitor WebView) detect — website par kuch nahi badalta, sirf app me install button/popup chhupte hain
      aur Back button app ke andar peeche jata hai. -->
@@ -2807,7 +2811,7 @@ function bulkLog(msg) {
   const box = document.getElementById('bulk-upload-log');
   if (!box) return;
   box.style.display = 'block';
-  box.innerHTML += `<div>${msg}</div>`;
+  box.innerHTML += `<div>${__sx(msg)}</div>`;
   box.scrollTop = box.scrollHeight;
 }
 
@@ -3125,7 +3129,7 @@ function renderBulkPreviewTable() {
         <div contenteditable="true" data-row="${i}" class="bulk-modelanswer-edit" style="border-bottom:1px dashed #cbd5e1;padding:1px 3px;">${escHtml(q.modelAnswer || '')}</div>
       </div>` : '';
     return `<tr data-row="${i}" style="border-top:1px solid #e2e8f0;${q.isDuplicate ? 'background:#fff7ed;' : ''}">
-      <td style="padding:6px;text-align:center;"><input type="checkbox" class="bulk-row-check" data-row="${i}" ${q.include ? 'checked' : ''} onchange="bulkParsedQuestions[${i}].include=this.checked" /></td>
+      <td style="padding:6px;text-align:center;"><input type="checkbox" class="bulk-row-check" data-row="${i}" ${q.include ? 'checked' : ''} onchange="bulkParsedQuestions[${__sj(i)}].include=this.checked" /></td>
       <td style="padding:6px;color:#64748b;">${i + 1}${isSub ? '<div style="color:#7c3aed;font-size:.72rem;margin-top:2px;">📝 Subjective</div>' : ''}</td>
       <td style="padding:6px;">
         <div contenteditable="true" data-row="${i}" data-field="text" class="bulk-text-edit" style="font-weight:600;border-bottom:1px dashed #cbd5e1;padding:1px 3px;">${escHtml(q.text)}</div>
@@ -3133,15 +3137,15 @@ function renderBulkPreviewTable() {
         ${modelAnswerHtml}
       </td>
       <td style="padding:6px;">
-        ${isSub ? '—' : `<select data-row="${i}" class="bulk-answer-select" onchange="bulkParsedQuestions[${i}].answer=parseInt(this.value)">
+        ${isSub ? '—' : `<select data-row="${i}" class="bulk-answer-select" onchange="bulkParsedQuestions[${__sj(i)}].answer=parseInt(this.value)">
           ${[0,1,2,3].map(oi => `<option value="${oi}" ${q.answer === oi ? 'selected' : ''}>${String.fromCharCode(65 + oi)}</option>`).join('')}
         </select>`}
       </td>
       <td style="padding:6px;">
         ${q.imagePreviewUrl
           ? `<img src="${q.imagePreviewUrl}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1;display:block;margin-bottom:4px;" />
-             <button type="button" onclick="removeImageFromBulkRow(${i})" style="font-size:.7rem;color:#dc2626;background:none;border:none;cursor:pointer;padding:0;">✕ Remove</button>`
-          : `<label style="font-size:.74rem;color:#0ea5e9;cursor:pointer;">📷 Attach<input type="file" accept="image/*" style="display:none;" onchange="attachImageToBulkRow(${i}, this)" /></label>`
+             <button type="button" onclick="removeImageFromBulkRow(${__sj(i)})" style="font-size:.7rem;color:#dc2626;background:none;border:none;cursor:pointer;padding:0;">✕ Remove</button>`
+          : `<label style="font-size:.74rem;color:#0ea5e9;cursor:pointer;">📷 Attach<input type="file" accept="image/*" style="display:none;" onchange="attachImageToBulkRow(${__sj(i)}, this)" /></label>`
         }
       </td>
       <td style="padding:6px;">
@@ -3848,7 +3852,7 @@ function onBulkSubjectInputChange() {
   }
   const close = findCloseSubjectMatch(val, classId);
   hint.innerHTML = close
-    ? `⚠️ Kya aapka matlab tha <a href="javascript:void(0)" onclick="document.getElementById('bulk-subject').value='${close}';onBulkSubjectInputChange();" style="color:#0ea5e9;text-decoration:underline;">${close}</a>? (existing subject)`
+    ? `⚠️ Kya aapka matlab tha <a href="javascript:void(0)" onclick="document.getElementById('bulk-subject').value='${__sj(close)}';onBulkSubjectInputChange();" style="color:#0ea5e9;text-decoration:underline;">${close}</a>? (existing subject)`
     : '';
 }
 document.addEventListener('DOMContentLoaded', function(){

@@ -371,7 +371,7 @@ Aapne *${escHtml(a.testTitle)}* test abhi tak nahi diya hai. Kripya jald hi de d
         <th style="padding:7px 10px;text-align:left">Action</th>
       </tr></thead>
       <tbody>
-        ${i.map(m=>{const g=m._recCount,y=m.createdAt&&m.createdAt.toDate?m.createdAt.toDate().toLocaleDateString("en-IN"):"-",k=m._missingProof,S=k.length===0?'<span style="color:#15803d;font-weight:600;">✅ Poora</span>':`<span style="color:#b45309;font-weight:600;" title="${k.map(w=>w.label).join(", ")}">⚠️ ${k.length} missing</span>`,v=k.length===0?`<button type="button" onclick="openStudentProofForm('${m.mobile}')" style="background:#475569;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;margin-right:6px;">✏️ Profile</button>`:`<button type="button" onclick="openStudentProofForm('${m.mobile}')" style="background:#d97706;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;margin-right:6px;font-weight:700;">🪪 Profile</button>`;return`<tr style="border-top:1px solid #e2e8f0">
+        ${i.map(m=>{const g=m._recCount,y=m.createdAt&&m.createdAt.toDate?m.createdAt.toDate().toLocaleDateString("en-IN"):"-",k=m._missingProof,S=k.length===0?'<span style="color:#15803d;font-weight:600;">✅ Poora</span>':`<span style="color:#b45309;font-weight:600;" title="${k.map(w=>w.label).join(", ")}">⚠️ ${k.length} missing</span>`,v=k.length===0?`<button type="button" onclick="openStudentProofForm('${__sj(m.mobile)}')" style="background:#475569;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;margin-right:6px;">✏️ Profile</button>`:`<button type="button" onclick="openStudentProofForm('${__sj(m.mobile)}')" style="background:#d97706;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;margin-right:6px;font-weight:700;">🪪 Profile</button>`;return`<tr style="border-top:1px solid #e2e8f0">
             <td style="padding:7px 10px">${escHtml(m.name||"-")}</td>
             <td style="padding:7px 10px">${escHtml(m.mobile||"-")}</td>
             <td style="padding:7px 10px">${m.hasPin?"✅ Set":"⚠️ Nahi"}</td>
@@ -380,9 +380,9 @@ Aapne *${escHtml(a.testTitle)}* test abhi tak nahi diya hai. Kripya jald hi de d
             <td style="padding:7px 10px">${S}</td>
             <td style="padding:7px 10px;white-space:nowrap;">
               ${v}
-              <button type="button" onclick="viewStudentAnswers('${m.mobile}')" style="background:#2563eb;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;margin-right:6px;">📄 Answers</button>
-              <button type="button" onclick="prefillAdminResetMobile('${m.mobile}')" style="background:#dc2626;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;margin-right:6px;">🔑 Reset</button>
-              <button type="button" onclick="deleteStudentAccount('${m.mobile}')" style="background:#7f1d1d;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;">🗑️ Delete</button>
+              <button type="button" onclick="viewStudentAnswers('${__sj(m.mobile)}')" style="background:#2563eb;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;margin-right:6px;">📄 Answers</button>
+              <button type="button" onclick="prefillAdminResetMobile('${__sj(m.mobile)}')" style="background:#dc2626;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;margin-right:6px;">🔑 Reset</button>
+              <button type="button" onclick="deleteStudentAccount('${__sj(m.mobile)}')" style="background:#7f1d1d;color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;">🗑️ Delete</button>
             </td>
           </tr>`}).join("")}
       </tbody>
@@ -400,7 +400,7 @@ Ye undo nahi ho sakta.${a}`))return;const o=getDB();if(!o){alert("⚠️ Interne
               <strong>${escHtml(r.testTitle||r.testId||"Test")}</strong>
               <div style="font-size:.78rem;color:#64748b;">${h?h+" · ":""}${escHtml(r.testMode||"Online")} · Score: ${r.score}/${d} (${l}%)</div>
             </div>
-            ${u?`<button type="button" onclick="toggleStudentAnswerDetail(${c})" style="background:#0891b2;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;">MCQ Answers Dekhein</button>`:'<span style="color:#94a3b8;font-size:12px;">Detail unavailable</span>'}
+            ${u?`<button type="button" onclick="toggleStudentAnswerDetail(${__sj(c)})" style="background:#0891b2;color:#fff;border:none;padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;">MCQ Answers Dekhein</button>`:'<span style="color:#94a3b8;font-size:12px;">Detail unavailable</span>'}
           </div>
           <div id="student-answer-detail-${c}" class="hidden" style="padding:8px 12px;max-height:360px;overflow-y:auto;"></div>
         </div>`}).join("")}
@@ -425,7 +425,7 @@ Ye undo nahi ho sakta.${a}`))return;const o=getDB();if(!o){alert("⚠️ Interne
     ${e.map((s,a)=>{const o=FIXMOBILE_REASON_LABEL[s.reason]||FIXMOBILE_REASON_LABEL.fake,i=s.reason==="conflict"&&!s.namesake?'<div style="font-size:.75rem;color:#7c3aed;margin-top:4px;">⚠️ Pehle confirm karein ki yeh sach mein EK hi student hai — isi naam ke DO ALAG students hona bhi bilkul possible hai (jaise class mein 2 "Aditya Kumar"). Sirf tabhi update karein jab pakka ho ki number sirf ek typo hai.</div>':"",r=s.namesake?'<div style="font-size:.75rem;color:#7c3aed;margin-top:4px;">⚠️ Yeh record shaayad galat naam se ban gaya hai (naam mein "2" jaisa suffix chhoot gaya). Pehle confirm karein yeh kaunsa student hai — number update yahan se karein, naam Records tab se edit karein.</div>':"",c=`
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
           <input type="tel" id="fixmobile-input-${a}" maxlength="10" placeholder="Sahi 10-digit mobile number" list="fixmobile-registered-datalist" value="${escHtml(s.suggestedMobile||"")}" style="max-width:220px;" />
-          <button type="button" class="btn-primary" onclick="updateFakeMobileGroup(${a})" style="padding:6px 14px;">✅ Number Update Karein</button>
+          <button type="button" class="btn-primary" onclick="updateFakeMobileGroup(${__sj(a)})" style="padding:6px 14px;">✅ Number Update Karein</button>
           <span id="fixmobile-status-${a}" style="font-size:.8rem;"></span>
         </div>`;return`
       <div class="card" id="fixmobile-card-${a}" style="margin-bottom:10px;padding:12px 16px;">
@@ -496,14 +496,14 @@ Dobara button dabao — jo ho chuke hain unhe dobara touch nahi karega.`)}}windo
         <strong style="color:#92400e;">📂 ${c}</strong>
         <span style="color:#78350f;font-size:.8rem;">${l.length} questions</span>
       </div>`,l.forEach(u=>{const h=u.questionEn||u.question_en||u.questionHi||u.question_hi||"(No text)",f=u._deletedAt?.toDate?u._deletedAt.toDate().toLocaleString("en-IN"):"Unknown time",p=selectedTrashIds.has(u.id);r+=`<div style="border:1px solid #fde68a;border-radius:8px;padding:12px;margin-bottom:8px;background:${p?"#dbeafe":"#fffbeb"};display:flex;gap:10px;align-items:flex-start;">
-        <input type="checkbox" ${p?"checked":""} onchange="toggleTrashSelect('${u.id}', this.checked)" style="margin-top:4px;flex-shrink:0;cursor:pointer;" />
+        <input type="checkbox" ${p?"checked":""} onchange="toggleTrashSelect('${__sj(u.id)}', this.checked)" style="margin-top:4px;flex-shrink:0;cursor:pointer;" />
         <div style="flex:1;min-width:0;">
           <div style="font-size:.85rem;color:#374151;margin-bottom:6px;line-height:1.4;">${h.substring(0,120)}${h.length>120?"...":""}</div>
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
-            <span style="font-size:.75rem;color:#9ca3af;">🕐 Deleted: ${f} · Subject: ${u.subject||"N/A"}</span>
+            <span style="font-size:.75rem;color:#9ca3af;">🕐 Deleted: ${f} · Subject: ${__sx(u.subject||"N/A")}</span>
             <div style="display:flex;gap:6px;">
-              <button onclick="restoreQuestion('${u.id}')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:.78rem;cursor:pointer;font-weight:600;">♻️ Restore</button>
-              <button onclick="permanentlyDeleteQuestion('${u.id}')" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:.78rem;cursor:pointer;font-weight:600;">🗑️ Delete Forever</button>
+              <button onclick="restoreQuestion('${__sj(u.id)}')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:.78rem;cursor:pointer;font-weight:600;">♻️ Restore</button>
+              <button onclick="permanentlyDeleteQuestion('${__sj(u.id)}')" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:.78rem;cursor:pointer;font-weight:600;">🗑️ Delete Forever</button>
             </div>
           </div>
         </div>

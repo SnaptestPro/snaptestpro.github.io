@@ -1,4 +1,5 @@
-PHASE 4 DELTA — pichli "FULL_phase3_fixed" zip ke upar sirf badli files.
-Is zip ki saari files repo me usi path par copy/replace karo. Kuch delete nahi karna.
-Cloudflare Worker me push-worker/worker.js ka naya code alag se paste karna hai.
-serverAuth abhi false hai: app pehle jaisa chalega. Poore steps: docs/PHASE4_AUTH.md
+Yahan sirf wo files hain jo aapke abhi ke (Phase 4 v2) repo se alag hain: Phase 5 (XSS/CSP) + LAG FIX.
+Saari files repo me usi path par copy/replace karo. Kuch delete nahi karna.
+.github/workflows/ci.yml bhi badli hai (agar upload na ho to GitHub par seedha edit kar lein).
+LAG FIX check: Exam Management > OMR Scan camera kholo — ab smooth hona chahiye.
+Zabardasti lite mode: app URL ke aage ?lite=1 ; band karne ke liye ?lite=0
