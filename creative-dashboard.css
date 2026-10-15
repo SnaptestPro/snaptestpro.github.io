@@ -14,3 +14,13 @@
 .cd-podium-score{font-size:.7rem;margin-top:1px}
 .cd-podium-tests{font-size:.62rem;margin-top:0;white-space:nowrap}
 .cd-podium-item.cd-rank-2,.cd-podium-item.cd-rank-3{padding-bottom:4px}
+/* a11y: darker badge text for WCAG AA contrast (4.5:1) */
+.cd-pink .cd-badge{color:#be123c}
+.cd-green .cd-badge{color:#166534}
+.cd-blue .cd-badge{color:#1d4ed8}
+.cd-purple .cd-badge{color:#6d28d9}
+.cd-orange .cd-badge{color:#9a3412}
+.cd-teal .cd-badge{color:#0e7490}
+.cd-red .cd-badge{color:#b91c1c}
+.cd-gold .cd-badge{color:#92400e}
+.cd-indigo .cd-badge{color:#3730a3}
