@@ -1,4 +1,4 @@
-SCAN CAMERA QUALITY FIX — pichli (lagfix) zip ke upar sirf badli files.
+SCAN LAG FIX — pichli (SCAN_QUALITY_FIX) zip ke upar sirf badli files.
 Saari files repo me usi path par copy/replace karo. Kuch delete nahi karna.
 Phir Chrome me cache clear karke Exam Management > OMR Scan kholo.
-Quality zabardasti badalni ho: app URL ke aage ?scanq=hi  (sabse zyada) / ?scanq=std / ?scanq=low (purani, kam)
+?scanq=low  -> upgrade band (sabse halka, purani quality)   ?scanq=std / ?scanq=hi -> high-quality capture
