@@ -30,9 +30,27 @@ let n = 0;
 // App me service worker ki zaroorat nahi (files app ke andar hi hain; SW purani cache atka deta hai).
 const idx = path.join(OUT, 'index.html');
 let h = fs.readFileSync(idx, 'utf8');
-const marker = "if ('serviceWorker' in navigator) {\n    let swRegistration = null;";
-if (h.includes(marker)) { h = h.replace(marker, "if (false && 'serviceWorker' in navigator) {\n    let swRegistration = null;"); fs.writeFileSync(idx, h); console.log('SW registration disabled in app copy'); }
-else console.warn('WARN: SW marker not found — index.html me SW code badla hai, app me SW chalu rahega');
+const swBlock = /if \('serviceWorker' in navigator\)\s*\{\s*let swRegistration = null;/;
+let swDisabled = false;
+if (swBlock.test(h)) {
+  h = h.replace(swBlock, "if (false && 'serviceWorker' in navigator) {\n    let swRegistration = null;");
+  fs.writeFileSync(idx, h);
+  swDisabled = true;
+} else {
+  // Inline extraction moved the SW bootstrap to this classic script. Patch
+  // the app copy so Capacitor does not register a website service worker.
+  const extractedSw = path.join(OUT, 'inline', 'index-inline-08.js');
+  if (fs.existsSync(extractedSw)) {
+    let js = fs.readFileSync(extractedSw, 'utf8');
+    if (swBlock.test(js)) {
+      js = js.replace(swBlock, "if (false && 'serviceWorker' in navigator) {\n    let swRegistration = null;");
+      fs.writeFileSync(extractedSw, js);
+      swDisabled = true;
+    }
+  }
+}
+if (swDisabled) console.log('SW registration disabled in app copy');
+else console.warn('WARN: SW registration block not found — app copy may register the website service worker');
 // v175: institute APK — INSTITUTE_ID set ho to app us institute se lock ho jaati hai
 const lockId = (process.env.INSTITUTE_ID || '').trim();
 if (lockId) {

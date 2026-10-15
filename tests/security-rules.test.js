@@ -24,6 +24,7 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
     const db = ctx.firestore(), set = (p, d) => db.doc(p).set(d);
     await set(`institutes/${A}`, { name: "A", active: true }); await set(`institutes/${B}`, { name: "B", active: true });
     await set("admins/adminA@x.com", { active: true, instituteId: A }); await set("admins/adminB@x.com", { active: true, instituteId: B });
+    await set("admins/claims-admin@x.com", { active: true, instituteId: A });
     for (const [P, I] of [[PA, A], [PB, B]]) {
       await set(`${P}/batches/b1`, { name: "Batch", instituteId: I, published: true, status: "active", enrolledCount: 1 });
       await set(`${P}/batches/b1/items/n1`, { kind: "note", title: "Notes", published: true, instituteId: I, batchId: "b1" });
@@ -45,12 +46,26 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   });
   const adminA = env.authenticatedContext("ua", { email: "adminA@x.com" }).firestore();
   const adminB = env.authenticatedContext("ub", { email: "adminB@x.com" }).firestore();
+  const claimAdmin = env.authenticatedContext("uc", { email: "claims-admin@x.com", snapRole: "admin" }).firestore();
+  const claimOwner = env.authenticatedContext("uo", { email: "claims-owner@x.com", snapRole: "owner" }).firestore();
   const stuA = env.authenticatedContext("uid9999").firestore();            // enrolled, A
   const stuNotEnrolled = env.authenticatedContext("uid7777").firestore();  // A student, batch ka member nahi
   const stuB = env.authenticatedContext("uid8888").firestore();            // doosre institute ka
   const anon = env.authenticatedContext("nosession").firestore();          // session hi nahi
+  const newStudent = env.authenticatedContext("newStudent").firestore();
   const logged = env.unauthenticatedContext().firestore();
   const col = (db, p) => db.collection(p), d = (db, p) => db.doc(p);
+
+  console.log("\nCustom-claim role migration");
+  await t("Active custom-claim admin can write within admin rules", () => assertSucceeds(d(claimAdmin, "questionBank/claim-admin-question").set({ createdBy: "claims-admin@x.com" })));
+  await t("Custom-claim owner can administer admin accounts", () => assertSucceeds(d(claimOwner, "admins/claim-owner-created").set({ active: true, instituteId: A })));
+  await env.withSecurityRulesDisabled(async (ctx) => ctx.firestore().doc("admins/claims-admin@x.com").set({ active: false, instituteId: A }));
+  await t("Disabled custom-claim admin is still blocked", () => assertFails(d(claimAdmin, "questionBank/claim-disabled-question").set({ createdBy: "claims-admin@x.com" })));
+
+  console.log("\nStudent registration consent");
+  const serverTimestamp = require("firebase/firestore").serverTimestamp;
+  await t("Student registration without Terms/guardian consent is rejected", () => assertFails(d(newStudent, "students/9001").set({ name: "New", mobile: "9001", instituteId: A, classId: "c1", hasPin: true, createdAt: serverTimestamp() })));
+  await t("Student registration accepts the explicit consent fields", () => assertSucceeds(d(newStudent, "students/9002").set({ name: "New", mobile: "9002", instituteId: A, classId: "c1", hasPin: true, createdAt: serverTimestamp(), termsAccepted: true, guardianConsent: true, consentVersion: "test-v1", consentAt: serverTimestamp() })));
 
   console.log("\nAdmin isolation");
   await t("Admin A apne batch ke draft item padh sakta hai", () => assertSucceeds(d(adminA, `${PA}/batches/b1/items/draft`).get()));

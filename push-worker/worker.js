@@ -127,6 +127,16 @@ async function isAdminEmail(env, projectId, at, email) {
 
 async function handleBank(request, env, pathname) {
   if (!env.BANK_KV) throw new HttpErr(500, 'BANK_KV binding set nahi hai');
+  if (request.method === 'GET' && pathname === '/bank/chunk') {
+    const params = new URL(request.url).searchParams, classId = String(params.get('classId') || ''), subject = String(params.get('subject') || '');
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(classId) || !subject || subject.length > 120) throw new HttpErr(400, 'classId aur subject chahiye');
+    let meta = {}; try { meta = JSON.parse((await env.BANK_KV.get('bank_meta')) || '{}'); } catch (e) {}
+    const group = (meta.groups || []).find((x) => x.classId === classId && x.subject === subject);
+    if (!group || !group.key) throw new HttpErr(404, 'Is class/subject ka bank chunk nahi mila');
+    const body = await env.BANK_KV.get(group.key, { type: 'stream' });
+    if (!body) throw new HttpErr(404, 'Question bank chunk publish nahi hua');
+    return new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600, stale-while-revalidate=604800', ...CORS } });
+  }
   if (request.method === 'GET' && pathname === '/bank/meta') {
     const m = await env.BANK_KV.get('bank_meta');
     return new Response(m || JSON.stringify({ exists: false }), { headers: { 'Content-Type': 'application/json', ...CORS } });
@@ -155,8 +165,23 @@ async function handleBank(request, env, pathname) {
     const u8 = new Uint8Array(buf); let end = u8.length - 1;
     while (end > 0 && (u8[end] === 10 || u8[end] === 13 || u8[end] === 32)) end--;
     if (u8[0] !== 91 || u8[end] !== 93) throw new HttpErr(400, 'Bank JSON array nahi hai');
+    let bank; try { bank = JSON.parse(new TextDecoder().decode(buf)); } catch (e) { throw new HttpErr(400, 'Bank JSON parse nahi hua'); }
+    const grouped = new Map();
+    for (const q of bank) {
+      if (!q || typeof q !== 'object') continue;
+      const classId = String(q.classId || 'class_10'), subject = String(q.subject || 'Other');
+      if (!/^[A-Za-z0-9_-]{1,80}$/.test(classId) || subject.length > 120) throw new HttpErr(400, 'Bank me classId/subject format galat hai');
+      const key = JSON.stringify([classId, subject]); if (!grouped.has(key)) grouped.set(key, []); grouped.get(key).push(q);
+    }
+    if (grouped.size > 1000) throw new HttpErr(413, 'Bank me bahut zyada class/subject groups hain');
+    const updatedAt = Date.now(), oldMeta = JSON.parse((await env.BANK_KV.get('bank_meta')) || '{}'), groups = [];
+    for (const [key, questions] of grouped) {
+      const [classId, subject] = JSON.parse(key), chunkKey = 'bank_chunk:' + updatedAt + ':' + encodeURIComponent(classId) + ':' + encodeURIComponent(subject);
+      await env.BANK_KV.put(chunkKey, JSON.stringify(questions)); groups.push({ classId, subject, count: questions.length, key: chunkKey });
+    }
     await env.BANK_KV.put('bank', buf);
-    await env.BANK_KV.put('bank_meta', JSON.stringify({ exists: true, updatedAt: Date.now(), count: Number(request.headers.get('X-Bank-Count')) || 0, bytes: buf.byteLength, by: email }));
+    await env.BANK_KV.put('bank_meta', JSON.stringify({ exists: true, updatedAt, count: Number(request.headers.get('X-Bank-Count')) || bank.length, bytes: buf.byteLength, by: email, groups }));
+    await Promise.allSettled((oldMeta.groups || []).filter((g) => g.key).map((g) => env.BANK_KV.delete(g.key)));
     return json({ ok: true, bytes: buf.byteLength });
   }
   throw new HttpErr(404, 'Not found');
@@ -831,7 +856,7 @@ async function rlClear(env, keys) { const kv = authKV(env); for (const k of keys
 const fsUrl = (pid) => 'https://firestore.googleapis.com/v1/projects/' + pid + '/databases/(default)/documents/';
 async function fsSetFields(env, path, setObj, delKeys) {
   const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), at = await googleAccessToken(sa), pid = env.PROJECT_ID || sa.project_id;
-  const fields = {}; for (const k of Object.keys(setObj)) fields[k] = typeof setObj[k] === 'boolean' ? { booleanValue: setObj[k] } : (setObj[k] instanceof Date ? { timestampValue: setObj[k].toISOString() } : { stringValue: String(setObj[k]) });
+  const fields = {}; for (const k of Object.keys(setObj)) fields[k] = typeof setObj[k] === 'boolean' ? { booleanValue: setObj[k] } : (typeof setObj[k] === 'number' ? { integerValue: String(Math.trunc(setObj[k])) } : (setObj[k] instanceof Date ? { timestampValue: setObj[k].toISOString() } : { stringValue: String(setObj[k]) }));
   const mask = Object.keys(setObj).concat(delKeys || []).map((k) => 'updateMask.fieldPaths=' + encodeURIComponent(k)).join('&');
   const r = await fetch(fsUrl(pid) + path + '?' + mask, { method: 'PATCH', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' }, body: JSON.stringify({ fields }) });
   if (!r.ok) throw new HttpErr(502, 'Firestore write fail ' + r.status);
@@ -934,6 +959,116 @@ async function authAdminReset(request, env, body) {
   await rlClear(env, ['rl:m:' + mobile, 'rl:p:' + mobile]);
   return { ok: true };
 }
+function fsDocumentUrl(pid, path) { return fsUrl(pid) + path.split('/').map(encodeURIComponent).join('/'); }
+async function fsQueryMobile(env, collectionId, mobile) {
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), pid = env.PROJECT_ID || sa.project_id, at = await googleAccessToken(sa);
+  const where = { fieldFilter: { field: { fieldPath: 'mobile' }, op: 'EQUAL', value: { stringValue: mobile } } };
+  const r = await fetch(fsUrl(pid).slice(0, -1) + ':runQuery', { method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' }, body: JSON.stringify({ structuredQuery: { from: [{ collectionId, ...(collectionId === 'members' ? { allDescendants: true } : {}) }], where, limit: 500 } }) });
+  if (!r.ok) throw new HttpErr(502, 'Firestore query fail ' + r.status);
+  return (await r.json()).map((x) => x.document).filter(Boolean);
+}
+async function fsDeleteDocument(env, path) {
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), pid = env.PROJECT_ID || sa.project_id, at = await googleAccessToken(sa);
+  const r = await fetch(fsDocumentUrl(pid, path), { method: 'DELETE', headers: { Authorization: 'Bearer ' + at } });
+  if (r.status !== 404 && !r.ok) throw new HttpErr(502, 'Firestore delete fail ' + r.status);
+}
+async function fsBatchDeleteDocuments(env, paths) {
+  if (!paths.length) return;
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), pid = env.PROJECT_ID || sa.project_id, at = await googleAccessToken(sa);
+  const base = fsUrl(pid).slice(0, -1), prefix = 'projects/' + pid + '/databases/(default)/documents/';
+  for (let i = 0; i < paths.length; i += 500) {
+    const writes = paths.slice(i, i + 500).map((p) => ({ delete: prefix + p }));
+    const r = await fetch(base + ':batchWrite', { method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' }, body: JSON.stringify({ writes }) });
+    if (!r.ok) throw new HttpErr(502, 'Firestore batch delete fail ' + r.status);
+    const result = await r.json(); if ((result.status || []).some((s) => s.code && s.code !== 0)) throw new HttpErr(502, 'Firestore ne kuch records delete nahi kiye. Retry karein.');
+  }
+}
+function fsDocPath(document) { const marker = '/documents/'; const i = String(document && document.name || '').indexOf(marker); return i < 0 ? '' : document.name.slice(i + marker.length); }
+async function fsDeleteMobileCollection(env, collectionId, mobile) {
+  let removed = 0;
+  for (let page = 0; page < 3; page++) {
+    const docs = await fsQueryMobile(env, collectionId, mobile);
+    if (!docs.length) break;
+    const matches = docs.map((d) => fsDocPath(d)).filter((p) => p && p.startsWith(collectionId + '/'));
+    if (!matches.length) break;
+    await fsBatchDeleteDocuments(env, matches); removed += matches.length;
+    if (docs.length < 500) break;
+  }
+  if ((await fsQueryMobile(env, collectionId, mobile)).length) throw new HttpErr(503, 'Linked data zyada hai. Delete process ko dobara chalayein; account abhi active hai.');
+  return removed;
+}
+async function fsDeleteBatchMemberships(env, mobile, instituteId) {
+  if (!instituteId) return 0;
+  let removed = 0;
+  for (let page = 0; page < 3; page++) {
+    const docs = await fsQueryMobile(env, 'members', mobile);
+    const paths = docs.map((d) => fsDocPath(d)).filter((p) => {
+      const a = p.split('/'); return a.length === 6 && a[0] === 'institutes' && a[1] === instituteId && a[2] === 'batches' && a[4] === 'members' && a[5] === mobile;
+    });
+    if (!paths.length) break;
+    await fsBatchDeleteDocuments(env, paths); removed += paths.length;
+    for (const p of paths) {
+      const batchPath = p.split('/').slice(0, 4).join('/'), batch = await fsGetFields(env, batchPath);
+      if (batch && batch.enrolledCount) {
+        const count = Number(batch.enrolledCount.integerValue || batch.enrolledCount.doubleValue || 0);
+        await fsSetFields(env, batchPath, { enrolledCount: Math.max(0, count - 1) }, []);
+      }
+    }
+    if (docs.length < 500) break;
+  }
+  const remaining = (await fsQueryMobile(env, 'members', mobile)).map((d) => fsDocPath(d)).some((p) => {
+    const a = p.split('/'); return a.length === 6 && a[0] === 'institutes' && a[1] === instituteId && a[2] === 'batches' && a[4] === 'members' && a[5] === mobile;
+  });
+  if (remaining) throw new HttpErr(503, 'Batch enrollments zyada hain. Delete process ko dobara chalayein; account abhi active hai.');
+  return removed;
+}
+async function deleteStudentData(env, mobile, instituteId) {
+  const removed = { records: 0, scanReports: 0, sessions: 0, batchMemberships: 0 };
+  removed.records = await fsDeleteMobileCollection(env, 'studentRecords', mobile);
+  removed.scanReports = await fsDeleteMobileCollection(env, 'studentScanReports', mobile);
+  removed.sessions = await fsDeleteMobileCollection(env, 'studentSessions', mobile);
+  removed.batchMemberships = await fsDeleteBatchMemberships(env, mobile, instituteId);
+  await fsDeleteDocument(env, 'studentMistakes/' + mobile);
+  await fsDeleteDocument(env, 'studentSecrets/' + mobile);
+  await fsDeleteDocument(env, 'students/' + mobile);
+  return removed;
+}
+async function authDeleteAccount(request, env, body) {
+  const mobile = mobileOf(body.mobile);
+  if (!mobile || body.confirmMobile !== mobile) throw new HttpErr(400, 'Delete confirm karne ke liye sahi 10-digit mobile number dobara likhein.');
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), projectId = env.PROJECT_ID || sa.project_id;
+  let adminEmail = '', isOwner = false, admin = null, fails = null, rateMobileKey = '';
+  if (body.idToken) {
+    const u = await verifyIdToken(body.idToken, projectId); adminEmail = String(u.email || '').toLowerCase();
+    if (!adminEmail) throw new HttpErr(403, 'Admin email login chahiye.');
+    const owners = String(env.OWNER_EMAILS || 'vishnu1234stm@gmail.com,vishnu1234stmp@gmail.com').toLowerCase().split(',').map((x) => x.trim()).filter(Boolean);
+    isOwner = owners.indexOf(adminEmail) >= 0;
+    if (!isOwner) { admin = await fsGetFields(env, 'admins/' + encodeURIComponent(adminEmail)); if (!admin || !(admin.active && admin.active.booleanValue === true)) throw new HttpErr(403, 'Aap admin nahi hain ya account band hai.'); }
+  } else {
+    const password = typeof body.password === 'string' ? body.password : '', ip = request.headers.get('CF-Connecting-IP') || '0';
+    if (!password || password.length > 200) throw new HttpErr(400, 'Password likhein.');
+    rateMobileKey = 'rl:delete:m:' + mobile; const ri = 'rl:delete:ip:' + ip; fails = [[rateMobileKey, 5, 900], [ri, 20, 3600]];
+    await rlCheck(env, [[rateMobileKey, 5], [ri, 20]]);
+  }
+  const st = await fsGetFields(env, 'students/' + mobile), sec = await fsGetFields(env, 'studentSecrets/' + mobile);
+  if (!st && !sec) {
+    if (fails) { await rlFail(env, fails); throw new HttpErr(401, GENERIC_BAD); }
+    throw new HttpErr(404, 'Student account nahi mila.');
+  }
+  const instituteId = sFld(st, 'instituteId');
+  if (body.idToken && !isOwner && (!instituteId || sFld(admin, 'instituteId') !== instituteId)) throw new HttpErr(403, 'Aap sirf apne institute ke student ko delete kar sakte hain.');
+  if (!body.idToken) {
+    const password = body.password;
+    let ok = false;
+    if (st && sec && sFld(sec, 'pw')) ok = await pwCheck(sFld(sec, 'pw'), password);
+    else if (st && sec && sFld(sec, 'hash')) ok = ctEq(await sha256hex(password), sFld(sec, 'hash'));
+    else if (st && sFld(st, 'hash')) ok = ctEq(await sha256hex(password), sFld(st, 'hash'));
+    if (!ok) { await rlFail(env, fails); throw new HttpErr(401, GENERIC_BAD); }
+    await rlClear(env, [rateMobileKey]);
+  }
+  const removed = await deleteStudentData(env, mobile, instituteId);
+  return { ok: true, deleted: true, removed };
+}
 async function handleStudentAuth(request, env, pathname) {
   let origin = '';
   const out = (o, status) => new Response(JSON.stringify(o), { status: status || 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': origin || 'null', 'Vary': 'Origin', 'Cache-Control': 'no-store', ...(o && o.retryAfter ? { 'Retry-After': String(o.retryAfter) } : {}) } });
@@ -948,6 +1083,7 @@ async function handleStudentAuth(request, env, pathname) {
       : pathname === '/student/set-pin' ? await authSetPin(request, env, body)
       : pathname === '/student/reset-with-pin' ? await authResetWithPin(request, env, body)
       : pathname === '/student/admin-reset' ? await authAdminReset(request, env, body)
+      : pathname === '/student/delete-account' ? await authDeleteAccount(request, env, body)
       : (() => { throw new HttpErr(404, 'Unknown student endpoint'); })();
     return out(r);
   } catch (e) { return out({ ok: false, error: e.message || String(e), ...(e.retryAfter ? { retryAfter: e.retryAfter } : {}) }, e.status || 500); }
@@ -962,7 +1098,7 @@ export default {
     const pathname = new URL(request.url).pathname.replace(/\/+$/, '') || '/';
     try {
       if (pathname.indexOf('/student/') === 0) return await handleStudentAuth(request, env, pathname);
-      if (pathname === '/bank' || pathname === '/bank/meta') return await handleBank(request, env, pathname);
+      if (pathname === '/bank' || pathname === '/bank/meta' || pathname === '/bank/chunk') return await handleBank(request, env, pathname);
       if (pathname.indexOf('/live/') === 0) return await handleLive(request, env, pathname);
       if (pathname.indexOf('/files/') === 0) return await handleFiles(request, env, pathname, ctx);
       if (pathname === '/alert') return json(await handleAlert(request, env));

@@ -1,4 +1,0 @@
-SCAN FIX 2 (zoom-out hataya + asli camera photo) — pichli zip ke upar sirf badli files.
-Saari files repo me usi path par copy/replace karo. Kuch delete nahi karna.
-Phir Chrome me cache clear karke Exam Management > OMR Scan kholo.
-?scanq=low  -> asli-photo wala step band (sirf video frame, sabse tez/halka)

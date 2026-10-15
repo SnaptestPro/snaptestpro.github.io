@@ -128,6 +128,18 @@
   }
 
   var pages = {
+    about: function (done) {
+      var c = C();
+      done("About SnapTest Pro", esc(c.version || "1.0"), '<div class="ssp-card"><h4>' + ico("info") + ' SnapTest Pro</h4><p>Practice tests, exam results aur institute features ek jagah.</p><div class="ssp-act"><a class="ssp-btn o" href="' + esc(c.privacyUrl || "/privacy.html") + '" target="_blank" rel="noopener">Privacy Policy</a><a class="ssp-btn o" href="' + esc(c.termsUrl || "/terms.html") + '" target="_blank" rel="noopener">Terms &amp; Conditions</a></div><p><a href="/delete-account.html">Account/data delete karne ki jankari</a></p></div>');
+    },
+    delete: function (done) {
+      var s = typeof window.getStudentSession === "function" ? window.getStudentSession() : null, mobile = s && s.mobile ? String(s.mobile) : "";
+      done("Delete Account & Data", "Permanent deletion request", mobile ? '<form id="ssp-delete-form"><div class="ssp-card"><p>Account, profile/photo, test results, scan reports, mistakes, login sessions aur batch enrollments permanent delete honge.</p><label for="ssp-delete-mobile">Account mobile number</label><input id="ssp-delete-mobile" type="tel" value="' + esc(mobile) + '" readonly><label for="ssp-delete-confirm">Confirm ke liye wahi 10-digit mobile dobara likhein</label><input id="ssp-delete-confirm" type="tel" inputmode="numeric" maxlength="10" autocomplete="off" required><label for="ssp-delete-password">Account password</label><input id="ssp-delete-password" type="password" autocomplete="current-password" required><p class="ssp-note">Deletion undo nahi hoti. Network issue ho to retry karein; partial request safe tareeke se dobara chal sakti hai.</p><button class="ssp-btn danger" type="submit">Account aur data permanently delete karein</button></div></form>' : '<div class="ssp-card"><p>Account delete karne ke liye pehle student ke roop mein login karein.</p><a href="/delete-account.html">Deletion ke steps</a></div>');
+    },
+    privacy: function (done) {
+      var c = C();
+      done("Privacy & Legal", "Data use and account controls", '<div class="ssp-card"><p>Aapka account data kaise use hota hai aur use delete karne ke liye:</p><div class="ssp-act"><a class="ssp-btn o" href="' + esc(c.privacyUrl || "/privacy.html") + '" target="_blank" rel="noopener">Privacy Policy</a><a class="ssp-btn o" href="' + esc(c.termsUrl || "/terms.html") + '" target="_blank" rel="noopener">Terms</a><a class="ssp-btn o" href="/delete-account.html">Delete account help</a></div></div>');
+    },
     profile: function (done) {
       var nm = txt("student-dp-name") || txt("student-welcome-name") || "—";
       done("Profile & ID Card", "Aapki details",
@@ -203,7 +215,8 @@
     if (sz) { try { localStorage.setItem("sn_textsize", sz); } catch (e) {} document.documentElement.style.fontSize = sz + "%"; Array.prototype.forEach.call(document.querySelectorAll("#ssp-ts button"), function (x) { x.classList.toggle("on", x === t); }); return; }
     if (k) {
       ev.preventDefault();
-      if (k === "help" || k === "about") { if (typeof window.snShowPage === "function") window.snShowPage(k, "settings"); else toast("Page available nahi"); return; }
+      if (k === "about") { openPage("about"); return; }
+      if (k === "help") { if (typeof window.snShowPage === "function") window.snShowPage(k, "settings"); else toast("Page available nahi"); return; }
       openPage(k); return;
     }
     if (g === "back") { ev.preventDefault(); closePage(); }
@@ -218,6 +231,31 @@
       toast("⏳ Saaf ho raha hai...");
       (window.caches ? caches.keys().then(function (ks) { return Promise.all(ks.map(function (x) { return caches.delete(x); })); }) : Promise.resolve()).then(function () { location.reload(); }, function () { location.reload(); });
     }
+  });
+  document.addEventListener("submit", function (ev) {
+    var f = ev.target; if (!f || f.id !== "ssp-delete-form") return;
+    ev.preventDefault();
+    var s = typeof window.getStudentSession === "function" ? window.getStudentSession() : null;
+    var mobile = String(s && s.mobile || ""), typed = String($("ssp-delete-confirm") && $("ssp-delete-confirm").value || "").replace(/\D/g, ""), password = String($("ssp-delete-password") && $("ssp-delete-password").value || "");
+    if (!/^\d{10}$/.test(mobile) || typed !== mobile || !password) { toast("Mobile number aur password dobara check karein."); return; }
+    if (!confirm("Aapka account aur linked data permanently delete hoga. Ye undo nahi ho sakta. Kya aap continue karna chahte hain?")) return;
+    var b = f.querySelector('button[type="submit"]'); if (b) { b.disabled = true; b.textContent = "⏳ Account aur data delete ho raha hai..."; }
+    Promise.resolve().then(function () {
+      if (!window.SnapAuth || !SnapAuth.deleteMyAccount) throw new Error("Secure deletion service load nahi hua.");
+      return SnapAuth.deleteMyAccount(mobile, typed, password);
+    }).then(function () {
+      try {
+        var saved = JSON.parse(localStorage.getItem("savya_records") || "[]");
+        if (Array.isArray(saved)) localStorage.setItem("savya_records", JSON.stringify(saved.filter(function (r) { return String(r.mobile || "").replace(/\D/g, "").slice(-10) !== mobile; })));
+      } catch (e) {}
+      [localStorage, sessionStorage].forEach(function (store) { try { for (var i = store.length - 1; i >= 0; i--) { var key = store.key(i); if (key && key.indexOf(mobile) >= 0) store.removeItem(key); } } catch (e) {} });
+      try { if (typeof window.clearStudentSession === "function") window.clearStudentSession(); } catch (e) {}
+      alert("✅ Aapka account aur linked data delete ho gaya hai.");
+      location.reload();
+    }).catch(function (e) {
+      toast("Delete nahi hua: " + (e && e.message || e), 5000);
+      if (b) { b.disabled = false; b.textContent = "Account aur data permanently delete karein"; }
+    });
   });
   document.addEventListener("change", function (ev) { if (ev.target && ev.target.id === "ssp-wake") { try { localStorage.setItem("sn_wake", ev.target.checked ? "1" : "0"); } catch (e) {} } });
 
@@ -242,7 +280,7 @@
     m.innerHTML = '<div class="ssp-hero"><div class="ssp-av" id="ssp-hero-av">S</div><div style="position:relative;min-width:0"><b id="ssp-hero-nm">Student</b><small id="ssp-hero-sub">Student</small><span class="ssp-pill" id="ssp-hero-st" style="background:#ffedd5;color:#c2410c;display:none"><i></i></span></div></div>' +
       '<div class="ssp-sec">ACCOUNT</div><div class="ssp-grp">' + row("user", "ind", "Profile & ID Card", "ID Card, photo, class, session", "profile") + "</div>" +
       '<div class="ssp-sec">PREFERENCES</div><div class="ssp-grp">' + row("bell", "amb", "Notifications", "Naye test ka alert • " + (pnOn() ? "ON" : "OFF"), "notif", "ssp-pn-sub") + row("palette", "pur", "Display & Exam", "Text size, screen on", "display") + "</div>" +
-      '<div class="ssp-sec">DATA</div><div class="ssp-grp">' + row("phone", "idg", "App & Data", syncSub(), "data", "ssp-data-sub") + "</div>" +
+      '<div class="ssp-sec">DATA</div><div class="ssp-grp">' + row("phone", "idg", "App & Data", syncSub(), "data", "ssp-data-sub") + row("shield", "blu", "Privacy & Legal", "Privacy Policy aur Terms", "privacy") + row("trash", "red", "Delete Account & Data", "Account aur linked data permanently delete karein", "delete") + "</div>" +
       '<div class="ssp-sec">SUPPORT</div><div class="ssp-grp">' + row("help", "blu", "Help & Support", "Call / WhatsApp / Email, FAQ", "help") + row("info", "gry", "About App", "Version " + esc((C().version || "1.0") + (C().build ? " (build " + C().build + ")" : "")), "about") + "</div>" +
       '<button type="button" class="ssp-row ssp-logout" id="ssp-logout"><span class="ssp-ic" style="background:' + TILE.red + '">' + ico("out") + '</span><span class="ssp-tx"><b style="color:#b91c1c">Logout</b><small>Is device se logout karein</small></span></button>';
     var h3 = card.querySelector("h3.section-title"); if (h3) h3.after(m); else card.insertBefore(m, card.firstChild);

@@ -199,7 +199,7 @@
     var c = C(), a = "";
     if (c.privacyUrl) a += '<a class="asp-btn o" target="_blank" rel="noopener" href="' + esc(c.privacyUrl) + '">🔒 Privacy Policy</a>';
     if (c.termsUrl) a += '<a class="asp-btn o" target="_blank" rel="noopener" href="' + esc(c.termsUrl) + '">📄 Terms</a>';
-    var txt = '<div class="asp-card"><b>Aapka data</b><p>Students ka naam, mobile, results aur tests sirf aapke institute ke liye hain aur Firebase (Google) par surakshit rakhe jaate hain. Kisi doosre institute ko ye data nahi dikhta.</p>' + (a ? '<div class="asp-act">' + a + '</div>' : "") + '</div>';
+    var txt = '<div class="asp-card"><b>Aapka data</b><p>Active institute admin apne institute ke student profiles aur exam data dekh sakte hain. Service ko chalane, secure karne ya support dene ke liye app owner aur configured providers bhi data process kar sakte hain. Details Privacy Policy mein hain.</p>' + (a ? '<div class="asp-act">' + a + '</div>' : "") + '</div>';
     return only || a ? txt : "";
   }
   function kv(k, v, ic, first) { return '<div class="asp-kv' + (first ? " f" : "") + '">' + (ic ? '<div class="asp-kvi">' + ico(ic) + "</div>" : "") + '<div style="flex:1;min-width:0"><span>' + k + '</span><b>' + v + "</b></div></div>"; }

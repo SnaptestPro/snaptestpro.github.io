@@ -23,6 +23,16 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function validRegistrationConsent(mobile) {
+      return request.resource.data.keys().hasOnly([
+        'name', 'mobile', 'hasPin', 'instituteId', 'classId', 'createdAt',
+        'termsAccepted', 'guardianConsent', 'consentVersion', 'consentAt'
+      ]) && request.resource.data.mobile == mobile &&
+        request.resource.data.termsAccepted == true &&
+        request.resource.data.guardianConsent == true &&
+        request.resource.data.consentVersion is string &&
+        request.resource.data.consentAt == request.time;
+    }
 
     // ── Owner (product/company owner — sabse upar ka role) ────────
     // Ye admin se ALAG hai: owner kisi ek institute ka data nahi
@@ -33,8 +43,10 @@ service cloud.firestore {
     // milta jab tak yahan email daal ke publish na karein.
     function isOwner() {
       return request.auth != null &&
-        request.auth.token.email != null &&
-        request.auth.token.email == "vishnu1234stm@gmail.com";
+        (
+          request.auth.token.get('snapRole', '') == 'owner' ||
+          request.auth.token.email == "vishnu1234stm@gmail.com"
+        );
     }
 
     // ── Admin allow-list ─────────────────────────────────────────
@@ -79,6 +91,8 @@ service cloud.firestore {
       return request.auth != null &&
         request.auth.token.email != null &&
         (
+          (request.auth.token.get('snapRole', '') == 'admin' && adminDocActive() == true)
+          ||
           (
             request.auth.token.email in [
               "vishnu1234stmp@gmail.com"
@@ -106,6 +120,8 @@ service cloud.firestore {
       return request.auth != null &&
         request.auth.token.email != null &&
         (
+          request.auth.token.get('snapRole', '') == 'admin'
+          ||
           request.auth.token.email in [
             "vishnu1234stmp@gmail.com"
           ]
@@ -504,7 +520,7 @@ service cloud.firestore {
       // instituteJoinCodeChecks/{mobile} doc (sahi code ke saath,
       // 30 min ke andar) exist karna ZAROORI hai — warna create khud
       // reject ho jaata hai, chahe client kuch bhi bheje.
-      allow create: if isSignedIn() && (
+      allow create: if isSignedIn() && (isAdmin() || validRegistrationConsent(mobile)) && (
         !instituteRequiresJoinCode(
           ('instituteId' in request.resource.data) ? request.resource.data.instituteId : null
         ) ||

@@ -1,0 +1,1 @@
+if(/[?&]owner=1(&|$)/.test(location.search))location.replace("owner-app.html");
