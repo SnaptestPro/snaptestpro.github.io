@@ -32,7 +32,7 @@ window.SNAP_CONFIG = {
   appLock: true,                                                      // institute-APK / ?inst= link lock + "app band hai" screen (kill-switch)
   snapLive: false,                                                    // true tab karein jab Cloudflare R2 (LIVE_R2) set ho jaye — tab "SnapLive" option dikhega
   ownerAlertEmail: "vishnu1234stm@gmail.com",                         // is email se login par owner app me alerts ka push aata hai
-  build: "204",
+  build: "205",
   ownerName: "Vishnu Sharma",
   supportPhone: "9525208263",
   supportWhatsapp: "9525208263",          // WhatsApp number (khaali = phone wala use hoga)
