@@ -207,7 +207,7 @@
 
     // header
     var top = document.createElement("div"); top.id = "sn-top";
-    top.innerHTML = '<button type="button" class="ic" data-a="m">' + svg("menu") + '</button><div class="lg"><img src="icon-512-maskable.png" alt=""><div><b>SnapTestPro</b><small>Smart Practice • Better Result</small></div></div><button type="button" class="ic" data-a="b" style="color:#f59e0b">' + svg("bell") + '</button><button type="button" class="av" data-a="u">' + svg("user") + '</button>';
+    top.innerHTML = '<button type="button" class="ic" data-a="m" aria-label="Menu">' + svg("menu") + '</button><div class="lg"><img src="icon-512-maskable.png" alt=""><div><b>SnapTestPro</b><small>Smart Practice • Better Result</small></div></div><button type="button" class="ic" data-a="b" aria-label="Notifications" style="color:#f59e0b">' + svg("bell") + '</button><button type="button" class="av" data-a="u" aria-label="Profile and settings">' + svg("user") + '</button>';
     home.insertBefore(top, home.firstChild);
     top.querySelector('[data-a="m"]').onclick = function (ev) { ev.preventDefault(); showPage("more"); };
     top.querySelector('[data-a="b"]').onclick = function (ev) { ev.preventDefault(); showPage("notifs", "home"); nRefresh(true).then(function () { curPage === "notifs" && showPage("notifs", "home"); }); };
