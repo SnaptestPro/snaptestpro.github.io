@@ -8,7 +8,7 @@ window.SNAP_CONFIG = {
   appName: "SnapTestPro",
   serverAuth: false,   // Phase 4: true karne par login/register/PIN Worker se (salted hash + rate limit). Pehle docs/PHASE4_AUTH.md padhein.
   tagline: "Smart Practice • Better Result",
-  version: "1.4.3",
+  version: "1.4.4",
   workerUrl: "https://cool-thunder-a280.vishnu1234stm.workers.dev",   // Cloudflare Worker (bank + push + owner alerts)
   ownFiles: false,                                                    // Cloudflare R2 (card chahiye) band — file upload ab Google Drive se
   googleClientId: "",                                                 // <-- yahan Google OAuth Web Client ID daalein (DRIVE_SETUP_HINDI.md dekhein). Khaali = Drive upload band
@@ -26,7 +26,7 @@ window.SNAP_CONFIG = {
   appLock: true,                                                      // institute-APK / ?inst= link lock + "app band hai" screen (kill-switch)
   snapLive: false,                                                    // true tab karein jab Cloudflare R2 (LIVE_R2) set ho jaye — tab "SnapLive" option dikhega
   ownerAlertEmail: "vishnu1234stm@gmail.com",                         // is email se login par owner app me alerts ka push aata hai
-  build: "190",
+  build: "191",
   ownerName: "Vishnu Sharma",
   supportPhone: "9525208263",
   supportWhatsapp: "9525208263",          // WhatsApp number (khaali = phone wala use hoga)

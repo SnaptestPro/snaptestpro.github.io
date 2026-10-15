@@ -184,8 +184,10 @@ input[type=checkbox],input[type=radio]{accent-color:var(--lg-blue);box-shadow:no
 html:not(.lg-lite):not(.lg-scan) :is(#sn-nav,.oa-tab,#sn-sheet,.site-header,.test-analysis-sheet,[id$="-modal"]>div,#exam-sidebar,.bm-toast,.toast){-webkit-backdrop-filter:blur(14px) saturate(160%);backdrop-filter:blur(14px) saturate(160%)}
 html:not(.lg-lite):not(.lg-scan) :is(#sn-sheet-bg,.qnav-backdrop,.bm-modal){-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px)}
 html .test-analysis-overlay.examgr-overlay-full,html .test-analysis-overlay.examgr-overlay-full .test-analysis-sheet,html .test-analysis-overlay{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
-html.lg-lite *,html.lg-scan *{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
-html.lg-scan *{animation:none!important;transition:none!important}
+html.lg-lite *{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+/* scan ke time poore DOM par '*' rule nahi (style recalc se camera start der se hota tha) — sirf jin par blur/animation hai */
+html.lg-scan :is(.card,.cd-card,#exam-sidebar,.qnav-fab,.qnav-backdrop,.result-header-card,.perf-card,.test-analysis-overlay,.test-analysis-sheet,.site-header,.toast,.bm-toast){-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+html.lg-scan :is(.timer-box,.cd-podium-crown,.bm-live){animation:none!important}
 html.lg-scan #sn-nav,html.lg-scan .oa-tab,html.lg-scan .qnav-fab{display:none!important}
 html.lg-lite{--lg-fill:linear-gradient(145deg,rgba(255,255,255,.9),rgba(255,255,255,.72));--lg-fill-soft:linear-gradient(145deg,rgba(255,255,255,.82),rgba(255,255,255,.64));--lg-shadow:0 2px 8px rgba(36,60,130,.1)}
 html.lg-lite *{text-shadow:none!important}
