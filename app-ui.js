@@ -245,6 +245,6 @@
 
     // rank card enhance (podium async render)
     var wrap = $("cd-podium-wrap"); wrap && new MutationObserver(function () { enhanceRank(); }).observe(wrap, { childList: true, subtree: true });
-    setInterval(enhanceRank, 2500); enhanceRank();
+    setInterval(function () { if (!document.hidden) enhanceRank(); }, 8000); enhanceRank();
   });
 })();

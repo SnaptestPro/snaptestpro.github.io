@@ -57,7 +57,7 @@
 }
 
 /* ===== STUDENT BATCH SECTION ===== */
-#bm-student{position:fixed;left:0;right:0;top:0;bottom:var(--snh,64px);z-index:800;background:#f6f8ff;overflow:auto;font-family:Inter,system-ui,sans-serif;color:var(--bm-tx)}
+#bm-student{position:fixed;left:0;right:0;top:0;bottom:0;box-sizing:border-box;padding-bottom:calc(var(--snh,64px) + env(safe-area-inset-bottom,0px) + 12px);overscroll-behavior:contain;-webkit-overflow-scrolling:touch;z-index:800;background:#f6f8ff;overflow-y:auto;overflow-x:hidden;font-family:Inter,system-ui,sans-serif;color:var(--bm-tx)}
 #bm-student .bm-sh{display:flex;align-items:center;gap:10px;padding:14px 14px 8px;position:sticky;top:0;background:#f6f8ff;z-index:2}
 #bm-student .bm-sh b{flex:1;font-size:1.05rem}
 #bm-student .bm-sh button{border:0;background:#fff;border-radius:50%;width:36px;height:36px;font-size:1rem;box-shadow:0 1px 6px rgba(0,0,0,.1)}

@@ -142,5 +142,5 @@
   }
   attachForeground();
 
-  setTimeout(sync, 2500); setInterval(sync, 5000);
+  setTimeout(sync, 2500); setInterval(function () { if (!document.hidden) sync(); }, 15000); document.addEventListener("visibilitychange", function () { if (!document.hidden) sync(); });
 })();

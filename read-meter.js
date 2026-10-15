@@ -92,6 +92,6 @@
     }
     btn.style.display = isAdminUser() ? "block" : "none";
   }
-  function start() { setInterval(function () { try { ui(); } catch (e) {} }, 2500); }
+  function start() { setInterval(function () { if (document.hidden) return; try { ui(); } catch (e) {} }, 5000); }
   document.readyState === "loading" ? document.addEventListener("DOMContentLoaded", start) : start();
 })();

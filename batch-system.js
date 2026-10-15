@@ -774,7 +774,7 @@ function vPay(m) {
     var ag = $("#admin-dashboard-home .cd-grid");
     if (ag && !ag.querySelector("[data-bm]")) { var d = document.createElement("button"); d.type = "button"; d.className = "cd-card cd-indigo"; d.dataset.bm = "1"; d.innerHTML = '<div class="cd-card-top"><div class="cd-icon-circle">🎓</div><span class="cd-badge">New</span></div><div class="cd-card-title">Batch Management</div><div class="cd-card-sub">Batches, live classes, recordings, notes</div><div class="cd-card-bottom"><span class="cd-arrow-btn">→</span></div>'; d.onclick = openAdmin; ag.appendChild(d); }
   }
-  setInterval(hook, 1500);
+  setInterval(function () { if (!document.hidden) hook(); }, 2500);
   /* v199: app khulne ke baad (idle me) batches pehle se load — taaki Batch dabate hi sab ready mile.
      Sirf unke liye jinhone Batch pehle kabhi khola hai (saved data hai), aur 10 min me ek hi baar. */
   var PF = { t: 0, busy: false };
@@ -795,6 +795,6 @@ function vPay(m) {
     } catch (e) { PF.busy = false; }
   }
   function schedPrefetch() { if (PF.sched || !window.requestAnimationFrame) return; PF.sched = true; setTimeout(function () { PF.sched = false; var f = function () { prefetch(); }; window.requestIdleCallback ? requestIdleCallback(f, { timeout: 4000 }) : f(); }, 3500); }
-  setInterval(function () { try { if ($("#sn-nav") && sess()) schedPrefetch(); } catch (e) {} }, 5000);
+  setInterval(function () { try { if (!document.hidden && $("#sn-nav") && sess()) schedPrefetch(); } catch (e) {} }, 15000);
   window.SnapBatch = { openAdmin: openAdmin, openStudent: openStudent, ext: EXT, ctx: ctx, prefetch: prefetch };
 })();
