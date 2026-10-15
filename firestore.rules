@@ -594,6 +594,14 @@ service cloud.firestore {
       // Registration (aur legacy-account migration) — pehli baar create.
       allow create: if !secretsLockdown() && isSignedIn();
 
+      // FIX: registration pehle studentSecrets likhta hai, phir students doc. Agar beech me
+      // koi step fail ho gaya to "orphan" secret reh jaata tha, aur retry par .set() UPDATE
+      // ban kar permission-denied deta tha ("Registration fail hua"). Ab jab tak us mobile ka
+      // students/{mobile} doc exist hi nahi karta (account bana hi nahi), secret dobara likha ja sakta hai.
+      allow update: if !secretsLockdown() && isSignedIn() &&
+        !exists(/databases/$(database)/documents/students/$(mobile)) &&
+        request.resource.data.keys().hasOnly(['hash', 'pinHash', 'updatedAt']);
+
       allow update: if !secretsLockdown() && ((isAdmin() && studentBelongsToAdmin(mobile)) ||
         (
           // (a) LOGIN proof: client bhejta hai lastLoginProof = sha256(entered
