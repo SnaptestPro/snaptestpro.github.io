@@ -14,6 +14,12 @@
     if (!r.ok || !j.ok) { var er = new Error(j.error || ("Request fail (" + r.status + ")")); er.status = r.status; er.retryAfter = j.retryAfter; throw er; }
     return j;
   }
+  async function postDelete(body) {
+    for (var i = 0; i < 20; i++) {
+      try { return await post("/student/delete-account", body); }
+      catch (e) { if (e.status !== 503 || i === 19) throw e; await new Promise(function (resolve) { setTimeout(resolve, 250); }); }
+    }
+  }
   function auth() { return window.firebase && firebase.auth && firebase.auth(); }
   async function idToken() { var a = auth(), u = a && a.currentUser; if (!u) throw new Error("Pehle login karein."); return u.getIdToken(); }
   window.SnapAuth = {
@@ -29,6 +35,8 @@
     setPin: async function (mobile, pin) { return post("/student/set-pin", { idToken: await idToken(), mobile: mobile, pin: pin }); },
     resetWithPin: function (mobile, pin, newPassword) { return post("/student/reset-with-pin", { mobile: mobile, pin: pin, newPassword: newPassword }); },
     adminReset: async function (mobile, newPassword) { return post("/student/admin-reset", { idToken: await idToken(), mobile: mobile, newPassword: newPassword }); },
+    deleteMyAccount: function (mobile, confirmMobile, password) { return postDelete({ mobile: mobile, confirmMobile: confirmMobile, password: password }); },
+    adminDelete: async function (mobile, confirmMobile) { return postDelete({ idToken: await idToken(), mobile: mobile, confirmMobile: confirmMobile }); },
     afterLogout: function () {
       try {
         var a = auth(), u = a && a.currentUser;

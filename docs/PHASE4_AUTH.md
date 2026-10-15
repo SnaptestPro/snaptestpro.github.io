@@ -2,7 +2,7 @@
 Default **OFF** (`serverAuth: false`): app bilkul pehle jaisa. Pehle apne phone par test, phir sabke liye ON.
 
 ## Kya badla
-- Worker (`push-worker/worker.js` aur `worker.js` dono): naye endpoints `/student/login`, `/student/register`, `/student/set-pin`, `/student/reset-with-pin`, `/student/admin-reset`.
+- Worker (`push-worker/worker.js`): endpoints `/student/login`, `/student/register`, `/student/set-pin`, `/student/reset-with-pin`, `/student/admin-reset` aur `/student/delete-account`.
 - Password/PIN ab **salted PBKDF2-SHA256** (har user ka alag salt) me; compare constant-time. Format: `pbkdf2$<iterations>$<salt>$<hash>` (`pw`, `pin` fields, studentSecrets me).
 - **Rate limit** (BANK_KV): 5 galat koshish / mobile / 15 min, 20 / IP / ghanta, register 10 / IP / ghanta. Uske baad 429 + "kitne minute baad" message. Sahi login par counter reset.
 - Login ke baad Worker **Firebase custom token** deta hai (claims: role, mobile, instituteId). Firestore rules ab `request.auth.token.mobile` se student pehchanti hain (forge nahi hota).

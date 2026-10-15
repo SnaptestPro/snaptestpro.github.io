@@ -51,7 +51,17 @@
     return (location.hash || location.pathname || "").slice(0, 60);
   }
   function conn() { try { var c = navigator.connection; return c ? (c.effectiveType || "") + (c.downlink ? "/" + c.downlink + "Mbps" : "") : ""; } catch (e) { return ""; } }
-  function s(v, n) { return String(v == null ? "" : v).replace(/\s+/g, " ").slice(0, n); }
+  function scrub(v) {
+    return String(v == null ? "" : v)
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/-]{10,}={0,2}/gi, "Bearer [redacted]")
+      .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, "[token]")
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]")
+      .replace(/(?:\+?91[\s().-]?)?[6-9]\d{9}\b/g, "[phone]")
+      .replace(/([?&](?:token|access_token|refresh_token|id_token|key|api_key|email|mobile|phone|code|password|secret)=)[^&#\s]*/gi, "$1[redacted]")
+      .replace(/\b(studentname|name)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^,;|]+)/gi, "$1=[redacted]")
+      .replace(/\b(password|passcode|pin|token|access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|authorization|secret|private[_-]?key|email|mobile|phone|answer)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;|]+)/gi, "$1=[redacted]");
+  }
+  function s(v, n) { return scrub(v).replace(/\s+/g, " ").slice(0, n); }
 
   function fingerprint(type, msg, src) { return s(type, 24) + "|" + s(msg, 100) + "|" + s(src, 80); }
 

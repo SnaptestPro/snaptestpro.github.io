@@ -10,14 +10,33 @@ const sdoc = (p, o) => store.set(p, o);
 global.fetch = async (url, init = {}) => {
   url = String(url);
   if (url.startsWith('https://oauth2.googleapis.com/token')) return new Response(JSON.stringify({ access_token: 'tok', expires_in: 3600 }));
+  if (url.includes('/documents:runQuery')) {
+    const q = JSON.parse(init.body).structuredQuery, cid = q.from[0].collectionId;
+    const filters = q.where.compositeFilter ? q.where.compositeFilter.filters : [q.where];
+    const wanted = Object.fromEntries(filters.map((f) => [f.fieldFilter.field.fieldPath, f.fieldFilter.value.stringValue]));
+    const docs = [];
+    for (const [p, data] of store) {
+      const parts = p.split('/'), direct = parts.length === 2 && parts[0] === cid;
+      const group = q.from[0].allDescendants && parts[parts.length - 2] === cid;
+      if (!(direct || group) || Object.keys(wanted).some((k) => data[k] !== wanted[k])) continue;
+      docs.push({ document: { name: 'projects/demo-test/databases/(default)/documents/' + p, fields: enc(data) } });
+    }
+    return new Response(JSON.stringify(docs.slice(0, q.limit || docs.length)));
+  }
+  if (url.includes('/documents:batchWrite')) {
+    const writes = JSON.parse(init.body).writes;
+    writes.forEach((w) => { const marker = '/documents/'; const i = w.delete.indexOf(marker); if (i >= 0) store.delete(w.delete.slice(i + marker.length)); });
+    return new Response(JSON.stringify({ status: writes.map(() => ({ code: 0 })) }));
+  }
   const m = url.match(/\/documents\/([^?]+)(\?(.*))?$/); if (!m) throw new Error('unexpected fetch ' + url);
   const p = decodeURIComponent(m[1]);
   if (!init.method || init.method === 'GET') { const d = store.get(p); return d ? new Response(JSON.stringify({ fields: enc(d) })) : new Response('{}', { status: 404 }); }
   if (init.method === 'PATCH') {
     const cur = store.get(p) || {}, body = JSON.parse(init.body).fields || {}, mask = (m[3] || '').split('&').map((x) => decodeURIComponent(x.split('=')[1]));
-    for (const k of mask) { if (body[k]) cur[k] = body[k].stringValue !== undefined ? body[k].stringValue : (body[k].booleanValue !== undefined ? body[k].booleanValue : body[k].timestampValue); else delete cur[k]; }
+    for (const k of mask) { if (body[k]) cur[k] = body[k].stringValue !== undefined ? body[k].stringValue : (body[k].booleanValue !== undefined ? body[k].booleanValue : (body[k].integerValue !== undefined ? Number(body[k].integerValue) : body[k].timestampValue)); else delete cur[k]; }
     store.set(p, cur); return new Response('{}');
   }
+  if (init.method === 'DELETE') { store.delete(p); return new Response('{}'); }
   throw new Error('bad method');
 };
 (async () => {
@@ -72,6 +91,40 @@ global.fetch = async (url, init = {}) => {
   await t('register rejects weak/short passwords and bad PIN', async () => {
     reset(); for (const pw of ['123456', 'abc', 'password', 'aaaaaaaa']) assert.strictEqual((await call('/student/register', { mobile: '9222222222', password: pw, pin: '1234' })).status, 400);
     assert.strictEqual((await call('/student/register', { mobile: '9222222222', password: 'Good#pass1', pin: '12' })).status, 400);
+  });
+  await t('account deletion requires the correct password and removes profile, secrets, results, reports, sessions, mistakes and batch memberships', async () => {
+    reset();
+    sdoc('students/9444444444', { name: 'F', instituteId: 'inst_A', classId: 'c1' });
+    await call('/student/register', { mobile: '9444444444', password: 'Delete#77', pin: '2468' });
+    sdoc('studentRecords/result_1', { mobile: '9444444444', score: 9 });
+    sdoc('studentScanReports/report_1', { mobile: '9444444444', photoDataUrl: 'data:image/jpeg;base64,secret' });
+    sdoc('studentSessions/session_1', { mobile: '9444444444', proof: 'proof' });
+    sdoc('studentMistakes/9444444444', { mistakes: ['q1'] });
+    sdoc('institutes/inst_A/batches/batch_1', { enrolledCount: 1 });
+    sdoc('institutes/inst_A/batches/batch_1/members/9444444444', { mobile: '9444444444', instituteId: 'inst_A' });
+    sdoc('institutes/inst_B/batches/batch_1/members/9444444444', { mobile: '9444444444', instituteId: 'inst_B' });
+    const bad = await call('/student/delete-account', { mobile: '9444444444', confirmMobile: '9444444444', password: 'wrong-pass' });
+    assert.strictEqual(bad.status, 401); assert.ok(store.has('students/9444444444'));
+    const r = await call('/student/delete-account', { mobile: '9444444444', confirmMobile: '9444444444', password: 'Delete#77' });
+    assert.strictEqual(r.status, 200, await r.clone().text()); const deleted = await r.json(); assert.deepStrictEqual(deleted.removed, { records: 1, scanReports: 1, sessions: 1, batchMemberships: 1 });
+    assert.ok(!store.has('students/9444444444')); assert.ok(!store.has('studentSecrets/9444444444'));
+    assert.ok(!store.has('studentRecords/result_1')); assert.ok(!store.has('studentScanReports/report_1'));
+    assert.ok(!store.has('studentSessions/session_1')); assert.ok(!store.has('studentMistakes/9444444444'));
+    assert.ok(!store.has('institutes/inst_A/batches/batch_1/members/9444444444'));
+    assert.ok(store.has('institutes/inst_B/batches/batch_1/members/9444444444'), 'foreign institute membership must be preserved');
+    assert.strictEqual(store.get('institutes/inst_A/batches/batch_1').enrolledCount, 0);
+    const unknown = await call('/student/delete-account', { mobile: '9555555555', confirmMobile: '9555555555', password: 'wrong-pass' });
+    assert.strictEqual(unknown.status, 401); assert.strictEqual((await unknown.json()).error, 'Mobile number ya password galat hai.');
+  });
+  await t('large deletion is resumable and does not remove the account until linked records are drained', async () => {
+    reset(); const mobile = '9666666666'; sdoc('students/' + mobile, { name: 'G', instituteId: 'inst_A' });
+    await call('/student/register', { mobile, password: 'Delete#88', pin: '2468' });
+    for (let i = 0; i < 1501; i++) sdoc('studentRecords/large_' + i, { mobile, score: i });
+    const body = { mobile, confirmMobile: mobile, password: 'Delete#88' };
+    const first = await call('/student/delete-account', body); assert.strictEqual(first.status, 503); assert.ok(store.has('students/' + mobile));
+    assert.strictEqual(Array.from(store.keys()).filter((p) => p.startsWith('studentRecords/')).length, 1);
+    const second = await call('/student/delete-account', body); assert.strictEqual(second.status, 200, await second.clone().text());
+    assert.ok(!store.has('students/' + mobile)); assert.strictEqual(Array.from(store.keys()).filter((p) => p.startsWith('studentRecords/')).length, 0);
   });
   await t('reset-with-pin: wrong PIN locked after 5, right PIN resets password and old password stops working', async () => {
     reset(); sdoc('students/9333333333', { name: 'E', instituteId: 'i' }); sdoc('studentSecrets/9333333333', { hash: sha('oldpw12'), pinHash: sha('2468') });
