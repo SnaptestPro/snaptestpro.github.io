@@ -202,25 +202,29 @@ service cloud.firestore {
     //   studentCount (counter). Naya registration tabhi banta hai jab institute active ho, plan expire na hua ho
     //   (3 din grace), aur limit poori na ho. Limit wale institute me counter +1 usi batch me hona ZAROORI hai
     //   (client registration ko batch me bhejta hai: student doc + institute counter) — rule getAfter() se verify karta hai.
+    // v196 FIX: pehle har field ke liye alag get()/getAfter() call hota tha (~13+ document-access calls),
+    // aur Firestore Rules ki limit (10 per operation) paar ho jaati thi => "permission-denied" jab institute
+    // par studentLimit + Join Code dono ON ho. Ab har document sirf EK baar padha jaata hai (helper args se).
+    function instOpenData(d, a, mobile) {
+      return d.get('active', true) != false &&
+        (d.get('planExpiresAt', 0) == 0 || request.time.toMillis() < d.get('planExpiresAt', 0) + 259200000) &&
+        (
+          d.get('studentLimit', 0) == 0 ||
+          (
+            d.get('studentCount', 0) < d.get('studentLimit', 0) &&
+            a.get('studentCount', 0) == d.get('studentCount', 0) + 1 &&
+            a.get('lastRegMobile', '') == mobile
+          )
+        );
+    }
+
     function instRegistrationOpen(instituteId, mobile) {
       return instituteId == null ||
         !exists(/databases/$(database)/documents/institutes/$(instituteId)) ||
-        (
-          get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('active', true) != false &&
-          (
-            get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('planExpiresAt', 0) == 0 ||
-            request.time.toMillis() < get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('planExpiresAt', 0) + 259200000
-          ) &&
-          (
-            get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('studentLimit', 0) == 0 ||
-            (
-              get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('studentCount', 0) <
-                get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('studentLimit', 0) &&
-              getAfter(/databases/$(database)/documents/institutes/$(instituteId)).data.get('studentCount', 0) ==
-                get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('studentCount', 0) + 1 &&
-              getAfter(/databases/$(database)/documents/institutes/$(instituteId)).data.get('lastRegMobile', '') == mobile
-            )
-          )
+        instOpenData(
+          get(/databases/$(database)/documents/institutes/$(instituteId)).data,
+          getAfter(/databases/$(database)/documents/institutes/$(instituteId)).data,
+          mobile
         );
     }
 
@@ -230,14 +234,16 @@ service cloud.firestore {
         get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('requiresJoinCode', false) == true;
     }
 
+    function joinCheckOk(c, instituteId) {
+      return c.instituteId == instituteId &&
+        request.time < c.checkedAt + duration.value(30, 'm');
+    }
+
     // Registration ke turant pehle (30 min ke andar) `instituteJoinCodeChecks/{mobile}`
-    // mein SAHI code verify ho chuka ho, usी institute ke liye — tabhi true.
-    // (Us check-doc ka CREATE khud rules se, server-side code-match ke
-    // baad hi allow hota hai — neeche instituteJoinCodeChecks match dekhein.)
+    // mein SAHI code verify ho chuka ho, usi institute ke liye — tabhi true.
     function joinCodeVerifiedForRegistration(mobile, instituteId) {
       return exists(/databases/$(database)/documents/instituteJoinCodeChecks/$(mobile)) &&
-        get(/databases/$(database)/documents/instituteJoinCodeChecks/$(mobile)).data.instituteId == instituteId &&
-        request.time < get(/databases/$(database)/documents/instituteJoinCodeChecks/$(mobile)).data.checkedAt + duration.value(30, 'm');
+        joinCheckOk(get(/databases/$(database)/documents/instituteJoinCodeChecks/$(mobile)).data, instituteId);
     }
 
     // ── Class Eligibility (v25) — Multi-Institute Shared Question Bank ──
