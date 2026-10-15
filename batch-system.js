@@ -165,12 +165,22 @@
   function openAdmin() {
     if (typeof isAdminLoggedIn === "function" && !isAdminLoggedIn()) return;
     if (!DB()) return toast("Firebase connection nahi hai");
-    toast("Loading…");
+    /* v201 INSTANT OPEN: panel turant dikhao (pichla data ho to usi se), network load peeche chalta hai */
+    var inst0 = typeof getCurrentAdminInstituteId === "function" ? getCurrentAdminInstituteId() : null;
+    var warm = !!(inst0 && A.inst === inst0 && A.loaded && A.batches);
+    A.touched = false; A.openSeq = (A.openSeq || 0) + 1; var seq = A.openSeq;
+    buildAdmin();
+    if (warm) adminGo(A.view || "dash"); else $("#bm-main").innerHTML = '<div class="bm-empty">Loading…</div>';
     Promise.resolve(typeof ensureAdminInstituteResolved === "function" ? ensureAdminInstituteResolved() : null).then(function () {
-      A.inst = typeof getCurrentAdminInstituteId === "function" ? getCurrentAdminInstituteId() : null;
-      if (!A.inst) return toast("Institute resolve nahi hua — dobara try karein");
-      buildAdmin(); return loadAll().then(function () { adminGo("dash"); }).catch(function (e) { console.warn(e); $("#bm-main").innerHTML = '<div class="bm-empty">Data load nahi hua (' + esc(e.code || e.message) + '). Firestore Rules publish kiye? NOTES padhein.</div>'; });
-    });
+      var inst = typeof getCurrentAdminInstituteId === "function" ? getCurrentAdminInstituteId() : null;
+      if (!inst) { var ov = $("#bm-admin"); ov && ov.remove(); return toast("Institute resolve nahi hua — dobara try karein"); }
+      if (A.inst !== inst) { A.inst = inst; A.loaded = false; }
+      return loadAll().then(function () {
+        A.loaded = true;
+        if (seq !== A.openSeq || !$("#bm-admin")) return;
+        if (!warm || !A.touched) adminGo(warm ? (A.view || "dash") : "dash");
+      });
+    }).catch(function (e) { console.warn(e); var m = $("#bm-main"); m && (m.innerHTML = '<div class="bm-empty">Data load nahi hua (' + esc(e.code || e.message) + '). Firestore Rules publish kiye? NOTES padhein.</div>'); });
   }
   /* v169: enrolledCount negative (jaise -8) ho gaya ho to asli members gin kar sahi number save karo (normal batch par koi extra read nahi) */
   function healCounts() {
@@ -218,7 +228,7 @@
       '<main class="bm-main"><div class="bm-top"><button class="bm-burger" id="bm-burger">☰</button><h2 id="bm-title"></h2><span id="bm-topact"></span></div><div id="bm-main"></div></main>';
     document.body.appendChild(o);
     $("#bm-burger").onclick = function () { o.classList.toggle("open"); };
-    o.querySelectorAll(".bm-nav").forEach(function (b) { b.onclick = function () { o.classList.remove("open"); b.dataset.v === "exit" ? o.remove() : (A.f = {}, adminGo(b.dataset.v)); }; });
+    o.querySelectorAll(".bm-nav").forEach(function (b) { b.onclick = function () { A.touched = true; o.classList.remove("open"); b.dataset.v === "exit" ? o.remove() : (A.f = {}, adminGo(b.dataset.v)); }; });
   }
   function adminGo(v) {
     A.view = v; var t = (navAll().filter(function (n) { return n[0] === v; })[0] || [0, 0, "Dashboard"])[2];
@@ -715,7 +725,7 @@ function vPay(m) {
     var o = $("#bm-student"), live = S.batches.map(liveOf).filter(Boolean), h = S.h || "my", av = S.avail || [], body;
       S.inHome = true;
       if (h === "avail" && !S.reqFresh && !S.reqBusy) { S.reqBusy = true; var was = S.reqDone ? reqSig() : "", fin = function () { S.reqBusy = false; S.reqFresh = true; var first = !S.reqDone; S.reqDone = true; persistSnap(); if (S.inHome !== false && (first || reqSig() !== was)) sHome(); }; loadReqs().then(fin, fin); }
-    if (h === "my") body = S.batches.length ? S.batches.map(function (b) { var l = liveOf(b), n = nextOf(b); return '<div class="bm-bcard" data-b="' + b.id + '">' + (b.image ? '<img class="bx-bimg" src="' + esc(b.image) + '" alt="">' : "") + '<span class="bm-tag"' + (l ? ' style="background:#ef4444"' : "") + '>' + (l ? "Live Now" : { live: "Live Batch", recorded: "Recorded", hybrid: "Hybrid" }[b.type] || "Batch") + '</span><b>' + esc(b.name) + '</b><small>' + esc(subjOf(b).join(" • ")) + '</small><div class="bm-meta"><span>👥 ' + (b.enrolledCount || 0) + (b.limit ? "/" + b.limit : "") + '</span><span>' + (n ? "⏰ " + fdate(n.scheduledAt) : "Koi upcoming class nahi") + '</span></div></div>'; }).join("") :
+    if (h === "my") body = S.batches.length ? S.batches.map(function (b) { var l = liveOf(b), n = nextOf(b); return '<div class="bm-bcard" data-b="' + b.id + '">' + (b.image ? '<img class="bx-bimg" loading="lazy" decoding="async" src="' + esc(b.image) + '" alt="">' : "") + '<span class="bm-tag"' + (l ? ' style="background:#ef4444"' : "") + '>' + (l ? "Live Now" : { live: "Live Batch", recorded: "Recorded", hybrid: "Hybrid" }[b.type] || "Batch") + '</span><b>' + esc(b.name) + '</b><small>' + esc(subjOf(b).join(" • ")) + '</small><div class="bm-meta"><span>👥 ' + (b.enrolledCount || 0) + (b.limit ? "/" + b.limit : "") + '</span><span>' + (n ? "⏰ " + fdate(n.scheduledAt) : "Koi upcoming class nahi") + '</span></div></div>'; }).join("") :
       '<div class="bm-empty">Abhi aap kisi batch me enrolled nahi hain.<br>"Available" tab se enroll request bhejein.</div>';
     else body = av.length ? av.map(function (b) {
       var full = b.limit && (b.enrolledCount || 0) >= b.limit, act = !S.reqDone ? '<span class="bm-badge">⏳ Check ho raha hai…</span>' : b.req === "pending" ? '<span class="bm-badge o">⏳ Request pending — admin approve karega</span>' : b.req === "rejected" ? '<span class="bm-badge r">Request reject hui — admin se baat karein</span>' : b.enrollment === "closed" ? '<span class="bm-badge">Enrollment band hai</span>' : full ? '<span class="bm-badge r">Batch full</span>' : '<button class="bm-btn sm" data-rq="' + b.id + '">' + (b.fee ? "Enroll & Pay " + rupee(b.fee) : "Enroll Request bhejein") + '</button>';
@@ -734,7 +744,7 @@ function vPay(m) {
   function tabsAll() { var x = Object.keys(EXT.studentTabs).map(function (k) { return [k, EXT.studentTabs[k].label]; }); return [TABS0[0]].concat(x, TABS0.slice(1)); }
   function sJoin(it) { fire("join", it, S.cur); joinLive(it); }
   function sBatch(id) {
-    var b = S.batches.filter(function (x) { return x.id === id; })[0], o = $("#bm-student"); if (!b) return sHome(); S.cur = id; S.inHome = false;
+    var b = S.batches.filter(function (x) { return x.id === id; })[0], o = $("#bm-student"); if (!b) return sHome(); if (S.cur !== id || S.inHome) o.scrollTop = 0; S.cur = id; S.inHome = false;
     var its = S.items[id] || [], l = liveOf(b), n = nextOf(b);
     var body = "", tab = S.tab, xt = EXT.studentTabs[tab];
     if (tab === "overview") body = '<div class="bm-bhero"><b>' + esc(b.name) + '</b><p>' + esc(b.desc || subjOf(b).join(" • ")) + '</p></div>' + (l ? '<div class="bm-next"><div>🔴 Live: ' + esc(l.title) + '</div><button data-j>Join Now</button></div>' : n ? '<div class="bm-next"><div>Next Live Class<br><b>' + fdate(n.scheduledAt) + '</b></div></div>' : "") +

@@ -15,3 +15,9 @@
   }
   if (!watch()) document.addEventListener("DOMContentLoaded", watch);
 })();
+
+/* snP(fn): fn ko NEXT paint ke baad chalata hai -> click par screen/section pehle dikhta hai, bhaari render baad me (click turant open lagta hai). */
+window.snP = function (f) {
+  var raf = window.requestAnimationFrame || function (c) { return setTimeout(c, 0); };
+  raf(function () { setTimeout(function () { try { f(); } catch (e) { try { console.error(e); } catch (_) {} } }, 0); });
+};

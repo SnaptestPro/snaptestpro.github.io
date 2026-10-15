@@ -48,3 +48,20 @@
   document.addEventListener("visibilitychange", function () { if (!document.hidden) schedule(); });
   window.addEventListener("pageshow", schedule);
 })();
+
+/* ---- v201 INSTANT CLICK LAYER -------------------------------------------------------------
+   a) Har "smooth" scroll turant (instant) — scrollIntoView/scrollTo/scrollBy/scroll ka animation 300-600ms leta tha,
+      isi se screen badalte waqt page "slide" hota dikhta tha aur click dheema lagta tha.
+   b) iOS/Android WebView me :active (tap feedback) turant chale, isliye passive touchstart listener. */
+(function () {
+  "use strict";
+  function fix(a) { try { if (a && typeof a === "object" && a.behavior === "smooth") { var o = {}; for (var k in a) o[k] = a[k]; o.behavior = "auto"; return o; } } catch (e) {} return a; }
+  function wrap(proto, name) {
+    var f = proto && proto[name]; if (typeof f !== "function" || f.__snFast) return;
+    var w = function (a, b) { return arguments.length > 1 ? f.call(this, a, b) : f.call(this, fix(a)); };
+    w.__snFast = 1; try { proto[name] = w; } catch (e) {}
+  }
+  ["scrollIntoView", "scrollTo", "scrollBy", "scroll"].forEach(function (n) { wrap(Element.prototype, n); });
+  ["scrollTo", "scrollBy", "scroll"].forEach(function (n) { wrap(window, n); wrap(Window.prototype, n); });
+  document.addEventListener("touchstart", function () {}, { passive: true });
+})();
