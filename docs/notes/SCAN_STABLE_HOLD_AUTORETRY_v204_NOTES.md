@@ -18,3 +18,13 @@ par photo le li jaati thi, aur corner positions ek hi frame ki raw read thi.
 - **Camera lag:** full-size frame snapshot ab sirf stable window mein (har tick nahi) aur GPU canvas par; preview stream 1440x1920
   (final image HQ photo se aati hai, fallback ke liye 1440 wide kaafi hai).
 - Test: `tests/unit/test_scan_stable_hold.js`. Tuning knobs: `_HOLD`, `.0045` / `.01` tolerances in `Ct()`.
+
+---
+## v205 — 3 corners enough + 45-square refit
+- **3 corner trigger:** ab min 3 corners fresh detect hon to 4th corner sheet ke parallelogram se nikal liya jata hai (`vn()`), UI mein 4th box bhi green.
+  Hold `_HOLD` 900 -> 500ms (3 ya 4 corners dono par). Hilne par restart / sharpness gate / auto-retry waise hi.
+- **45-square refit (`_warp2`):** pehli warp ke baad jitne bhi registration squares (corner bhi grid ka hissa hain) mile, unse sheet->photo
+  homography least-squares se dobara fit hoti hai (outlier trim ke saath) aur photo dobara warp hoti hai. Sirf tab apply jab squares >= pehle jitne
+  aur mean offset kam ho — warna purani warp. Synthetic test: 4th corner 90px galat hone par bhi 45/45 squares align.
+- Inferred corner ke liye `_refinePts` / HQ-photo re-detect ka tolerance wide (4%).
+- Tests: `test_scan_stable_hold.js` (3-corner cases), `test_scan_refit_45.js` (refit maths + perspective photo).
