@@ -28,3 +28,12 @@ index.html se `smooth-ui.css` / `smooth-ui.js` ki line hata do -> purana look/be
 - **Instant scroll**: script.js ke 13 `scrollIntoView(smooth)` + global patch (smooth-ui.js) — har scrollTo/scrollIntoView ab animation ke bina.
 - Batch card images `loading=lazy decoding=async`; batch detail khulne par scroll top se.
 - iOS/Android tap feedback ke liye passive touchstart.
+
+# v1.4.9 / build 203 — OMR scan: fast + no wait + no name-OCR lag
+
+Sab changes `exam-manager.js` me (Scan Sheet).
+- **Name OCR band** (Tesseract: ~10MB download + CPU heavy = camera lag, aur handwriting par galat). Roll No bubbles se hi pehchaan hoti hai. Wapas chahiye: `localStorage.snap_scan_ocr="1"`.
+- **HQ takePhoto wait hata** (4.5s tak ruka rehta tha). Ab lock hote hi turant sharpest video frame se grading. Purana mode: `?scanq=hi`; chhota-fast photo mode: `?scanq=std`; `?scanq=low` = sirf video.
+- **Quality**: normal phone par camera 1800x2400 @30fps (low-end par pehle jaisa 1440x1920), continuous autofocus/exposure/white-balance, capture canvas 2000px (low-end 1600px).
+- **Blur gate**: lock turant hota hai; frame blurry ho to max 2 extra frame (~0.25s) wait karke sabse sharp frame use hota hai.
+- **Save ke baad seedha agla scan** (link-to-student popup har sheet par nahi aata). Scanner ke upar-left "⚡ Link: Baad me / 🔗 Link: Turant" button se pehla flow wapas.
