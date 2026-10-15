@@ -20,3 +20,11 @@ New: `smooth-ui.css`, `smooth-ui.js`. Edited: `index.html`, `owner-app.html`, `b
 
 ## Rollback
 index.html se `smooth-ui.css` / `smooth-ui.js` ki line hata do -> purana look/behaviour (baaki edits chhote hain).
+
+# v1.4.8 / build 202 — Instant click
+
+- **Admin Batch panel** ab click par turant khulta hai (pehle network load hone tak sirf "Loading" toast aata tha). Pichla data ho to usi se dikhta hai, fresh data peeche load hoke update hota hai.
+- **Paint-first renders** (`snP` in perf-lite.js): admin tabs (Bank, Tests, Trash, Grade, Leaderboard, Settings, Records) aur student sections (Tests, Settings) pehle screen dikhate hain, bhaari list render agle frame me.
+- **Instant scroll**: script.js ke 13 `scrollIntoView(smooth)` + global patch (smooth-ui.js) — har scrollTo/scrollIntoView ab animation ke bina.
+- Batch card images `loading=lazy decoding=async`; batch detail khulne par scroll top se.
+- iOS/Android tap feedback ke liye passive touchstart.
