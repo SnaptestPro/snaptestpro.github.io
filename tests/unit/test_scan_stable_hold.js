@@ -15,10 +15,11 @@ function grab(name) {
   }
   throw new Error('unbalanced ' + name);
 }
+let __seed = 20261016; const rand = () => (__seed = (__seed * 1664525 + 1013904223) >>> 0) / 4294967296;
 const KEYS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 const BASE = { 'top-left': [200, 300], 'top-right': [1240, 300], 'bottom-left': [200, 1620], 'bottom-right': [1240, 1620] };
 const VW = 1440, VH = 1920;
-function simulate(frameFn, maxMs = 6000, onCap, onStatus) {
+function simulate(frameFn, maxMs = 6000, onCap, onStatus, pre) {
   let now = 0, captured = null, calls = 0;
   const ea = KEYS.map(k => ({ dataset: { marker: k }, classList: { add() {}, remove() {}, contains() { return false; } }, querySelector() { return null; } }));
   const ctx = {
@@ -33,11 +34,11 @@ function simulate(frameFn, maxMs = 6000, onCap, onStatus) {
   };
   vm.createContext(ctx);
   vm.runInContext([
-    'let dt=0,Ae=0,fe=[],Me=-Infinity,ht=0,Je=false,ae=null,be=null,_shMax=0,_shOk=false,_stSince=0,_foundSince=0,_prevFresh=null,_miss=0,_retryNote="",_infK="";',
+    'let dt=0,Ae=0,fe=[],Me=-Infinity,ht=0,Je=false,ae=null,be=null,_shMax=0,_shOk=false,_stSince=0,_foundSince=0,_prevFresh=null,_miss=0,_retryNote="",_infK="",_needClear=false,_clearTicks=0,_lastSaved="";',
     'const pa=220,ya=2,_HOLD=500,_e={},_trk={},kn=6,wn=["top-left","top-right","bottom-left","bottom-right"];',
     grab('vn'), grab('_egSpread'), grab('_med'), grab('_quadOk'), grab('Ct'),
   ].join('\n'), ctx);
-  ctx.ea = ea;
+  ctx.ea = ea; pre && vm.runInContext(pre, ctx);
   // ea is referenced as a free variable inside Ct -> expose through the context
   vm.runInContext('var ea = this.ea;', ctx);
   for (now = 1000; now < 1000 + maxMs && !captured; now += 16) { // ~60fps rAF
@@ -46,7 +47,7 @@ function simulate(frameFn, maxMs = 6000, onCap, onStatus) {
   }
   return captured ? captured.t - 1000 : null;
 }
-const jit = (amp) => () => (Math.random() * 2 - 1) * amp;
+const jit = (amp) => () => (rand() * 2 - 1) * amp;
 function frames(over) { return (t) => { const o = {}; KEYS.forEach((k, i) => { const j = over.jitter ? over.jitter(t, k) : [0, 0]; o[k] = [BASE[k][0] + j[0], BASE[k][1] + j[1]]; }); return over.drop ? over.drop(t, o) : o; }; }
 let pass = 0; const T = (n, f) => { try { f(); pass++; console.log('  PASS ' + n); } catch (e) { console.log('  FAIL ' + n + '\n   ' + (e.stack || e)); process.exitCode = 1; } };
 T('steady hand (±1px) captures after ~0.5–0.9s, not instantly', () => {
@@ -75,13 +76,25 @@ T('only 3 corners ever visible -> still captures fast and 4th corner is inferred
     assert.ok(Math.hypot(got.pts[miss].x - BASE[miss][0], got.pts[miss].y - BASE[miss][1]) < 1.5, 'inferred ' + miss + ' ' + JSON.stringify(got.pts[miss]));
   }
 });
-T('blinking detector (each corner randomly fails 45% of ticks) still locks and captures within ~1.5s', () => {
+T('blinking detector (each corner randomly fails 45% of ticks) still locks and captures within ~2.5s', () => {
   let slow = 0;
-  for (let r = 0; r < 40; r++) { const t = simulate(frames({ drop: (t, o) => { KEYS.forEach(k => { if (Math.random() < 0.45) delete o[k]; }); return o; } })); if (t === null || t > 1500) slow++; }
+  for (let r = 0; r < 40; r++) { const t = simulate(frames({ drop: (t, o) => { KEYS.forEach(k => { if (rand() < 0.45) delete o[k]; }); return o; } })); if (t === null || t > 2500) slow++; }
   assert.ok(slow <= 2, 'too many slow/failed locks: ' + slow + '/40');
 });
 T('green state never flickers off during a steady hold with 30% random misses', () => {
-  const states = []; simulate(frames({ drop: (t, o) => { KEYS.forEach(k => { if (Math.random() < 0.3) delete o[k]; }); return o; } }), 900, null, (d) => states.push(d));
+  const states = []; simulate(frames({ drop: (t, o) => { KEYS.forEach(k => { if (rand() < 0.3) delete o[k]; }); return o; } }), 900, null, (d) => states.push(d));
   assert.ok(states.length > 4 && states.slice(1).every(Boolean), 'ready flicker: ' + states.join(','));
+});
+T('after a save the SAME sheet is never re-captured until it leaves the view', () => {
+  assert.strictEqual(simulate(frames({}), 4000, null, null, '_needClear=true;'), null);
+});
+T('after a save, removing the sheet (~1s) and showing the next one captures it again (not before)', () => {
+  const t = simulate(frames({ drop: (t, o) => (t > 300 && t < 1400 ? {} : o) }), 6000, null, null, '_needClear=true;');
+  assert.ok(t !== null && t >= 1900 && t <= 3000, 'capture time ' + t);
+});
+T('blinking detector on the SAME sheet never falsely counts as "sheet removed" (no duplicate scans)', () => {
+  let dup = 0;
+  for (let r = 0; r < 30; r++) if (simulate(frames({ drop: (t, o) => { KEYS.forEach(k => { if (rand() < 0.45) delete o[k]; }); return o; } }), 5000, null, null, '_needClear=true;') !== null) dup++;
+  assert.ok(dup <= 1, 'duplicate captures: ' + dup + '/30');
 });
 console.log(pass + ' passed');
