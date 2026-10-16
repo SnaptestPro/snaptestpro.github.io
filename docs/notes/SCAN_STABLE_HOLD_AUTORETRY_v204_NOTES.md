@@ -38,3 +38,18 @@ par photo le li jaati thi, aur corner positions ek hi frame ki raw read thi.
   position median se. Hilna raw detection se turant pakda jata hai (`dv`), capture ke waqt kam se kam 3 corners ki taaza detection (`rc>=3`) zaroori.
 - **Sanity:** capture se pehle quadrilateral ka aspect ratio check (`_quadOk`) — galat blob pakda gaya to capture nahi.
 - Test: `tests/unit/test_scan_corner_detector.js`, `test_scan_stable_hold.js` (random 45% miss par bhi ~0.7s mein lock).
+
+---
+## v207 — rapid back-to-back scanning (auto-save)
+- **⚡ Auto-save toggle** (camera screen ke beech mein, `snap_scan_auto`, default OFF): ON hone par clean scan 0.7s baad khud save hota hai aur
+  scanner turant agli sheet ke liye khul jata hai.
+- **Strict gate `_autoOk`:** >=40/45 squares, roll poora aur saaf, koi faint/multi flag nahi, blank <35%, photo dark nahi, aur is roll ka result
+  pehle se saved nahi. Kuch bhi shak ho to purani review screen (manual Save) hi aati hai.
+- **Duplicate guard:** save ke baad wahi sheet dobara capture nahi hoti; jab tak sheet camera se hat nahi jati (~0.8s) tab tak
+  "✅ Saved: Roll X • N marks • Total k — ab agli sheet laayein" dikhta hai. Blinking detector ise galti se "sheet hati" nahi maanta.
+- Save par haptic vibration + session counter. Tests: `test_scan_autosave_gate.js`, naye cases `test_scan_stable_hold.js` mein.
+
+---
+## v208 — camera par instructions hata di
+Camera ke upar ka guide text ("Har kaale square ko blue corner box...") aur neeche ka status text ("Kaale OMR squares dhoonde...", "steady rakhein...") ab nahi dikhte
+(CSS se hide). Sirf corner boxes, green/amber dot aur auto-save ka "✅ Saved: Roll X..." confirmation dikhta hai. Warnings (Retake wala quality banner) waise hi.
