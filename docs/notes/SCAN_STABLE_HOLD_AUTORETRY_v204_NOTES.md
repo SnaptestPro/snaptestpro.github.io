@@ -28,3 +28,13 @@ par photo le li jaati thi, aur corner positions ek hi frame ki raw read thi.
   aur mean offset kam ho — warna purani warp. Synthetic test: 4th corner 90px galat hone par bhi 45/45 squares align.
 - Inferred corner ke liye `_refinePts` / HQ-photo re-detect ka tolerance wide (4%).
 - Tests: `test_scan_stable_hold.js` (3-corner cases), `test_scan_refit_45.js` (refit maths + perspective photo).
+
+---
+## v206 — corner blinking fix (robust live detector + tracking)
+- **Naya detector `_detLum/_detCorner`:** har corner ke liye video ke full resolution se zoomed crop (blue box ka 1.6x, yaani box ke bahar thoda
+  misaligned marker bhi mile), 3 thresholds (white level ke 35/50/65%), shape + contrast + "kam se kam 2 thresholds par mile" checks.
+  Bubbles / text / table-edge / hollow circles reject.
+- **Tracking (`_trk`):** har corner ki last 5 ticks ki detections; corner ~4 ticks (≈0.5s) tak green rehta hai (ek-do tick ke fail par blink nahi),
+  position median se. Hilna raw detection se turant pakda jata hai (`dv`), capture ke waqt kam se kam 3 corners ki taaza detection (`rc>=3`) zaroori.
+- **Sanity:** capture se pehle quadrilateral ka aspect ratio check (`_quadOk`) — galat blob pakda gaya to capture nahi.
+- Test: `tests/unit/test_scan_corner_detector.js`, `test_scan_stable_hold.js` (random 45% miss par bhi ~0.7s mein lock).
