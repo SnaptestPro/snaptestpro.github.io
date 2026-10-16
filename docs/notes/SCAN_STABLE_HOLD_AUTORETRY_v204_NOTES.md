@@ -73,5 +73,14 @@ Rule (pehle se): 2+ marked option => answer galat + dono red. Ye rule intact hai
 ## v211 — roll labels, digit dropdown, thodi tez scan
 - OMR sheet (HTML preview/print + canvas version) ke Roll No boxes ke andar chhapa "1 2 3.." label hata diya (wo pre-filled roll "12" jaisa dikhta tha). Scanner bubbles padhta hai, labels nahi — roll reading par asar nahi.
 - Exam banate waqt "Roll No Digits" ab dropdown (1–5 digits). Test `test_roll_digits_1_to_5.js`: 1..5 digit roll exact padha jata hai.
-- Speed: auto-save delay 700→400 ms. Stable-hold 500 ms jaisa tha waisa hi rakha (400 try kiya to tuned stability tests toote — accuracy ke liye revert).
+- Speed: (auto-save delay badlav hata diya — repo ki `_autoGo` 700ms hi rakhi.) Stable-hold 500 ms jaisa tha waisa hi rakha (400 try kiya to tuned stability tests toote — accuracy ke liye revert).
 - Question blocks ko shift karna: scanner fixed registration-square geometry par based hai, isliye ye add nahi kiya (galat align = galat marks).
+
+---
+## v212 — merge fix
+Repo ki exam-manager.js (commit 45b0116) mein `_autoWhy/_autoGo/_autoNote` (auto-save reason), `_HOLD=250`, non-blocking commit wale badlav the, jo v211 ne overwrite kar diye the.
+Ab wahi file base hai aur v209 (blot/double-mark), v210 (Roll ?? retry), v211 (roll labels hataye — HTML, canvas aur PDF teeno) upar merge hain.
+
+---
+## v213 — camera saaf: controls video ke upar nahi
+Link / Auto-save / Flash buttons ab camera ke *upar* ek alag bar (`#examgr-scan-toolbar`) mein hain, video par overlay nahi. Flash button ka hidden/show logic wahi hai.
