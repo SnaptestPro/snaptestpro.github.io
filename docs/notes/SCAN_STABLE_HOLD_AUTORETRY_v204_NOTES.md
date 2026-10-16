@@ -84,3 +84,10 @@ Ab wahi file base hai aur v209 (blot/double-mark), v210 (Roll ?? retry), v211 (r
 ---
 ## v213 — camera saaf: controls video ke upar nahi
 Link / Auto-save / Flash buttons ab camera ke *upar* ek alag bar (`#examgr-scan-toolbar`) mein hain, video par overlay nahi. Flash button ka hidden/show logic wahi hai.
+
+---
+## v214 — Question Report (student → admin)
+Naya `question-report.js`: exam screen par "🚩 Report" (reason dropdown + message, min 5 akshar) -> `questionReports/{testId}_{qIndex}_{mobile}` (ek student, ek question, ek baar).
+Admin dashboard card "🚩 Question Reports" (open count badge): list, "✏️ Question Edit Karein" (test editor khulta hai; edit ke baad purana Save Test Online), "✅ Resolved", delete.
+Firestore rules ka naya block: `docs/setup/FIRESTORE_RULES_questionReports_v214.txt` — Firebase Console Rules mein paste + Publish zaroori, warna reports "permission" error dengi.
+Test: `test_question_report_wiring.js` (client ↔ rules keys, institute scope, sw/index wiring).
