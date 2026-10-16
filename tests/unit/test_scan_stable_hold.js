@@ -34,7 +34,7 @@ function simulate(frameFn, maxMs = 6000, onCap, onStatus, pre) {
   };
   vm.createContext(ctx);
   vm.runInContext([
-    'let dt=0,Ae=0,fe=[],Me=-Infinity,ht=0,Je=false,ae=null,be=null,_shMax=0,_shOk=false,_stSince=0,_foundSince=0,_prevFresh=null,_miss=0,_retryNote="",_infK="",_needClear=false,_clearTicks=0,_lastSaved="";',
+    'let dt=0,Ae=0,fe=[],Me=-Infinity,ht=0,Je=false,ae=null,be=null,_shMax=0,_shOk=false,_stSince=0,_foundSince=0,_prevFresh=null,_miss=0,_retryNote="",_infK="",_needClear=false,_clearTicks=0,_lastSaved="",_lastVp=null;',
     'const pa=220,ya=2,_HOLD=500,_e={},_trk={},kn=6,wn=["top-left","top-right","bottom-left","bottom-right"];',
     grab('vn'), grab('_egSpread'), grab('_med'), grab('_quadOk'), grab('Ct'),
   ].join('\n'), ctx);
