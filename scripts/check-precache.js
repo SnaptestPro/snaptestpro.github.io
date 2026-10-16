@@ -7,7 +7,9 @@ const m = sw.match(/urlsToCache\s*=\s*\[([^\]]*)\]/);
 if (!m) { console.error('urlsToCache not found in sw.js'); process.exit(1); }
 const allUrls = (m[1].match(/"[^"]+"/g) || []).map(x => x.slice(1, -1));
 const list = allUrls.filter(u => u.startsWith('/'));
-const missing = list.filter(u => u !== '/' && !fs.existsSync(path.join(base, u.slice(1))));
+// Query string (?v=1) aur hash (#x) file path ka hissa nahi hote — unhe hata kar hi file check karo.
+const stripQuery = u => u.split(/[?#]/)[0];
+const missing = list.filter(u => stripQuery(u) !== '/' && !fs.existsSync(path.join(base, stripQuery(u).slice(1))));
 if (missing.length) { console.error('Precache files missing in ' + base + ':\n  ' + missing.join('\n  ')); process.exit(1); }
 const extractedAssets = [
   '/modules/app.mjs', '/modules/bank-chunks.mjs', '/modules/legacy-bridge.mjs', '/modules/legacy-modules.mjs',
@@ -15,7 +17,7 @@ const extractedAssets = [
   ...Array.from({ length: 4 }, (_, i) => `/inline/index-inline-${String(i + 1).padStart(2, '0')}.css`)
 ];
 const requiredOffline = ['/privacy.html', '/terms.html', '/delete-account.html', ...extractedAssets, '/question-bank/manifest.json'];
-const notCached = requiredOffline.filter(u => !list.includes(u));
+const notCached = requiredOffline.filter(u => !list.map(stripQuery).includes(u));
 if (notCached.length) { console.error('Required legal/account pages are not available offline:\n  ' + notCached.join('\n  ')); process.exit(1); }
 const requiredRemote = ['https://www.gstatic.com/firebasejs/9.22.0/firebase-app-check-compat.js'];
 const remoteMissing = requiredRemote.filter(u => !allUrls.includes(u));
