@@ -18,7 +18,7 @@ function grab(name) {
 const KEYS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 const BASE = { 'top-left': [200, 300], 'top-right': [1240, 300], 'bottom-left': [200, 1620], 'bottom-right': [1240, 1620] };
 const VW = 1440, VH = 1920;
-function simulate(frameFn, maxMs = 6000, onCap) {
+function simulate(frameFn, maxMs = 6000, onCap, onStatus) {
   let now = 0, captured = null, calls = 0;
   const ea = KEYS.map(k => ({ dataset: { marker: k }, classList: { add() {}, remove() {}, contains() { return false; } }, querySelector() { return null; } }));
   const ctx = {
@@ -27,15 +27,15 @@ function simulate(frameFn, maxMs = 6000, onCap) {
     xn: () => ({ videoWidth: VW, videoHeight: VH, scale: 1, offsetX: 0, offsetY: 0 }),
     Re: { width: 0, height: 0, getContext: () => ({ drawImage() {} }) },
     pn: (u) => ({ corner: u, key: u.dataset.marker }),
-    aa: (s, f) => { const p = ctx.__cur && ctx.__cur[f.key]; return p ? { x: p[0] * 0.5, y: p[1] * 0.5 } : null; }, // 720-wide detection space
+    _detCorner: (u) => { const p = ctx.__cur && ctx.__cur[u.dataset.marker]; return p ? { x: p[0], y: p[1] } : null; }, // video px
     bn: (f, m, t, r) => (m ? { x: m.x / r, y: m.y / r } : null),
-    Nn: () => 100, Ke() {}, Fn: (pts) => { captured = { t: now, pts }; onCap && onCap(captured); }, _cap: () => 2000, document: { createElement: () => ({ width: 0, height: 0, getContext: () => ({ drawImage() {} }) }) },
+    Nn: () => 100, Ke(m, l, d) { onStatus && onStatus(d); }, Fn: (pts) => { captured = { t: now, pts }; onCap && onCap(captured); }, _cap: () => 2000, document: { createElement: () => ({ width: 0, height: 0, getContext: () => ({ drawImage() {} }) }) },
   };
   vm.createContext(ctx);
   vm.runInContext([
     'let dt=0,Ae=0,fe=[],Me=-Infinity,ht=0,Je=false,ae=null,be=null,_shMax=0,_shOk=false,_stSince=0,_foundSince=0,_prevFresh=null,_miss=0,_retryNote="",_infK="";',
-    'const pa=220,ya=2,_HOLD=500,_e={},kn=6,wn=["top-left","top-right","bottom-left","bottom-right"];',
-    grab('vn'), grab('_egSpread'), grab('Ct'),
+    'const pa=220,ya=2,_HOLD=500,_e={},_trk={},kn=6,wn=["top-left","top-right","bottom-left","bottom-right"];',
+    grab('vn'), grab('_egSpread'), grab('_med'), grab('_quadOk'), grab('Ct'),
   ].join('\n'), ctx);
   ctx.ea = ea;
   // ea is referenced as a free variable inside Ct -> expose through the context
@@ -61,8 +61,8 @@ T('moderate tremor (±0.4% of width) still captures, within ≤2.2s', () => {
 T('single missed corner tick does NOT restart the hold', () => {
   const t = simulate(frames({ drop: (t, o) => { if (t > 400 && t < 520) delete o['top-left']; return o; } })); assert.ok(t !== null && t <= 900, 'capture time ' + t);
 });
-T('two corners lost for >2 ticks restarts the hold (captures later than steady)', () => {
-  const t = simulate(frames({ drop: (t, o) => { if (t > 300 && t < 700) { delete o['bottom-right']; delete o['top-left']; } return o; } })); assert.ok(t !== null && t >= 1000, 'capture time ' + t);
+T('two corners lost for ~1s restarts the hold (captures later than steady)', () => {
+  const t = simulate(frames({ drop: (t, o) => { if (t > 300 && t < 1300) { delete o['bottom-right']; delete o['top-left']; } return o; } })); assert.ok(t !== null && t >= 1500, 'capture time ' + t);
 });
 T('sheet jumps mid-hold → hold restarts from the jump', () => {
   const t = simulate(frames({ jitter: (t) => (t > 300 ? [60, 40] : [0, 0]) })); assert.ok(t !== null && t >= 750, 'capture time ' + t);
@@ -74,5 +74,14 @@ T('only 3 corners ever visible -> still captures fast and 4th corner is inferred
     assert.ok(t !== null && t >= 450 && t <= 900, miss + ' capture time ' + t);
     assert.ok(Math.hypot(got.pts[miss].x - BASE[miss][0], got.pts[miss].y - BASE[miss][1]) < 1.5, 'inferred ' + miss + ' ' + JSON.stringify(got.pts[miss]));
   }
+});
+T('blinking detector (each corner randomly fails 45% of ticks) still locks and captures within ~1.5s', () => {
+  let slow = 0;
+  for (let r = 0; r < 40; r++) { const t = simulate(frames({ drop: (t, o) => { KEYS.forEach(k => { if (Math.random() < 0.45) delete o[k]; }); return o; } })); if (t === null || t > 1500) slow++; }
+  assert.ok(slow <= 2, 'too many slow/failed locks: ' + slow + '/40');
+});
+T('green state never flickers off during a steady hold with 30% random misses', () => {
+  const states = []; simulate(frames({ drop: (t, o) => { KEYS.forEach(k => { if (Math.random() < 0.3) delete o[k]; }); return o; } }), 900, null, (d) => states.push(d));
+  assert.ok(states.length > 4 && states.slice(1).every(Boolean), 'ready flicker: ' + states.join(','));
 });
 console.log(pass + ' passed');
