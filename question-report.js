@@ -33,10 +33,15 @@
   function qContext() {
     try {
       if (typeof current === "undefined" || !current.test || !current.test.questions) return null;
-      var i = current.index, q = current.test.questions[i];
+      var t = current.test, i = current.index, q = t.questions[i];
       if (!q) return null;
       var txt = q.textEN || q.textHI || q.text || "";
-      return { testId: String(current.testId || ""), testTitle: clean(current.test.title, 120), instituteId: String(current.test.instituteId || ""), qIndex: i, qNumber: i + 1, qText: clean(txt, 300) };
+      // Practice (re-attempt / weak) me current.testId synthetic hota hai; asli test ka id aur sawaal ka index use karo,
+      // taaki admin "Question Edit" usi test ko khol sake.
+      var srcId = t.sourceTestId || current.testId;
+      var orig = (typeof tests !== "undefined" && tests && srcId && tests[srcId]) || null;
+      var qi = (Array.isArray(t.sourceQIdx) && t.sourceQIdx[i] != null) ? t.sourceQIdx[i] : i;
+      return { testId: String(srcId || ""), testTitle: clean((orig && orig.title) || t.title, 120), instituteId: String(t.instituteId || (orig && orig.instituteId) || ""), qIndex: qi, qNumber: qi + 1, qText: clean(txt, 300) };
     } catch (e) { return null; }
   }
   function buildStudentModal() {
