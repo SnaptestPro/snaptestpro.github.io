@@ -709,6 +709,59 @@
       </div>
     </div>
 
+    <!-- Exam Settings -->
+    <div id="examgr-settings-overlay" class="test-analysis-overlay examgr-overlay-full hidden" onclick="if(event.target===this) examgrCloseSettings()">
+      <div class="test-analysis-sheet examgr-settings-sheet">
+        <button type="button" class="test-analysis-close" onclick="examgrCloseSettings()" aria-label="Settings band karein">✕</button>
+        <div class="test-analysis-title">⚙️ Exam Settings</div>
+        <p class="muted-text">Is exam ki OMR sheet aur scan ka tareeka yahan set karein.</p>
+        <p id="examgr-settings-notice" class="examgr-settings-notice" hidden></p>
+
+        <div class="examgr-settings-grid">
+          <div class="field-row">
+            <label for="examgr-settings-questions">Questions</label>
+            <input type="number" id="examgr-settings-questions" min="1" max="100" inputmode="numeric">
+          </div>
+          <div class="field-row">
+            <label for="examgr-settings-sets">Exam mein sets</label>
+            <input type="number" id="examgr-settings-sets" min="1" max="5" inputmode="numeric">
+          </div>
+        </div>
+
+        <section class="examgr-settings-section" aria-labelledby="examgr-settings-sheet-title">
+          <h4 id="examgr-settings-sheet-title">🗒️ OMR Sheet</h4>
+          <label class="examgr-settings-toggle" for="examgr-settings-include-roll">
+            <span class="examgr-settings-toggle-copy"><strong>Roll No ke bubbles dikhayein</strong><small>Band karne par nayi OMR sheet par Roll No ka hissa nahi aayega.</small></span>
+            <input type="checkbox" id="examgr-settings-include-roll">
+            <span class="examgr-settings-switch" aria-hidden="true"></span>
+          </label>
+          <div class="field-row" id="examgr-settings-roll-digits-row">
+            <label for="examgr-settings-roll-digits">Roll No mein kitne digit?</label>
+            <select id="examgr-settings-roll-digits"><option value="1">1 digit</option><option value="2">2 digits</option><option value="3">3 digits</option><option value="4">4 digits</option><option value="5">5 digits</option></select>
+          </div>
+        </section>
+
+        <section class="examgr-settings-section" aria-labelledby="examgr-settings-scan-title">
+          <h4 id="examgr-settings-scan-title">📷 Scan ke options</h4>
+          <label class="examgr-settings-toggle" for="examgr-settings-ignore-set">
+            <span class="examgr-settings-toggle-copy"><strong>Set ko scan mein ignore karein</strong><small>Set bubbles sheet se hatenge; checking Set A ki answer key se hogi.</small></span>
+            <input type="checkbox" id="examgr-settings-ignore-set">
+            <span class="examgr-settings-switch" aria-hidden="true"></span>
+          </label>
+          <label class="examgr-settings-toggle" for="examgr-settings-ignore-roll">
+            <span class="examgr-settings-toggle-copy"><strong>Roll No ko scan mein ignore karein</strong><small>Scanner Roll No nahi padhega; result bina Roll No ke save hoga.</small></span>
+            <input type="checkbox" id="examgr-settings-ignore-roll">
+            <span class="examgr-settings-switch" aria-hidden="true"></span>
+          </label>
+        </section>
+
+        <div class="examgr-settings-footer">
+          <button type="button" class="btn-secondary" onclick="examgrCloseSettings()">Cancel</button>
+          <button type="button" class="btn-primary" id="examgr-settings-save-btn">💾 Settings Save Karein</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Answer Key -->
     <div id="examgr-akey-overlay" class="test-analysis-overlay examgr-overlay-full hidden" onclick="if(event.target===this) examgrCloseAnswerKey()">
       <div class="test-analysis-sheet examgr-akey-sheet">
