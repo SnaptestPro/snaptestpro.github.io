@@ -53,3 +53,25 @@ par photo le li jaati thi, aur corner positions ek hi frame ki raw read thi.
 ## v208 — camera par instructions hata di
 Camera ke upar ka guide text ("Har kaale square ko blue corner box...") aur neeche ka status text ("Kaale OMR squares dhoonde...", "steady rakhein...") ab nahi dikhte
 (CSS se hide). Sirf corner boxes, green/amber dot aur auto-save ka "✅ Saved: Roll X..." confirmation dikhta hai. Warnings (Retake wala quality banner) waise hi.
+
+---
+## v209 — double-mark safety net (dark blot beside a correct mark)
+Report: Q22 mein student ne 2 option bhare (ek sahi + ek galat); scan ne sirf sahi wala pakda, galat chhod diya.
+Rule (pehle se): 2+ marked option => answer galat + dono red. Ye rule intact hai; yahan *detection* ko mazboot kiya:
+- `ln()` ke `pickBest` mein naya `_bl()` ("blot" check): har option ke aas-paas ±12px tak (curved paper / thodi misalignment) ek solid dark disc
+  (radius 5 ka >=85% hissa dark) dhoondta hai. Mile to wo option bhi "marked" gina jata hai => multi => dono red.
+  Radius/coverage aisa rakha hai ki padosi bubble ki ink se confuse nahi hota.
+- Test: `test_multi_mark_blot_pipeline.js` (asli `ln` synthetic sheet par): offsets 4-12px par caught, 360 single marks par 0 false multi.
+- Note: screenshot se asli wajah pakki nahi mili — synthetic mein purana code bhi 8px tak pakad leta tha. Is student ki original photo mile to aur tune hoga.
+
+---
+## v210 — Roll No misread par auto-retry
+`Fn2` ka auto-retry ab sirf "reg squares kam" par nahi, balki tab bhi chalta hai jab Roll No mein "?" ya koi digit unread (null) ho
+(max 2 baar, har baar fresh capture). Isse "Roll ??" wale kharab scan review screen tak nahi pahunchte; 2 retry ke baad bhi na padhe to result dikhta hai (user manually sahi kar sakta hai).
+
+---
+## v211 — roll labels, digit dropdown, thodi tez scan
+- OMR sheet (HTML preview/print + canvas version) ke Roll No boxes ke andar chhapa "1 2 3.." label hata diya (wo pre-filled roll "12" jaisa dikhta tha). Scanner bubbles padhta hai, labels nahi — roll reading par asar nahi.
+- Exam banate waqt "Roll No Digits" ab dropdown (1–5 digits). Test `test_roll_digits_1_to_5.js`: 1..5 digit roll exact padha jata hai.
+- Speed: auto-save delay 700→400 ms. Stable-hold 500 ms jaisa tha waisa hi rakha (400 try kiya to tuned stability tests toote — accuracy ke liye revert).
+- Question blocks ko shift karna: scanner fixed registration-square geometry par based hai, isliye ye add nahi kiya (galat align = galat marks).
