@@ -34,7 +34,7 @@ function simulate(frameFn, maxMs = 6000, onCap, onStatus, pre) {
   };
   vm.createContext(ctx);
   vm.runInContext([
-    'let dt=0,Ae=0,fe=[],Me=-Infinity,ht=0,Je=false,ae=null,be=null,_shMax=0,_shOk=false,_stSince=0,_foundSince=0,_prevFresh=null,_miss=0,_retryNote="",_infK="",_needClear=false,_clearTicks=0,_lastSaved="";',
+    'let dt=0,Ae=0,fe=[],Me=-Infinity,ht=0,Je=false,ae=null,be=null,_shMax=0,_shOk=false,_stSince=0,_foundSince=0,_prevFresh=null,_miss=0,_retryNote="",_infK="",_needClear=false,_clearTicks=0,_lastSaved="",_lastVp=null,_newTicks=0;',
     'const pa=220,ya=2,_HOLD=500,_e={},_trk={},kn=6,wn=["top-left","top-right","bottom-left","bottom-right"];',
     grab('vn'), grab('_egSpread'), grab('_med'), grab('_quadOk'), grab('Ct'),
   ].join('\n'), ctx);
@@ -96,5 +96,10 @@ T('blinking detector on the SAME sheet never falsely counts as "sheet removed" (
   let dup = 0;
   for (let r = 0; r < 30; r++) if (simulate(frames({ drop: (t, o) => { KEYS.forEach(k => { if (rand() < 0.45) delete o[k]; }); return o; } }), 5000, null, null, '_needClear=true;') !== null) dup++;
   assert.ok(dup <= 1, 'duplicate captures: ' + dup + '/30');
+});
+T('after a save, a DIFFERENT sheet placed straight away is captured without removing the old one', () => {
+  const lastVp = {}; KEYS.forEach(k => { lastVp[k] = { x: BASE[k][0], y: BASE[k][1] }; });
+  const t = simulate(frames({ jitter: () => [200, 0] }), 6000, null, null, '_needClear=true;_lastVp=' + JSON.stringify(lastVp) + ';');
+  assert.ok(t !== null && t <= 1400, 'new sheet capture time ' + t);
 });
 console.log(pass + ' passed');
