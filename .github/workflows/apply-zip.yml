@@ -1,0 +1,46 @@
+name: Apply update zip
+
+# updates/ folder me koi .zip upload karo -> ye apne-aap kholkar repo ki files replace kar dega.
+on:
+  push:
+    paths:
+      - 'updates/*.zip'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Zip kholo aur files replace karo
+        run: |
+          set -e
+          shopt -s nullglob
+          zips=(updates/*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then echo "Koi zip nahi mili"; exit 0; fi
+          for z in "${zips[@]}"; do
+            echo "Apply: $z"
+            tmp=$(mktemp -d)
+            unzip -q -o "$z" -d "$tmp"
+            # agar zip ke andar ek hi upar ka folder ho to usse hata do
+            n=$(ls -A "$tmp" | wc -l)
+            first="$tmp/$(ls -A "$tmp" | head -1)"
+            if [ "$n" -eq 1 ] && [ -d "$first" ]; then src="$first"; else src="$tmp"; fi
+            # suraksha: workflows aur updates folder zip se kabhi overwrite nahi honge
+            rm -rf "$src/.github" "$src/updates"
+            cp -a "$src"/. .
+            git rm -q -f "$z"
+          done
+
+      - name: Commit aur push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "Kuch badla nahi"; exit 0; }
+          git commit -m "Apply update zip"
+          git push
