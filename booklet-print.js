@@ -148,7 +148,7 @@
   function headerHtml() {
     var header = document.querySelector("#paper .paper-header");
     var instr = document.getElementById("paper-instr");
-    var wrap = '<div class="bp-header-wrap">';
+    var wrap = '<div class="bp-header-wrap">' + (window.SnapBrand && window.SnapBrand.printBar ? window.SnapBrand.printBar() : "");
     if (header) wrap += header.outerHTML;
     if (instr) wrap += instr.outerHTML;
     wrap += "</div>";

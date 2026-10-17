@@ -1,3 +1,23 @@
+/* v221 Phase 4A: pichli baar ka institute (cache me) ho to splash uska logo/naam/tagline/rang dikhaye. Cache na ho ya
+   SNAP_CONFIG.branding2=false ho (branding.js flag likhta hai) to purana splash image chalta hai. Text sirf textContent se. */
+(function () {
+  try {
+    if (localStorage.getItem("snap_brand2_off") === "1") return;
+    var id = localStorage.getItem("snap_brand_last"); if (!id) return;
+    var b = JSON.parse(localStorage.getItem("snap_brand_" + id) || "null"); if (!b || !b.name) return;
+    var el = document.getElementById("app-splash-screen"); if (!el) return;
+    function sh(hex, f) { var n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, k = n & 255; function c(x) { return Math.max(0, Math.min(255, Math.round(x * f))); } return "rgb(" + c(r) + "," + c(g) + "," + c(k) + ")"; }
+    var col = /^#[0-9a-f]{6}$/i.test(b.brandColor || "") ? b.brandColor : "";
+    el.style.background = col ? "linear-gradient(160deg," + sh(col, 0.55) + "," + sh(col, 0.2) + ")" : "#060513";
+    el.style.flexDirection = "column"; el.style.gap = "14px"; el.style.textAlign = "center"; el.style.padding = "24px";
+    var im = el.querySelector("img"); if (im) im.style.display = "none";
+    if (/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+\/=]+$/.test(b.logoDataUrl || "")) {
+      var lg = document.createElement("img"); lg.src = b.logoDataUrl; lg.alt = ""; lg.style.cssText = "width:112px;height:112px;object-fit:contain;border-radius:24px;background:#fff;padding:8px;box-shadow:0 8px 30px rgba(0,0,0,.35);"; el.appendChild(lg);
+    }
+    var nm = document.createElement("div"); nm.textContent = b.name; nm.style.cssText = "color:#fff;font:800 1.5rem/1.25 system-ui,sans-serif;"; el.appendChild(nm);
+    if (b.tagline) { var tg = document.createElement("div"); tg.textContent = b.tagline; tg.style.cssText = "color:rgba(255,255,255,.8);font:500 .95rem/1.3 system-ui,sans-serif;"; el.appendChild(tg); }
+  } catch (e) {}
+})();
 
   (function () {
     var SPLASH_DURATION_MS = 400; // PERF FIX v126: pehle 2200ms tha —
