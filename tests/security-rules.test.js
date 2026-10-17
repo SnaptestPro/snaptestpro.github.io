@@ -72,6 +72,12 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await t("Admin A apne institute me item bana sakta hai", () => assertSucceeds(d(adminA, `${PA}/batches/b1/items/new1`).set({ kind: "note", title: "N", published: false, instituteId: A, batchId: "b1" })));
   await t("Admin A, Institute B ka draft NAHI padh sakta", () => assertFails(d(adminA, `${PB}/batches/b1/items/draft`).get()));
   await t("Admin A, Institute B ka batch NAHI badal sakta", () => assertFails(d(adminA, `${PB}/batches/b1`).update({ name: "hacked" })));
+  /* v217 Phase 1 — YouTube ytId + channel link (emulator me chalaya NAHI gaya) */
+  await t("Admin A sahi ytId (11 char) wali class bana sakta hai", () => assertSucceeds(d(adminA, `${PA}/batches/b1/items/yt1`).set({ kind: "class", title: "C", published: true, instituteId: A, batchId: "b1", ytId: "dQw4w9WgXcQ", liveUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" })));
+  await t("Galat ytId (chhota / ajeeb akshar) NAHI chalta", () => assertFails(d(adminA, `${PA}/batches/b1/items/yt2`).set({ kind: "class", title: "C", published: true, instituteId: A, batchId: "b1", ytId: "abc<script>" })));
+  await t("Admin A apne institute ka youtubeChannelUrl set kar sakta hai", () => assertSucceeds(d(adminA, `institutes/${A}`).update({ youtubeChannelUrl: "https://www.youtube.com/@abc" })));
+  await t("youtubeChannelUrl me non-youtube / http link NAHI chalta", () => assertFails(d(adminA, `institutes/${A}`).update({ youtubeChannelUrl: "https://evil.example.com/x" })));
+  await t("Admin A, Institute B ka youtubeChannelUrl NAHI badal sakta", () => assertFails(d(adminA, `institutes/${B}`).update({ youtubeChannelUrl: "https://www.youtube.com/@abc" })));
   await t("Admin A, Institute B me item NAHI bana sakta", () => assertFails(d(adminA, `${PB}/batches/b1/items/x`).set({ kind: "note", title: "x", published: true, instituteId: B, batchId: "b1" })));
   await t("Admin A, Institute B ka subject/teacher/doubt NAHI bana/padh sakta", async () => {
     await assertFails(d(adminA, `${PB}/batches/b1/subjects/hack`).set({ name: "H", status: "active", instituteId: B, batchId: "b1" }));

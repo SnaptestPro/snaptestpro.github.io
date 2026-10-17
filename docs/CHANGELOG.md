@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-17 — v217 Phase 1: YouTube Live (embed, attendance, recording, bulk paste)
+
+- Go Live: `prompt()` ki jagah form; sirf 11-char `ytId` save (`youtube.com/live/ID`, `watch?v=ID`, `youtu.be/ID`).
+- Student Join: `youtube-nocookie.com` embed app ke andar + "YouTube me kholein" fallback. Attendance purane `EXT.hooks.join` se (koi naya system nahi).
+- End Class: `ytId` se recording item `ready` (unpublished) banta hai; admin dekhkar Publish kare.
+- Naya admin view "Bulk YouTube Add" (`link | title | subject | chapter`, preview, 400 ke chunks me write, oEmbed se title best-effort).
+- Institute Settings: `youtubeChannelUrl` (rules me sirf https youtube.com) + student dashboard par channel link (SnapBrand cache se, naya read nahi) + unlisted-link note.
+- Kill-switch: `SNAP_CONFIG.youtubeLive=false` -> Phase 0 wala link-prompt. Version 1.4.12 / build 217.
+- Deploy: `firestore.rules` dobara Publish karna hoga. Emulator test (`npm run test:rules`) chalaya nahi gaya.
+
 ## 2026-10-17 — v216 Phase 0: SnapLive hataya, live = sirf YouTube link
 
 - Hataya: `own-live.js` (poori file), uska `<script>` (`index.html`), `sw.js` precache entry, `snapLive` flag (`app-config.js`), SnapLive CSS (`batch-system.css`), SnapLive ke `chat`/`hands` Firestore rules, Worker ka `handleLive` + `/live/*` route aur uske helper.

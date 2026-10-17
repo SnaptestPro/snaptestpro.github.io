@@ -379,17 +379,67 @@
   /* =================== ADMIN: Institute Settings (Strict Mode) =================== */
   EXT.adminViews.settings2 = { icon: "⚙️", label: "Institute Settings", render: function (m, c) {
     var inst = c.A.inst; m.innerHTML = '<div class="bm-empty">Loading…</div>';
-    secRef(c, inst).get().then(function (d) { var on = !!(d.exists && d.data().strict); X.strict[inst] = on;
+    Promise.all([secRef(c, inst).get(), c.DB().collection("institutes").doc(inst).get().catch(function () { return null; })]).then(function (rr) { var d = rr[0], idoc = rr[1], chUrl = (idoc && idoc.exists && idoc.data().youtubeChannelUrl) || ""; var on = !!(d.exists && d.data().strict); X.strict[inst] = on;
       m.innerHTML = '<div class="bm-card"><h3>🔒 Strict Security Mode — ' + (on ? '<span class="bm-badge">ON</span>' : '<span class="bm-badge o">OFF</span>') + "</h3>" +
         '<p style="font-size:.86rem">ON hone par server (Firestore Rules) khud verify karta hai ki student kaun hai aur kis batch ka member hai. Tab sirf enrolled students hi batch ka content, files, recordings, assignments aur apne doubts dekh sakte hain — URL/ID guess karke ya doosre institute se kuch nahi khulta. Doubt Solving aur Assignment submission sirf Strict Mode me chalte hain.</p>' +
         '<div class="bm-note"><b>ON karne se pehle:</b> (1) naye <code>firestore.rules</code> Firebase me Publish karein, (2) app update students tak pahunch jaye, (3) students ek baar logout → login karein (isse unka verified session banta hai). Jo student login nahi karega use batch me "dobara login karein" dikhega.<br>Kuch bigad jaye to yahan se OFF kar dein — turant purana behaviour wapas.</div>' +
         '<button class="bm-btn' + (on ? " red" : "") + '" id="bx-strict">' + (on ? "Strict Mode OFF karein" : "Strict Mode ON karein") + "</button></div>" +
-        '<div class="bm-card"><h3>Institute</h3><div class="bm-row"><div class="g">Institute ID</div><code>' + c0(inst) + "</code></div><div class=\"bm-row\"><div class=\"g\">Admin</div><span>" + c0(c.adminEmail()) + "</span></div></div>";
+        '<div class="bm-card"><h3>Institute</h3><div class="bm-row"><div class="g">Institute ID</div><code>' + c0(inst) + "</code></div><div class=\"bm-row\"><div class=\"g\">Admin</div><span>" + c0(c.adminEmail()) + "</span></div></div>" +
+        '<div class="bm-card"><h3>▶ YouTube</h3><label>Institute ka YouTube channel link (optional)</label><input id="bx-yc" type="url" placeholder="https://www.youtube.com/@aapkachannel" value="' + c0(chUrl) + '"><div class="bm-note">Student ko batch page par "Channel dekho" link dikhega. Sirf https://youtube.com/… link chalega.</div><button class="bm-btn" id="bx-ycs">Save</button>' +
+        '<div class="bm-note" style="margin-top:10px">ℹ️ Live/recording ke liye <b>Unlisted</b> YouTube link use karein. Unlisted link koi bhi forward kar sakta hai — ye poori suraksha nahi hai. App link student ko seedha nahi dikhati, sirf andar embed karti hai.</div></div>';
+      m.querySelector("#bx-ycs").onclick = function () {
+        var v = m.querySelector("#bx-yc").value.trim();
+        if (v && !/^https:\/\/(www\.|m\.)?youtube\.com\/[^\s]{1,150}$/i.test(v)) return c.toast("Sirf https://youtube.com/… link daalein");
+        c.DB().collection("institutes").doc(inst).update({ youtubeChannelUrl: v }).then(function () { try { window.SnapBrand && window.SnapBrand.load(inst, true); } catch (e) {} c.audit("institute.youtubeChannel", inst); c.toast("✅ Save ho gaya"); }).catch(function (e) { c.toast("Nahi hua: " + (e.code || e.message)); });
+      };
       m.querySelector("#bx-strict").onclick = function () {
         if (!c.sure(on ? "Strict Mode OFF karein?" : "Strict Mode ON karein?\n\nPehle rules publish ho chuke hon aur students ko ek baar re-login karna hoga.")) return;
         secRef(c, inst).set({ strict: !on, updatedAt: c.FV().serverTimestamp(), by: c.adminEmail() }, { merge: true }).then(function () { c.audit("security.strict." + (!on), inst); c.toast("✅ Update ho gaya"); EXT.adminViews.settings2.render(m, c); }).catch(function (e) { c.toast("Nahi hua: " + (e.code || e.message)); });
       };
     }).catch(function (e) { m.innerHTML = '<div class="bm-empty">Load nahi hua (' + c0(e.code || e.message) + ")</div>"; });
+  } };
+
+
+  /* =================== ADMIN: Bulk YouTube recordings (v217) =================== */
+  function ytTitle(id) {   /* best-effort oEmbed (koi API key nahi); fail ho to "" */
+    return new Promise(function (res) {
+      var done = false, fin = function (v) { if (!done) { done = true; res(v || ""); } }, tm = setTimeout(function () { fin(""); }, 4000);
+      try { fetch("https://www.youtube.com/oembed?format=json&url=" + encodeURIComponent("https://www.youtube.com/watch?v=" + id)).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { clearTimeout(tm); fin(j && j.title ? String(j.title).slice(0, 200) : ""); }).catch(function () { fin(""); }); } catch (e) { fin(""); }
+    });
+  }
+  EXT.adminViews.bulkyt = { icon: "📥", label: "Bulk YouTube Add", render: function (m, c) {
+    if (!c.A.batches.length) return noBatch(m);
+    var redraw = function () { EXT.adminViews.bulkyt.render(m, c); }, bf0;
+    m.innerHTML = batchBar(c, m, redraw) + '<div class="bm-card"><h3>📥 Bulk YouTube recordings</h3><p style="font-size:.86rem">Ek line = ek video. Format: <code>link | title | subject | chapter</code> (title, subject, chapter optional). Sab recordings "Ready" (unpublished) banengi — aap dekhkar Publish karein. Ek baar me max 400 lines.</p><textarea id="bx-bt" rows="8" style="width:100%" placeholder="https://youtu.be/xxxxxxxxxxx | Lecture 1 | Physics | Motion"></textarea><div style="margin-top:8px"><button class="bm-btn" id="bx-bp">Preview</button></div><div id="bx-bv"></div></div>';
+    bindBatch(c, m, redraw); bf0 = c.A.f.batch;
+    var rows = [];
+    m.querySelector("#bx-bp").onclick = function () {
+      var lines = m.querySelector("#bx-bt").value.split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean), box = m.querySelector("#bx-bv");
+      if (!lines.length) return c.toast("Pehle links paste karein");
+      if (lines.length > 400) return c.toast("Ek baar me max 400 lines — baki alag se paste karein");
+      var have = {}; (c.A.items[bf0] || []).forEach(function (i) { if (i.kind === "recording" && i.ytId) have[i.ytId] = 1; });
+      var seen = {};
+      rows = lines.map(function (ln, k) {
+        var p = ln.split("|").map(function (x) { return x.trim(); }), id = c.ytId(p[0]), r = { n: k + 1, id: id, title: (p[1] || "").slice(0, 200), subject: p[2] || "", chapter: p[3] || "", err: "" };
+        if (!id) r.err = "Link sahi nahi"; else if (seen[id]) r.err = "Isi paste me dobara"; else if (have[id]) r.err = "Batch me pehle se hai";
+        if (!r.err && (r.subject || r.chapter)) { var ve = EXT.validateItem({ batchId: bf0, subject: r.subject, chapter: r.chapter }, "recording"); if (ve) r.err = ve; }
+        if (id) seen[id] = 1; return r;
+      });
+      box.innerHTML = '<div class="bm-note">Title fetch ho raha hai…</div>';
+      Promise.all(rows.map(function (r) { return !r.err && !r.title ? ytTitle(r.id).then(function (t) { r.title = t; r.auto = !!t; }) : null; })).then(function () {
+        rows.forEach(function (r) { if (!r.err && !r.title) r.title = "YouTube Lecture " + r.id; });
+        var ok = rows.filter(function (r) { return !r.err; });
+        box.innerHTML = '<div class="bm-tablewrap"><table class="bm-table"><tr><th>#</th><th>Video ID</th><th>Title</th><th>Subject / Chapter</th><th>Status</th></tr>' + rows.map(function (r) { return '<tr' + (r.err ? ' style="background:#fee2e2;color:#991b1b"' : "") + "><td>" + r.n + "</td><td>" + c0(r.id || "—") + "</td><td>" + c0(r.title || "—") + "</td><td>" + c0((r.subject || "—") + (r.chapter ? " / " + r.chapter : "")) + "</td><td>" + (r.err ? c0(r.err) : "OK") + "</td></tr>"; }).join("") + '</table></div><div style="margin-top:8px"><b>' + ok.length + "</b> valid, <b>" + (rows.length - ok.length) + '</b> galat (save nahi hongi).</div>' + (ok.length ? '<button class="bm-btn" id="bx-bs" style="margin-top:8px">' + ok.length + " recordings Save karein</button>" : "");
+        var sb = box.querySelector("#bx-bs"); if (!sb) return;
+        sb.onclick = function () {
+          sb.disabled = true; var db = c.DB(), FV = c.FV, col = c.bref(c.A.inst, bf0).collection("items"), chunks = [];
+          for (var i = 0; i < ok.length; i += 400) chunks.push(ok.slice(i, i + 400));
+          chunks.reduce(function (pr, ch) { return pr.then(function () { var wb = db.batch(); ch.forEach(function (r) { var d = { batchId: bf0, instituteId: c.A.inst, kind: "recording", title: r.title, desc: "", subject: r.subject, chapter: r.chapter, durationMin: 0, teacher: "", status: "ready", published: false, url: c.ytWatch(r.id), ytId: r.id, createdAt: FV().serverTimestamp(), createdBy: c.adminEmail(), updatedAt: FV().serverTimestamp() }; EXT.stampIds(d, { batchId: bf0, subject: r.subject, chapter: r.chapter }); wb.set(col.doc(), d); }); return wb.commit(); }); }, Promise.resolve())
+            .then(function () { c.audit("item.bulkyt", String(ok.length)); c.toast("✅ " + ok.length + " recordings save hui (Ready — Publish baaki)"); return c.loadAll().then(function () { c.adminGo("recording"); }); })
+            .catch(function (e) { sb.disabled = false; c.toast("Save nahi hua: " + (e.code || e.message)); });
+        };
+      });
+    };
   } };
 
   /* =================== STUDENT side =================== */
@@ -412,7 +462,7 @@
   function itemsOf(c, b) { return c.S.items[b.id] || []; }
   function ic(i) { return { class: "🔴", recording: "🎬", note: "📄", material: "📚", ppt: "📊", announcement: "📢" }[i.kind] || "📄"; }
   function itemRow(c, i) {
-    var act = i.kind === "class" ? (i.status === "live" && (i.liveRoom || i.liveUrl) ? '<button class="go" style="background:#ef4444" data-xl="' + i.id + '">Join</button>' : '<span class="bm-badge ' + (i.status === "completed" ? "" : "b") + '">' + (i.status === "completed" ? "Done" : i.status === "cancelled" ? "Cancelled" : "Upcoming") + "</span>") : c.hasFile(i) ? '<button class="go" data-xv="' + i.id + '">' + (i.kind === "recording" ? "▶ Play" : "View") + "</button>" : "";
+    var act = i.kind === "class" ? (i.status === "live" && (i.liveRoom || i.liveUrl || i.ytId) ? '<button class="go" style="background:#ef4444" data-xl="' + i.id + '">Join</button>' : '<span class="bm-badge ' + (i.status === "completed" ? "" : "b") + '">' + (i.status === "completed" ? "Done" : i.status === "cancelled" ? "Cancelled" : "Upcoming") + "</span>") : c.hasFile(i) ? '<button class="go" data-xv="' + i.id + '">' + (i.kind === "recording" ? "▶ Play" : "View") + "</button>" : "";
     return '<div class="bm-item"><div class="ic">' + ic(i) + '</div><div class="g"><b>' + c0(i.title) + "</b><small>" + c0(i.kind === "class" ? c.fdate(i.scheduledAt) : (i.cat || "")) + "</small></div>" + act + "</div>";
   }
   function bindItems(c, b, box) {
@@ -471,13 +521,17 @@
     }).catch(function (e) { if (!drawn) box.innerHTML = '<div class="bm-empty">Load nahi hua. Internet check karein.</div>'; });
   } };
   function rerender(c, b, box) { EXT.studentTabs.subjects.render(b, box, c); }
+  /* v217: institute ka YouTube channel (SnapBrand cache se — koi naya Firestore read nahi) */
+  function chanUrl(c) { try { var d = window.SnapBrand && window.SnapBrand.cached(c.S.inst); var u = d && d.youtubeChannelUrl; return /^https:\/\/(www\.|m\.)?youtube\.com\//i.test(u || "") ? u : ""; } catch (e) { return ""; } }
+  function chanLink(c) { var u = chanUrl(c); return u ? '<div class="bm-note"><a href="' + c0(u) + '" target="_blank" rel="noopener noreferrer">▶ Institute ka YouTube channel dekho ↗</a></div>' : ""; }
   function dashPage(c, b, box, subs) {
     var its = itemsOf(c, b), done = X.prog[b.id] || {}, cnt = its.filter(function (i) { return COUNTABLE.indexOf(i.kind) > -1; }), dn = cnt.filter(function (i) { return done[i.id]; }).length, pct = cnt.length ? Math.round(100 * dn / cnt.length) : 0;
-    var live = its.filter(function (i) { return i.kind === "class" && i.status === "live" && (i.liveRoom || i.liveUrl); })[0], nxt = its.filter(function (i) { return i.kind === "class" && i.status === "upcoming" && c.ms(i.scheduledAt) >= Date.now() - 36e5; }).sort(function (a, z) { return c.ms(a.scheduledAt) - c.ms(z.scheduledAt); })[0];
+    var live = its.filter(function (i) { return i.kind === "class" && i.status === "live" && (i.liveRoom || i.liveUrl || i.ytId); })[0], nxt = its.filter(function (i) { return i.kind === "class" && i.status === "upcoming" && c.ms(i.scheduledAt) >= Date.now() - 36e5; }).sort(function (a, z) { return c.ms(a.scheduledAt) - c.ms(z.scheduledAt); })[0];
     var rec = its.filter(function (i) { return i.kind === "recording"; }).sort(function (a, z) { return c.ms(z.createdAt) - c.ms(a.createdAt); }).slice(0, 3), nts = its.filter(function (i) { return i.kind === "note" || i.kind === "material"; }).sort(function (a, z) { return c.ms(z.createdAt) - c.ms(a.createdAt); }).slice(0, 3), ann = its.filter(function (i) { return i.kind === "announcement"; }).sort(function (a, z) { return c.ms(z.createdAt) - c.ms(a.createdAt); }).slice(0, 2);
     var list = subs.length ? subs : subjectsFor(c, b.id);
     box.innerHTML = '<div class="bx-prog"><div><b>Aapki progress</b><small>' + dn + "/" + cnt.length + ' lectures/notes dekhe</small></div><div class="bx-bar"><i style="width:' + pct + '%"></i></div><b>' + pct + "%</b></div>" +
       (live ? '<div class="bm-next"><div>🔴 Live: ' + c0(live.title) + '</div><button data-xl="' + live.id + '">Join Now</button></div>' : nxt ? '<div class="bm-next"><div>Next Live Class<br><b>' + c.fdate(nxt.scheduledAt) + "</b> • " + c0(nxt.title) + "</div></div>" : "") +
+      chanLink(c) +
       (ann.length ? '<div class="bm-list">' + ann.map(function (a) { return '<div class="bm-item"><div class="ic">📢</div><div class="g"><b>' + c0(a.title) + "</b><small>" + c0(a.desc || "") + "</small></div></div>"; }).join("") + "</div>" : "") +
       '<h4 class="bx-h">Subjects</h4><div class="bx-grid">' + (list.length ? list.map(function (s) { var n = its.filter(function (i) { return i.kind !== "announcement" && itemIn(i, s); }).length; return '<button class="bx-sc" data-ss="' + c0(s.id || "legacy:" + s.name) + '"><b>' + c0(s.name) + "</b><small>" + (s.chapters ? s.chapters.length : 0) + " chapters • " + n + " content</small></button>"; }).join("") : '<div class="bm-empty">Subjects abhi add nahi hue.</div>') + "</div>" +
       (b.teachers && b.teachers.length ? '<h4 class="bx-h">Teachers</h4><div>' + b.teachers.map(function (t) { return '<span class="bm-badge b" style="margin:0 6px 6px 0">👨‍🏫 ' + c0(t) + "</span>"; }).join("") + "</div>" : "") +

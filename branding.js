@@ -79,7 +79,7 @@
     fetch("manifest.webmanifest").then(function (r) { return r.json(); }).then(function (m) { baseManifest = m; go(m); }).catch(function () {});
   }
 
-  function pick(d) { var x = d || {}; return { active: x.active !== false, planExpiresAt: +x.planExpiresAt || 0, studentLimit: +x.studentLimit || 0, studentCount: +x.studentCount || 0, name: x.name || "", logoDataUrl: x.logoDataUrl || "", brandColor: x.brandColor || "", tagline: x.tagline || "", plan: x.plan || "", storageLimitMB: +x.storageLimitMB || 0, storageUsedBytes: +x.storageUsedBytes || 0, t: Date.now() }; }
+  function pick(d) { var x = d || {}; return { active: x.active !== false, planExpiresAt: +x.planExpiresAt || 0, studentLimit: +x.studentLimit || 0, studentCount: +x.studentCount || 0, name: x.name || "", logoDataUrl: x.logoDataUrl || "", brandColor: x.brandColor || "", tagline: x.tagline || "", plan: x.plan || "", storageLimitMB: +x.storageLimitMB || 0, storageUsedBytes: +x.storageUsedBytes || 0, youtubeChannelUrl: x.youtubeChannelUrl || "", t: Date.now() }; }
 
   function load(id, force) {
     var c = jget(PFX + id);

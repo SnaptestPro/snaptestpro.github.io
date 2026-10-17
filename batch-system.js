@@ -18,13 +18,28 @@
   function fdate(t) { if (!t) return "—"; return new Date(ms(t)).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
   function rnd(n) { var a = new Uint8Array(n), s = ""; crypto.getRandomValues(a); a.forEach(function (x) { s += "abcdefghijkmnpqrstuvwxyz23456789"[x % 32]; }); return s; }
   function okUrl(u) { return /^https:\/\/[^\s]+$/i.test(u || ""); }
+  /* v217 Phase 1: YouTube Live — sirf 11-char video ID save hoti hai (poora URL nahi) */
+  function ytId(u) {
+    u = String(u || "").trim(); var m;
+    if ((m = u.match(/^https:\/\/(?:www\.|m\.|music\.)?youtube\.com\/(?:watch\?(?:[^#\s]*&)?v=|live\/|embed\/|shorts\/)([\w-]{11})(?![\w-])/i))) return m[1];
+    if ((m = u.match(/^https:\/\/youtu\.be\/([\w-]{11})(?![\w-])/i))) return m[1];
+    return "";
+  }
+  function ytWatch(id) { return "https://www.youtube.com/watch?v=" + id; }
+  function ytViewer(it) {
+    var id = it.ytId, v = document.createElement("div"); v.className = "bm-viewer";
+    v.innerHTML = '<div class="vt"><b>🔴 ' + esc(it.title) + '</b><button data-o>YouTube me kholein ↗</button><button data-x>Leave</button></div><iframe title="YouTube Live" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" src="https://www.youtube-nocookie.com/embed/' + encodeURIComponent(id) + '?autoplay=1&rel=0&playsinline=1"></iframe><div class="bm-note" style="margin:0;padding:8px 12px;background:#0b1650;color:#cbd5e1">Video na chale to upar "YouTube me kholein" dabayein.</div>';
+    v.querySelector("[data-x]").onclick = function () { v.remove(); };
+    v.querySelector("[data-o]").onclick = function () { window.open(ytWatch(id), "_blank", "noopener"); };
+    document.body.appendChild(v);
+  }
   function liveUrl(room, name) { return "https://" + (CFG.liveDomain || "meet.jit.si") + "/" + room + (name ? "#userInfo.displayName=%22" + encodeURIComponent(name) + "%22&config.prejoinPageEnabled=false" : ""); }
 
   /* link -> in-app preview url (sirf wahi jo browser sach me dikha sakta hai) */
   function embed(u) {
     var m;
     if ((m = u.match(/drive\.google\.com\/file\/d\/([^/]+)/))) return { t: "frame", u: "https://drive.google.com/file/d/" + m[1] + "/preview" };
-    if ((m = u.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|live\/))([\w-]{6,})/))) return { t: "frame", u: "https://www.youtube.com/embed/" + m[1] };
+    if ((m = u.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|live\/))([\w-]{6,})/))) return { t: "frame", u: "https://www.youtube-nocookie.com/embed/" + m[1] };
     if (/\.(mp4|webm|m3u8|mov|m4v|mp3|m4a|wav|ogg)(\?|$)/i.test(u)) return { t: "video", u: u };
     if (/\.(png|jpe?g|gif|webp|bmp)(\?|$)/i.test(u)) return { t: "frame", u: u };
     if (/\.(pdf|pptx?|docx?|xlsx?)(\?|$)/i.test(u)) return { t: "frame", u: "https://docs.google.com/viewer?embedded=true&url=" + encodeURIComponent(u) };
@@ -49,6 +64,7 @@
   }
   /* live join: mode "inapp" = app ke andar (Jitsi iframe), "external" = doosri app ka link (Zoom/Meet/YouTube...) */
   function joinLive(it, name) {
+    if (it.ytId && CFG.youtubeLive !== false) return ytViewer(it);   /* v217: YouTube embed (kill-switch: SNAP_CONFIG.youtubeLive=false) */
     if (it.mode === "external") { if (!it.liveUrl) return toast("Live link abhi available nahi hai"); window.open(it.liveUrl, "_blank", "noopener"); return; }
     if (it.mode === "own") return toast("Ye purani SnapLive class hai — ab available nahi. Admin se YouTube link maangein.");   /* v216: SnapLive hata diya */
     if (!it.liveRoom) return toast("Class abhi live nahi hai");
@@ -216,7 +232,7 @@
     Object.keys(EXT.adminViews).forEach(function (k) { if (!NAV.some(function (n) { return n[0] === k; })) base.push([k, EXT.adminViews[k].icon || "•", EXT.adminViews[k].label || k]); });
     return base;
   }
-  function ctx() { return { A: A, S: S, DB: DB, FV: FV, bref: bref, esc: esc, ms: ms, fdate: fdate, toast: toast, form: form, sure: sure, audit: audit, adminEmail: adminEmail, authReady: authReady, loadAll: loadAll, adminGo: adminGo, openItem: openItem, hasFile: hasFile, sess: sess, rnd: rnd, shrink: shrink, subjOf: subjOf, batchName: batchName, topBtn: topBtn, stBadge: stBadge, rupee: rupee, sBatch: sBatch, sHome: sHome, closeStudent: closeStudent, allItems: allItems, joinLive: joinLive, $: $ }; }
+  function ctx() { return { A: A, S: S, DB: DB, FV: FV, bref: bref, esc: esc, ms: ms, fdate: fdate, toast: toast, form: form, sure: sure, audit: audit, adminEmail: adminEmail, ytId: ytId, ytWatch: ytWatch, authReady: authReady, loadAll: loadAll, adminGo: adminGo, openItem: openItem, hasFile: hasFile, sess: sess, rnd: rnd, shrink: shrink, subjOf: subjOf, batchName: batchName, topBtn: topBtn, stBadge: stBadge, rupee: rupee, sBatch: sBatch, sHome: sHome, closeStudent: closeStudent, allItems: allItems, joinLive: joinLive, $: $ }; }
   function nv(ev, it) { try { window.SnapV169 && window.SnapV169.itemEvent(ev, it); } catch (e) { console.warn(e); } }
   function fire(name, a, b) { try { var f = EXT.hooks[name]; f && f(a, b); } catch (e) { console.warn("[batch hook " + name + "]", e); } }
   function buildAdmin() {
@@ -499,19 +515,28 @@
     if (a === "retry") return upd({ status: "processing" }).then(done());
     if (a === "cancel") return upd({ status: "cancelled" }).then(done());
     if (a === "golive") {
-      /* v216: ab sirf link wali live (YouTube Live). Purani "inapp" (Jitsi) upcoming class bhi yahin link maangkar external ban jaati hai. */
-      var link = prompt("YouTube Live ka link daalein (https):", ""); if (!link) return; link = link.trim();
-      if (!okUrl(link)) return toast("Link https:// se shuru hona chahiye");
-      return upd({ status: "live", mode: "external", liveUrl: link, published: true, startedAt: FV().serverTimestamp() }).then(function (r) { nv("live_start", it); return r; }).then(done()).then(function () { window.open(link, "_blank", "noopener"); });
+      /* v217: YouTube Live link form; sirf video ID (ytId) save hoti hai. Kill-switch false ho to Phase 0 wala link-prompt. */
+      if (CFG.youtubeLive === false) {
+        var link0 = prompt("YouTube Live ka link daalein (https):", ""); if (!link0) return; link0 = link0.trim();
+        if (!okUrl(link0)) return toast("Link https:// se shuru hona chahiye");
+        return upd({ status: "live", mode: "external", liveUrl: link0, published: true, startedAt: FV().serverTimestamp() }).then(function (r) { nv("live_start", it); return r; }).then(done()).then(function () { window.open(link0, "_blank", "noopener"); });
+      }
+      return form("🔴 Go Live — YouTube", [{ k: "yt", l: "YouTube Live link", r: 1, p: "https://youtube.com/live/xxxxxxxxxxx", h: "Valid: youtube.com/live/ID, youtube.com/watch?v=ID, youtu.be/ID. Student ko ye link seedha nahi dikhega — class app ke andar chalegi." }], {}, function (o) {
+        var id = ytId(o.yt); if (!id) { toast("Ye YouTube link sahi nahi hai. youtube.com/live/… ya youtu.be/… link daalein"); return false; }
+        return upd({ status: "live", mode: "external", liveUrl: ytWatch(id), ytId: id, published: true, startedAt: FV().serverTimestamp() }).then(function (r) { nv("live_start", it); return r; }).then(done("🔴 Live shuru"));
+      });
     }
     if (a === "rejoin") return joinLive(it, "Teacher");
     if (a === "end") {
       if (!sure("Class khatam karein?")) return;
       var has = (A.items[b] || []).some(function (x) { return x.kind === "recording" && x.classId === id; });
-      return upd({ status: "completed", liveRoom: FV().delete(), liveUrl: FV().delete(), endedAt: FV().serverTimestamp() }).then(function () {
+      var yid = it.ytId || ytId(it.liveUrl || "");   /* v217: YouTube Live ki recording = wahi video ID */
+      return upd({ status: "completed", liveRoom: FV().delete(), liveUrl: FV().delete(), ytId: FV().delete(), endedAt: FV().serverTimestamp() }).then(function () {
         if (has) return;
-        return bref(A.inst, b).collection("items").add({ batchId: b, instituteId: A.inst, kind: "recording", classId: id, title: it.title, desc: it.desc || "", subject: it.subject || "", chapter: it.chapter || "", subjectId: it.subjectId || "", chapterId: it.chapterId || "", teacher: it.teacher || "", status: "processing", published: false, createdAt: FV().serverTimestamp(), createdBy: adminEmail(), updatedAt: FV().serverTimestamp() });
-      }).then(done("Class khatam. Recording 'Processing' me hai — Recorded Lectures me uska link jodein."));
+        var rec = { batchId: b, instituteId: A.inst, kind: "recording", classId: id, title: it.title, desc: it.desc || "", subject: it.subject || "", chapter: it.chapter || "", subjectId: it.subjectId || "", chapterId: it.chapterId || "", teacher: it.teacher || "", status: yid ? "ready" : "processing", published: false, createdAt: FV().serverTimestamp(), createdBy: adminEmail(), updatedAt: FV().serverTimestamp() };
+        if (yid) { rec.url = ytWatch(yid); rec.ytId = yid; }
+        return bref(A.inst, b).collection("items").add(rec);
+      }).then(done(yid ? "Class khatam. Recording 'Ready' (unpublished) bani — Recorded Lectures me dekhkar Publish karein." : "Class khatam. Recording 'Processing' me hai — Recorded Lectures me uska link jodein."));
     }
   }
 
@@ -713,7 +738,7 @@ function vPay(m) {
     var s = sess(); bref(S.inst, id).collection("requests").doc(String(s.mobile)).set({ mobile: String(s.mobile), name: s.name || "", status: "pending", createdAt: FV().serverTimestamp() })
       .then(function () { var b = S.avail.filter(function (x) { return x.id === id; })[0]; b && (b.req = "pending"); toast("✅ Request bhej di — admin approve karega"); sHome(); }).catch(function (e) { toast("Request nahi gayi: " + (e.code || e.message)); });
   }
-  function liveOf(b) { return (S.items[b.id] || []).filter(function (i) { return i.kind === "class" && i.status === "live" && (i.liveRoom || i.liveUrl); })[0]; }
+  function liveOf(b) { return (S.items[b.id] || []).filter(function (i) { return i.kind === "class" && i.status === "live" && (i.liveRoom || i.liveUrl || i.ytId); })[0]; }
   function nextOf(b) { var n = Date.now() - 36e5; return (S.items[b.id] || []).filter(function (i) { return i.kind === "class" && i.status === "upcoming" && ms(i.scheduledAt) >= n; }).sort(function (a, c) { return ms(a.scheduledAt) - ms(c.scheduledAt); })[0]; }
   function sHome() {
     var o = $("#bm-student"), live = S.batches.map(liveOf).filter(Boolean), h = S.h || "my", av = S.avail || [], body;
@@ -750,7 +775,7 @@ function vPay(m) {
       var list = its.filter(function (i) { return tab === "note" ? i.kind === "note" : i.kind === tab; }).sort(function (a, c) { return (ms(c.scheduledAt) || ms(c.createdAt)) - (ms(a.scheduledAt) || ms(a.createdAt)); });
       body = '<div class="bm-list">' + (list.length ? list.map(function (i) { var ic = { class: "🔴", recording: "🎬", note: "📄", material: "📚", ppt: "📊", announcement: "📢" }[i.kind];
         return '<div class="bm-item"><div class="ic">' + ic + '</div><div class="g"><b>' + esc(i.title) + '</b><small>' + esc([i.subject, i.chapter].filter(Boolean).join(" • ") || (i.cat || "")) + (i.kind === "class" ? " • " + fdate(i.scheduledAt) : "") + '</small>' + (i.kind === "announcement" ? '<small style="display:block;margin-top:4px;color:#334155">' + esc(i.desc) + '</small>' : "") + '</div>' +
-          (i.kind === "class" ? (i.status === "live" && (i.liveRoom || i.liveUrl) ? '<button class="go" style="background:#ef4444" data-live="' + i.id + '">Join</button>' : '<span class="bm-badge ' + (i.status === "completed" ? "" : "b") + '">' + (i.status === "completed" ? "Done" : i.status === "cancelled" ? "Cancelled" : "Upcoming") + '</span>') : hasFile(i) ? '<button class="go" data-v="' + i.id + '">' + (i.kind === "recording" ? "▶ Play" : "View") + '</button>' : "") + '</div>'; }).join("") : '<div class="bm-empty">Yahan abhi kuch publish nahi hua.</div>') + '</div>';
+          (i.kind === "class" ? (i.status === "live" && (i.liveRoom || i.liveUrl || i.ytId) ? '<button class="go" style="background:#ef4444" data-live="' + i.id + '">Join</button>' : '<span class="bm-badge ' + (i.status === "completed" ? "" : "b") + '">' + (i.status === "completed" ? "Done" : i.status === "cancelled" ? "Cancelled" : "Upcoming") + '</span>') : hasFile(i) ? '<button class="go" data-v="' + i.id + '">' + (i.kind === "recording" ? "▶ Play" : "View") + '</button>' : "") + '</div>'; }).join("") : '<div class="bm-empty">Yahan abhi kuch publish nahi hua.</div>') + '</div>';
     }
     o.innerHTML = '<div class="bm-sh"><button data-back>←</button><b>' + esc(b.name) + '</b></div><div class="bm-tabs">' + tabsAll().map(function (t) { return '<button data-tab="' + t[0] + '"' + (t[0] === tab ? ' class="on"' : "") + '>' + t[1] + '</button>'; }).join("") + '</div>' + body;
     o.querySelector("[data-back]").onclick = sHome;

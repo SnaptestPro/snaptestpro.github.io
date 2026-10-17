@@ -736,6 +736,14 @@ service cloud.firestore {
       allow update: if isAdmin() && instituteId == adminInstituteId() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['logoDataUrl']);
 
+      // (a1) v217: Institute ka YouTube channel link — sirf `youtubeChannelUrl`, sirf https youtube.com (ya khaali = hatao)
+      allow update: if isAdmin() && instituteId == adminInstituteId() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['youtubeChannelUrl']) &&
+        request.resource.data.youtubeChannelUrl is string &&
+        (request.resource.data.youtubeChannelUrl == '' ||
+          (request.resource.data.youtubeChannelUrl.size() <= 200 &&
+           request.resource.data.youtubeChannelUrl.matches('^https://(www[.]|m[.])?youtube[.]com/.*')));
+
       // (a2) v132: Institute Join Code protection ka ON/OFF flag — sirf
       //      `requiresJoinCode` field. Asli code yahan kabhi nahi aata
       //      (woh alag, protected `instituteJoinCodes` collection mein
@@ -810,7 +818,9 @@ service cloud.firestore {
             request.resource.data.title is string && request.resource.data.title.size() <= 200 &&
             (!('url' in request.resource.data) || request.resource.data.url == '' ||
               request.resource.data.url.matches('^https://.*')) &&
-            (!('liveUrl' in request.resource.data) || request.resource.data.liveUrl.matches('^https://.*'));
+            (!('liveUrl' in request.resource.data) || request.resource.data.liveUrl.matches('^https://.*')) &&
+            // v217: YouTube video ID — sirf 11 akshar (A-Z a-z 0-9 _ -)
+            (!('ytId' in request.resource.data) || (request.resource.data.ytId is string && request.resource.data.ytId.matches('^[A-Za-z0-9_-]{11}$')));
           // liveUrl (doosri app ka live link) bhi sirf https
           // (admin ne Go Live par daala; End Class par hat jaata hai)
 
