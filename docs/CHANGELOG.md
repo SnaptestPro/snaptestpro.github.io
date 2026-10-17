@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-17 — v216 Phase 0: SnapLive hataya, live = sirf YouTube link
+
+- Hataya: `own-live.js` (poori file), uska `<script>` (`index.html`), `sw.js` precache entry, `snapLive` flag (`app-config.js`), SnapLive CSS (`batch-system.css`), SnapLive ke `chat`/`hands` Firestore rules, Worker ka `handleLive` + `/live/*` route aur uske helper.
+- `batch-system.js`: class form se SnapLive aur Jitsi (`inapp`) option hata; naya class hamesha link wali (`external`). Purani `inapp` live class dekhne ka raasta (`joinLive`) rakha; purani `own` class/recording par saaf message.
+- `SnapFiles` (R2 `files/`) abhi **deprecated** mark: code rakha, `ownFiles:false`. R2 binding `LIVE_R2` Worker me SnapFiles ke liye rakhi hai.
+- Version 1.4.11 / build 216. Details: `docs/notes/PHASE0_SNAPLIVE_REMOVAL_v216_NOTES.md`.
+- Deploy nahi hua: web, Worker aur Firestore rules alag se deploy karne honge.
+
 ## 2026-10-15 — Phases 6–10 engineering pass
 
 - Added required registration consent capture, Privacy/Terms pages, public deletion page, and authenticated student/institute-admin deletion in the canonical Worker.

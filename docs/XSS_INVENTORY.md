@@ -15,7 +15,6 @@ Total HTML sinks found: **363** (231 build HTML from variables).
 | owner-panel.js | 9 | 6 | 13 |
 | owner-ui.js | 9 | 8 | 13 |
 | booklet-print.js | 8 | 5 | 0 |
-| own-live.js | 5 | 4 | 7 |
 | student-settings-pro.js | 5 | 4 | 11 |
 | omr.js | 5 | 4 | 0 |
 | admin-settings-pro.js | 5 | 3 | 25 |
@@ -47,3 +46,5 @@ Total HTML sinks found: **363** (231 build HTML from variables).
 ## Worker review (push-worker/worker.js)
 - `/owner/*`, `/alerts*`: owner Firebase token + OWNER_EMAILS check. `/broadcast`: secret compared constant-time. `/bank` PUT, `/files/*` writes, `/live/*`: admin token (institute checked). No redirects (`Location`) anywhere -> no open redirect. Responses are JSON (no HTML) -> no HTML injection.
 - `/alert` is public by design (error reports). Add rate-limit in Phase 10. Default owner emails are hard-coded as fallback (Phase 10).
+
+> v216: `own-live.js` (SnapLive) hata diya gaya — uske sinks ab nahi hain. Table ke baaki numbers purane scan ke hain; `npm test` ka `test_xss.js` abhi bhi pass hai.
