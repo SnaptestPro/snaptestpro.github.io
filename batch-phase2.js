@@ -385,8 +385,13 @@
         '<div class="bm-note"><b>ON karne se pehle:</b> (1) naye <code>firestore.rules</code> Firebase me Publish karein, (2) app update students tak pahunch jaye, (3) students ek baar logout → login karein (isse unka verified session banta hai). Jo student login nahi karega use batch me "dobara login karein" dikhega.<br>Kuch bigad jaye to yahan se OFF kar dein — turant purana behaviour wapas.</div>' +
         '<button class="bm-btn' + (on ? " red" : "") + '" id="bx-strict">' + (on ? "Strict Mode OFF karein" : "Strict Mode ON karein") + "</button></div>" +
         '<div class="bm-card"><h3>Institute</h3><div class="bm-row"><div class="g">Institute ID</div><code>' + c0(inst) + "</code></div><div class=\"bm-row\"><div class=\"g\">Admin</div><span>" + c0(c.adminEmail()) + "</span></div></div>" +
+        '<div class="bm-card"><h3>📚 Catalog (reads kam)</h3><div class="bm-note">Student ko batch ki list chhote "catalog" se milti hai (bahut kam Firestore reads). Ye admin ke har badlaav par apne-aap theek hota hai. Kuch galat dikhe to yahan se dobara banayein.</div><button class="bm-btn" id="bx-cat">Catalog dobara banayein</button></div>' +
         '<div class="bm-card"><h3>▶ YouTube</h3><label>Institute ka YouTube channel link (optional)</label><input id="bx-yc" type="url" placeholder="https://www.youtube.com/@aapkachannel" value="' + c0(chUrl) + '"><div class="bm-note">Student ko batch page par "Channel dekho" link dikhega. Sirf https://youtube.com/… link chalega.</div><button class="bm-btn" id="bx-ycs">Save</button>' +
         '<div class="bm-note" style="margin-top:10px">ℹ️ Live/recording ke liye <b>Unlisted</b> YouTube link use karein. Unlisted link koi bhi forward kar sakta hai — ye poori suraksha nahi hai. App link student ko seedha nahi dikhati, sirf andar embed karti hai.</div></div>';
+      m.querySelector("#bx-cat").onclick = function () {
+        var bt = this; if (!window.SnapCatalog) return c.toast("Catalog module load nahi hua"); bt.disabled = true;
+        window.SnapCatalog.syncAll(c.A.inst, c.A.batches, c.A.items, true).then(function () { bt.disabled = false; c.toast("✅ Catalog ban gaya (" + c.A.batches.length + " batch)"); }, function () { bt.disabled = false; c.toast("Catalog nahi bana"); });
+      };
       m.querySelector("#bx-ycs").onclick = function () {
         var v = m.querySelector("#bx-yc").value.trim();
         if (v && !/^https:\/\/(www\.|m\.)?youtube\.com\/[^\s]{1,150}$/i.test(v)) return c.toast("Sirf https://youtube.com/… link daalein");
@@ -462,7 +467,7 @@
   function itemsOf(c, b) { return c.S.items[b.id] || []; }
   function ic(i) { return { class: "🔴", recording: "🎬", note: "📄", material: "📚", ppt: "📊", announcement: "📢" }[i.kind] || "📄"; }
   function itemRow(c, i) {
-    var act = i.kind === "class" ? (i.status === "live" && (i.liveRoom || i.liveUrl || i.ytId) ? '<button class="go" style="background:#ef4444" data-xl="' + i.id + '">Join</button>' : '<span class="bm-badge ' + (i.status === "completed" ? "" : "b") + '">' + (i.status === "completed" ? "Done" : i.status === "cancelled" ? "Cancelled" : "Upcoming") + "</span>") : c.hasFile(i) ? '<button class="go" data-xv="' + i.id + '">' + (i.kind === "recording" ? "▶ Play" : "View") + "</button>" : "";
+    var act = i.kind === "class" ? (i.status === "live" && (i.liveRoom || i.liveUrl || i.ytId || i._lv) ? '<button class="go" style="background:#ef4444" data-xl="' + i.id + '">Join</button>' : '<span class="bm-badge ' + (i.status === "completed" ? "" : "b") + '">' + (i.status === "completed" ? "Done" : i.status === "cancelled" ? "Cancelled" : "Upcoming") + "</span>") : c.hasFile(i) ? '<button class="go" data-xv="' + i.id + '">' + (i.kind === "recording" ? "▶ Play" : "View") + "</button>" : "";
     return '<div class="bm-item"><div class="ic">' + ic(i) + '</div><div class="g"><b>' + c0(i.title) + "</b><small>" + c0(i.kind === "class" ? c.fdate(i.scheduledAt) : (i.cat || "")) + "</small></div>" + act + "</div>";
   }
   function bindItems(c, b, box) {
@@ -526,7 +531,7 @@
   function chanLink(c) { var u = chanUrl(c); return u ? '<div class="bm-note"><a href="' + c0(u) + '" target="_blank" rel="noopener noreferrer">▶ Institute ka YouTube channel dekho ↗</a></div>' : ""; }
   function dashPage(c, b, box, subs) {
     var its = itemsOf(c, b), done = X.prog[b.id] || {}, cnt = its.filter(function (i) { return COUNTABLE.indexOf(i.kind) > -1; }), dn = cnt.filter(function (i) { return done[i.id]; }).length, pct = cnt.length ? Math.round(100 * dn / cnt.length) : 0;
-    var live = its.filter(function (i) { return i.kind === "class" && i.status === "live" && (i.liveRoom || i.liveUrl || i.ytId); })[0], nxt = its.filter(function (i) { return i.kind === "class" && i.status === "upcoming" && c.ms(i.scheduledAt) >= Date.now() - 36e5; }).sort(function (a, z) { return c.ms(a.scheduledAt) - c.ms(z.scheduledAt); })[0];
+    var live = its.filter(function (i) { return i.kind === "class" && i.status === "live" && (i.liveRoom || i.liveUrl || i.ytId || i._lv); })[0], nxt = its.filter(function (i) { return i.kind === "class" && i.status === "upcoming" && c.ms(i.scheduledAt) >= Date.now() - 36e5; }).sort(function (a, z) { return c.ms(a.scheduledAt) - c.ms(z.scheduledAt); })[0];
     var rec = its.filter(function (i) { return i.kind === "recording"; }).sort(function (a, z) { return c.ms(z.createdAt) - c.ms(a.createdAt); }).slice(0, 3), nts = its.filter(function (i) { return i.kind === "note" || i.kind === "material"; }).sort(function (a, z) { return c.ms(z.createdAt) - c.ms(a.createdAt); }).slice(0, 3), ann = its.filter(function (i) { return i.kind === "announcement"; }).sort(function (a, z) { return c.ms(z.createdAt) - c.ms(a.createdAt); }).slice(0, 2);
     var list = subs.length ? subs : subjectsFor(c, b.id);
     box.innerHTML = '<div class="bx-prog"><div><b>Aapki progress</b><small>' + dn + "/" + cnt.length + ' lectures/notes dekhe</small></div><div class="bx-bar"><i style="width:' + pct + '%"></i></div><b>' + pct + "%</b></div>" +

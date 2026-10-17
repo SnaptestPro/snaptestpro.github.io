@@ -827,6 +827,17 @@ service cloud.firestore {
           allow delete: if isAdmin() && instituteId == adminInstituteId();
           // v216: SnapLive ka chat/hands (live class) hata diya — ab live sirf YouTube link se.
         }
+
+        // v218 Phase 2: catalog — published items ki chhoti list (koi link nahi). Admin likhe; student wahi padhe jo items padh sakta hai.
+        match /catalog/{cid} {
+          allow read: if isSignedIn() && (
+            (isAdmin() && instituteId == adminInstituteId()) ||
+            !instStrict(instituteId) || isBatchMember(instituteId, batchId));
+          allow create, update: if isAdmin() && instituteId == adminInstituteId() &&
+            request.resource.data.keys().hasOnly(['e', 'h', 'n', 'tot', 'updatedAt']) &&
+            request.resource.data.e is list && request.resource.data.e.size() <= 400;
+          allow delete: if isAdmin() && instituteId == adminInstituteId();
+        }
         // Uploaded files (Storage band ho to Firestore chunks, max ~4MB)
         match /files/{fid} {
           allow read: if isSignedIn() && (

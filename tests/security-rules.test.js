@@ -29,6 +29,7 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
       await set(`${P}/batches/b1`, { name: "Batch", instituteId: I, published: true, status: "active", enrolledCount: 1 });
       await set(`${P}/batches/b1/items/n1`, { kind: "note", title: "Notes", published: true, instituteId: I, batchId: "b1" });
       await set(`${P}/batches/b1/items/draft`, { kind: "note", title: "Draft", published: false, instituteId: I, batchId: "b1" });
+      await set(`${P}/batches/b1/catalog/c1`, { e: [], h: "x", n: 0, tot: 1 });   /* v218 */
       await set(`${P}/batches/b1/files/f1`, { name: "x.pdf", chunks: 1 }); await set(`${P}/batches/b1/files/f1/parts/0`, { i: 0, data: "AA" });
       await set(`${P}/batches/b1/subjects/s1`, { name: "Maths", status: "active", instituteId: I, batchId: "b1" });
       await set(`${P}/batches/b1/assignments/a1`, { title: "HW", published: true, instituteId: I, batchId: "b1" });
@@ -72,6 +73,12 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await t("Admin A apne institute me item bana sakta hai", () => assertSucceeds(d(adminA, `${PA}/batches/b1/items/new1`).set({ kind: "note", title: "N", published: false, instituteId: A, batchId: "b1" })));
   await t("Admin A, Institute B ka draft NAHI padh sakta", () => assertFails(d(adminA, `${PB}/batches/b1/items/draft`).get()));
   await t("Admin A, Institute B ka batch NAHI badal sakta", () => assertFails(d(adminA, `${PB}/batches/b1`).update({ name: "hacked" })));
+  /* v218 Phase 2 — catalog (emulator me chalaya NAHI gaya) */
+  await t("Admin A apne batch ka catalog likh sakta hai", () => assertSucceeds(d(adminA, `${PA}/batches/b1/catalog/c2`).set({ e: [{ i: "n1", k: "note", t: "Notes" }], h: "h", n: 1, tot: 2, updatedAt: new Date() })));
+  await t("Catalog me anjaan field NAHI chalti", () => assertFails(d(adminA, `${PA}/batches/b1/catalog/c3`).set({ e: [], h: "h", n: 0, tot: 1, junk: 1 })));
+  await t("Admin A, Institute B ka catalog NAHI likh sakta", () => assertFails(d(adminA, `${PB}/batches/b1/catalog/c1`).set({ e: [], h: "h", n: 0, tot: 1 })));
+  await t("Enrolled student catalog padh sakta hai", () => assertSucceeds(d(stuA, `${PA}/batches/b1/catalog/c1`).get()));
+  await t("Student catalog LIKH nahi sakta", () => assertFails(d(stuA, `${PA}/batches/b1/catalog/c1`).set({ e: [], h: "h", n: 0, tot: 1 })));
   /* v217 Phase 1 — YouTube ytId + channel link (emulator me chalaya NAHI gaya) */
   await t("Admin A sahi ytId (11 char) wali class bana sakta hai", () => assertSucceeds(d(adminA, `${PA}/batches/b1/items/yt1`).set({ kind: "class", title: "C", published: true, instituteId: A, batchId: "b1", ytId: "dQw4w9WgXcQ", liveUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ" })));
   await t("Galat ytId (chhota / ajeeb akshar) NAHI chalta", () => assertFails(d(adminA, `${PA}/batches/b1/items/yt2`).set({ kind: "class", title: "C", published: true, instituteId: A, batchId: "b1", ytId: "abc<script>" })));

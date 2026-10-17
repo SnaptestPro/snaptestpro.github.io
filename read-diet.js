@@ -105,6 +105,7 @@
     var p = String(path || "").split("/"), a = adminInst(); if (!a) return null;
     if (p[0] === "institutes" && p[1] === a) {
       if (p.length === 6 && p[2] === "batches" && p[4] === "items") { dirty[p[3]] = 1; return ["b_" + p[3]]; }
+      if (p.length === 6 && p[2] === "batches" && p[4] === "catalog") return ["c_" + p[3]];   /* v218: catalog badla -> student ka version badle (admin ka items-cache nahi) */
       if (p.length === 4 && p[2] === "batches") {
         if (op === "update" && data && typeof data === "object" && Object.keys(data).every(function (k) { return k === "enrolledCount" || k === "updatedAt"; })) return null;
         return ["batches"];

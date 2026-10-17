@@ -65,13 +65,16 @@
   /* live join: mode "inapp" = app ke andar (Jitsi iframe), "external" = doosri app ka link (Zoom/Meet/YouTube...) */
   function joinLive(it, name) {
     if (it.ytId && CFG.youtubeLive !== false) return ytViewer(it);   /* v217: YouTube embed (kill-switch: SNAP_CONFIG.youtubeLive=false) */
+    if (it._p) return fullOf(it).then(function (f) { f && joinLive(f, name); });   /* v218: catalog ka adhoora item -> poora laakar join */
     if (it.mode === "external") { if (!it.liveUrl) return toast("Live link abhi available nahi hai"); window.open(it.liveUrl, "_blank", "noopener"); return; }
     if (it.mode === "own") return toast("Ye purani SnapLive class hai — ab available nahi. Admin se YouTube link maangein.");   /* v216: SnapLive hata diya */
     if (!it.liveRoom) return toast("Class abhi live nahi hai");
     var s = (typeof getStudentSession === "function" && getStudentSession()) || {}, u = liveUrl(it.liveRoom, name || s.name || "Student");
     CFG.liveEmbed === false ? window.open(u, "_blank", "noopener") : liveViewer(it.title, u);
   }
-  function hasFile(i) { return !!(i.url || i.fileId || i.storagePath || i.ownFile); }
+  function hasFile(i) { return !!(i.url || i.fileId || i.storagePath || i.ownFile || i._f); }
+  /* v218 catalog: adhoora item (_p) ko kholne/join se pehle poora laao (1 read). Fail ho to saaf message. */
+  function fullOf(it) { return (window.SnapCatalog ? window.SnapCatalog.full(it) : Promise.resolve(it)).catch(function (e) { toast("Content nahi khula: " + (e && e.message || e)); return null; }); }
   /* ---- direct upload: Firebase Storage (ON ho to) warna Firestore chunks (max 4MB) ---- */
   var CH = 600000, MAXCH = 4 * 1024 * 1024;
   function storage() { var v = window.vishnuFirebase; return v && v.storage; }
@@ -127,6 +130,7 @@
     });
   }
   function openItem(it, inst) {
+    if (it._p) return fullOf(it).then(function (f) { f && openItem(f, inst); });   /* v218: catalog ka adhoora item -> poora laakar kholo */
     if (it.ownKey) return toast("Ye purani SnapLive recording hai — ab available nahi. Admin se YouTube link maangein.");   /* v216 */
     if (it.ownFile && window.SnapFiles) {
       var ou = window.SnapFiles.urlOf(it.ownFile), on = it.ownFile.name || it.fileName || "";
@@ -218,6 +222,8 @@
         }));
       });
     }).then(function () {
+      /* v218: admin ka koi bhi badlaav (item/subject/chapter/import/bulk) loadAll se guzarta hai -> catalog apne-aap match (sirf badle docs likhte hain) */
+      try { window.SnapCatalog && CFG.catalog !== false && window.SnapCatalog.syncAll(A.inst, A.batches, A.items, false); } catch (e) {}
       return healCounts();
     }).then(function () {
       A.reqs = [];
@@ -388,7 +394,7 @@
           return inGroups(srs, 4, function (sr) { return collRefs(sr.collection("chapters")).then(function (cr) { return delDocs(cr); }); }).then(function () { return delDocs(srs); });
         });
       })
-      .then(function () { say("Doubts, attendance, progress, requests hata rahe hain…"); return inGroups(["doubts", "attendance", "progress", "requests"], 4, function (n) { return collRefs(B.collection(n)).then(function (r) { return delDocs(r); }).catch(function () {}); }); })
+      .then(function () { say("Doubts, attendance, progress, requests hata rahe hain…"); return inGroups(["doubts", "attendance", "progress", "requests", "catalog"], 4, function (n) { return collRefs(B.collection(n)).then(function (r) { return delDocs(r); }).catch(function () {}); }); })
       .then(function () { say("Students ki enrollment hata rahe hain…"); return B.collection("members").get().then(function (q) { mobiles = q.docs.map(function (d) { return d.id; }); }); })
       .then(function () {
         var k = 0, db = DB();
@@ -693,8 +699,12 @@ function vPay(m) {
         var bP = Promise.all(mine.map(function (id) { return bref(inst, id).get().then(function (b) { return b.exists ? Object.assign({ id: b.id }, b.data()) : null; }).catch(function () { return null; }); }));
         var iP = verP.then(function (ver) {
           return Promise.all(mine.map(function (id) {
-            var fq = function () { return bref(inst, id).collection("items").where("published", "==", true).get(); };
-            var p = window.SnapDiet ? window.SnapDiet.cached("snap_diet_items_S_" + String(s.mobile) + "_" + id, "b_" + id, fq, ver, force) : fq().then(function (q) { return q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); });
+            var fq0 = function () { return bref(inst, id).collection("items").where("published", "==", true).get(); };
+            /* v218: pehle catalog (1-5 reads); catalog na ho to purana tareeka (poore items). Version = items ya catalog me se jo naya ho. */
+            var useCat = window.SnapCatalog && CFG.catalog !== false, fq = !useCat ? fq0 : function () {
+              return window.SnapCatalog.load(inst, id).then(function (arr) { return arr ? { docs: arr.map(function (o) { return { id: o.id, data: function () { return o; } }; }) } : fq0(); });
+            }, ver2 = ver && useCat ? (function () { var o = {}; o["s_" + id] = Math.max(ver["b_" + id] || 0, ver["c_" + id] || 0); return o; })() : ver;
+            var p = window.SnapDiet ? window.SnapDiet.cached("snap_diet_items_S_" + String(s.mobile) + "_" + id, useCat ? "s_" + id : "b_" + id, fq, ver2, force) : fq().then(function (q) { return q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); });
             return p.then(function (arr) { S.items[id] = arr; }).catch(function () { S.items[id] = []; });
           }));
         });
@@ -738,7 +748,7 @@ function vPay(m) {
     var s = sess(); bref(S.inst, id).collection("requests").doc(String(s.mobile)).set({ mobile: String(s.mobile), name: s.name || "", status: "pending", createdAt: FV().serverTimestamp() })
       .then(function () { var b = S.avail.filter(function (x) { return x.id === id; })[0]; b && (b.req = "pending"); toast("✅ Request bhej di — admin approve karega"); sHome(); }).catch(function (e) { toast("Request nahi gayi: " + (e.code || e.message)); });
   }
-  function liveOf(b) { return (S.items[b.id] || []).filter(function (i) { return i.kind === "class" && i.status === "live" && (i.liveRoom || i.liveUrl || i.ytId); })[0]; }
+  function liveOf(b) { return (S.items[b.id] || []).filter(function (i) { return i.kind === "class" && i.status === "live" && (i.liveRoom || i.liveUrl || i.ytId || i._lv); })[0]; }
   function nextOf(b) { var n = Date.now() - 36e5; return (S.items[b.id] || []).filter(function (i) { return i.kind === "class" && i.status === "upcoming" && ms(i.scheduledAt) >= n; }).sort(function (a, c) { return ms(a.scheduledAt) - ms(c.scheduledAt); })[0]; }
   function sHome() {
     var o = $("#bm-student"), live = S.batches.map(liveOf).filter(Boolean), h = S.h || "my", av = S.avail || [], body;
@@ -775,7 +785,7 @@ function vPay(m) {
       var list = its.filter(function (i) { return tab === "note" ? i.kind === "note" : i.kind === tab; }).sort(function (a, c) { return (ms(c.scheduledAt) || ms(c.createdAt)) - (ms(a.scheduledAt) || ms(a.createdAt)); });
       body = '<div class="bm-list">' + (list.length ? list.map(function (i) { var ic = { class: "🔴", recording: "🎬", note: "📄", material: "📚", ppt: "📊", announcement: "📢" }[i.kind];
         return '<div class="bm-item"><div class="ic">' + ic + '</div><div class="g"><b>' + esc(i.title) + '</b><small>' + esc([i.subject, i.chapter].filter(Boolean).join(" • ") || (i.cat || "")) + (i.kind === "class" ? " • " + fdate(i.scheduledAt) : "") + '</small>' + (i.kind === "announcement" ? '<small style="display:block;margin-top:4px;color:#334155">' + esc(i.desc) + '</small>' : "") + '</div>' +
-          (i.kind === "class" ? (i.status === "live" && (i.liveRoom || i.liveUrl || i.ytId) ? '<button class="go" style="background:#ef4444" data-live="' + i.id + '">Join</button>' : '<span class="bm-badge ' + (i.status === "completed" ? "" : "b") + '">' + (i.status === "completed" ? "Done" : i.status === "cancelled" ? "Cancelled" : "Upcoming") + '</span>') : hasFile(i) ? '<button class="go" data-v="' + i.id + '">' + (i.kind === "recording" ? "▶ Play" : "View") + '</button>' : "") + '</div>'; }).join("") : '<div class="bm-empty">Yahan abhi kuch publish nahi hua.</div>') + '</div>';
+          (i.kind === "class" ? (i.status === "live" && (i.liveRoom || i.liveUrl || i.ytId || i._lv) ? '<button class="go" style="background:#ef4444" data-live="' + i.id + '">Join</button>' : '<span class="bm-badge ' + (i.status === "completed" ? "" : "b") + '">' + (i.status === "completed" ? "Done" : i.status === "cancelled" ? "Cancelled" : "Upcoming") + '</span>') : hasFile(i) ? '<button class="go" data-v="' + i.id + '">' + (i.kind === "recording" ? "▶ Play" : "View") + '</button>' : "") + '</div>'; }).join("") : '<div class="bm-empty">Yahan abhi kuch publish nahi hua.</div>') + '</div>';
     }
     o.innerHTML = '<div class="bm-sh"><button data-back>←</button><b>' + esc(b.name) + '</b></div><div class="bm-tabs">' + tabsAll().map(function (t) { return '<button data-tab="' + t[0] + '"' + (t[0] === tab ? ' class="on"' : "") + '>' + t[1] + '</button>'; }).join("") + '</div>' + body;
     o.querySelector("[data-back]").onclick = sHome;

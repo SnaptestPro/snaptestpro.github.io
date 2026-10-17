@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-17 — v218 Phase 2: Catalog (student reads kam)
+
+- Naya `batch-catalog.js`: har batch ke published items ka compact catalog `institutes/{i}/batches/{b}/catalog/c1,c2…` (max 300 entries/doc, koi link nahi).
+- Student batch-open pehle catalog padhta hai (1-5 reads); poora item (link/file) tabhi aata hai jab kholta/join karta hai. Catalog na ho to purana tareeka.
+- Admin ka koi bhi badlaav (`loadAll` se guzarne wala: item, subject, chapter, import, bulk) catalog ko apne-aap match karta hai (hash se, sirf badle docs likhte hain). Institute Settings me "Catalog dobara banayein".
+- `read-diet.js`: catalog write par `c_<batch>` version bump (admin ka items-cache nahi chhedta). `firestore.rules`: `catalog/{id}`. Kill-switch `SNAP_CONFIG.catalog`.
+- Version 1.4.13 / build 218. Details: `docs/notes/PHASE2_CATALOG_v218_NOTES.md`. Rules dobara Publish karne honge; emulator test chalaya nahi gaya.
+
 ## 2026-10-17 — v217 Phase 1: YouTube Live (embed, attendance, recording, bulk paste)
 
 - Go Live: `prompt()` ki jagah form; sirf 11-char `ytId` save (`youtube.com/live/ID`, `watch?v=ID`, `youtu.be/ID`).
