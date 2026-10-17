@@ -14,10 +14,11 @@ window.SNAP_CONFIG = {
     tokenAutoRefresh: true
   },
   tagline: "Smart Practice • Better Result",
-  version: "1.4.15",
+  version: "1.4.16",
   workerUrl: "https://cool-thunder-a280.vishnu1234stm.workers.dev",   // Cloudflare Worker (bank + push + owner alerts)
   ownFiles: false,                                                    // DEPRECATED (v216): Cloudflare R2 "SnapFiles" band hai aur rahega — file upload ab Google Drive se. Code abhi rakha hai, aage hatega.
   googleClientId: "",                                                 // <-- yahan Google OAuth Web Client ID daalein (DRIVE_SETUP_HINDI.md dekhein). Khaali = Drive upload band
+  branding2: true,                                                    // v221: gehri branding — splash, login card, result sheet, print header, "Powered by". false = purana look (kill-switch)
   demo: true,                                                         // v220: Owner Panel "Demo Institute" (seed/reset). false = buttons chhup jate hain (kill-switch)
   onboarding: true,                                                   // v219: Owner Panel "Naya Institute" wizard + Drive status/banner. false = purana single form (kill-switch)
   driveRequired: false,                                               // v219: true karne par (aur googleClientId set hone par) Drive na jure institute ka FILE upload band; links/YouTube chalte rahenge
@@ -36,7 +37,7 @@ window.SNAP_CONFIG = {
   },
   appLock: true,                                                      // institute-APK / ?inst= link lock + "app band hai" screen (kill-switch)
   ownerAlertEmail: "vishnu1234stm@gmail.com",                         // is email se login par owner app me alerts ka push aata hai
-  build: "220",
+  build: "221",
   ownerName: "Vishnu Sharma",
   supportPhone: "9525208263",
   supportWhatsapp: "9525208263",          // WhatsApp number (khaali = phone wala use hoga)
