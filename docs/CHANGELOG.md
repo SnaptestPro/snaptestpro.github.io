@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-17 — v222 Phase 4B: institute APK native splash + rang
+
+- Naya `scripts/android-brand.js`: institute APK me native splash (brand rang par logo card, har `splash.png` size me), Android 12+ ka splash rang + icon, status bar / app rang (`colorPrimary/Dark`).
+- `fetch-institute.js` ab `brandColor` bhi laata hai (`institute-brand.json`); `android-prepare.js` use try/catch me bulata hai; `capacitor.config.js` ka `backgroundColor` institute ka rang leta hai.
+- Workflow, owner APK aur main APK nahi badle (brand file sirf institute build me banti hai). Kill-switch: `app-config.js` me `branding2: false` (ya brand rang na ho) = purana Capacitor default.
+- Test: `test_apk_brand_v222.js`. Sandbox me `cap add android` ke baad script chalayi (11 splash.png + styles patch check). Gradle/APK build aur phone par splash chalaya nahi. Version 1.4.17 / build 222. Notes: `docs/notes/PHASE4B_APK_BRAND_v222_NOTES.md`.
+
 ## 2026-10-17 — v221 Phase 4A: gehri branding (web)
 
 - Splash: pichli baar ka institute cache me ho to uska logo/naam/tagline/rang (`inline/index-inline-05.js`). Pehli baar / cache na ho to purana splash.
