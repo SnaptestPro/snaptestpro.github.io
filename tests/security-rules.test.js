@@ -9,8 +9,8 @@ const assert = require("assert");
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require("@firebase/rules-unit-testing");
 
 const A = "inst_A", B = "inst_B", PA = `institutes/${A}`, PB = `institutes/${B}`;
-let env, passed = 0, failed = 0; const failures = [];
-async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", name); } catch (e) { failed++; failures.push(name + " :: " + (e && e.message || e).toString().split("\n")[0]); console.log("  ❌", name, "\n     ", (e && e.message || e).toString().split("\n")[0]); } }
+let env, passed = 0, failed = 0;
+async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", name); } catch (e) { failed++; console.log("  ❌", name, "\n     ", (e && e.message || e).toString().split("\n")[0]); } }
 
 (async () => {
   env = await initializeTestEnvironment({
@@ -90,6 +90,15 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await t("v219: Drive status ke saath koi aur field NAHI badal sakta (name)", () => assertFails(d(adminA, `institutes/${A}`).update({ driveConnected: true, driveEmail: "a@b.co", name: "Hack" })));
   await t("v219: Admin A, Institute B ka Drive status NAHI badal sakta", () => assertFails(d(adminA, `institutes/${B}`).update({ driveConnected: true, driveEmail: "a@b.co" })));
   await t("v219: driveConnected=false ke saath email NAHI rakh sakte (token/email leftover nahi)", () => assertFails(d(adminA, `institutes/${A}`).update({ driveConnected: false, driveEmail: "a@b.co" })));
+  /* v220 Demo institute: Owner sirf isDemo data par */
+  await env.withSecurityRulesDisabled(async (c) => { await c.firestore().doc("institutes/demo_sample").set({ name: "Demo", isDemo: true }); await c.firestore().doc("tests/demo-test-x").set({ isDemo: true, title: "d" }); await c.firestore().doc("tests/real-test-x").set({ title: "r", instituteId: A }); });
+  await t("v220: Owner demo student bana sakta hai (isDemo:true)", () => assertSucceeds(d(claimOwner, "students/0000000001").set({ name: "D", isDemo: true, instituteId: "demo_sample" })));
+  await t("v220: Owner bina isDemo ke student NAHI bana sakta", () => assertFails(d(claimOwner, "students/9999999999").set({ name: "Real", instituteId: A })));
+  await t("v220: Owner demo result bana sakta hai, asli result NAHI", () => Promise.all([assertSucceeds(d(claimOwner, "studentRecords/demo_rec_1_01").set({ isDemo: true, mobile: "0000000001" })), assertFails(d(claimOwner, "studentRecords/real1").set({ mobile: "9999999999" }))]));
+  await t("v220: Owner demo test delete kar sakta hai, asli test NAHI", () => Promise.all([assertSucceeds(d(claimOwner, "tests/demo-test-x").delete()), assertFails(d(claimOwner, "tests/real-test-x").delete())]));
+  await t("v220: Owner demo institute ke batch me likh sakta hai", () => assertSucceeds(d(claimOwner, "institutes/demo_sample/batches/demo_b1/items/i1").set({ isDemo: true, kind: "recording" })));
+  await t("v220: Owner asli institute ke batch me NAHI likh sakta", () => assertFails(d(claimOwner, `institutes/${A}/batches/bx/items/i1`).set({ kind: "recording" })));
+  await t("v220: Admin A demo institute ke batch me NAHI likh sakta", () => assertFails(d(adminA, "institutes/demo_sample/batches/demo_b1/items/i2").set({ kind: "recording" })));
   await t("Admin A, Institute B me item NAHI bana sakta", () => assertFails(d(adminA, `${PB}/batches/b1/items/x`).set({ kind: "note", title: "x", published: true, instituteId: B, batchId: "b1" })));
   await t("Admin A, Institute B ka subject/teacher/doubt NAHI bana/padh sakta", async () => {
     await assertFails(d(adminA, `${PB}/batches/b1/subjects/hack`).set({ name: "H", status: "active", instituteId: B, batchId: "b1" }));
@@ -201,6 +210,5 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await t("Student upload NAHI kar sakta", () => assertFails(stor(stuAs).ref(`batches/${A}/b1/s.pdf`).putString("x")));
 
   await env.cleanup();
-  if (failures.length) { console.log("\n===== FAILED TESTS ====="); failures.forEach((f) => console.log(" ❌ " + f)); }
   console.log(`\n${passed} passed, ${failed} failed`); process.exit(failed ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(2); });

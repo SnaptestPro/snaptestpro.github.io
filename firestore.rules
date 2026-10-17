@@ -41,6 +41,10 @@ service cloud.firestore {
     // karna, kisi admin ko disable/remove karna, uska password reset
     // bhejna). Sirf EK hardcoded email — kisi ko is se access nahi
     // milta jab tak yahan email daal ke publish na karein.
+    // v220: Demo institute — Owner sirf isDemo==true data par likh/hata sakta hai
+    function isDemoInst(instituteId) {
+      return get(/databases/$(database)/documents/institutes/$(instituteId)).data.get('isDemo', false) == true;
+    }
     function isOwner() {
       return request.auth != null &&
         (
@@ -359,6 +363,12 @@ service cloud.firestore {
     }
 
     match /tests/{docId} {
+      // v220: Owner ka Demo seed/reset — sirf isDemo==true tests (+ unke qchunks)
+      allow create, update: if isOwner() && request.resource.data.get('isDemo', false) == true;
+      allow list, delete: if isOwner() && resource.data.get('isDemo', false) == true;
+      match /qchunks/{cid} {
+        allow read, write: if isOwner() && get(/databases/$(database)/documents/tests/$(docId)).data.get('isDemo', false) == true;
+      }
       // Read khula rehta hai (isSignedIn()) — students ko sabhi tests
       // dikhne zaroori hain taaki wo attempt kar sakein. Institute-wise
       // isolation sirf ADMIN ke apne management view (Tests list, Edit,
@@ -518,6 +528,9 @@ service cloud.firestore {
     // data-loss nahi ho sakta.
     match /students/{mobile} {
       allow get: if isSignedIn();
+      // v220: Owner ka Demo seed/reset — sirf isDemo==true docs
+      allow create, update: if isOwner() && request.resource.data.get('isDemo', false) == true;
+      allow list, delete: if isOwner() && resource.data.get('isDemo', false) == true;
 
       // ⚠️ FIX (v134): pehle create sirf isSignedIn() tha — Join Code
       // wale institute ke liye bhi, kyunki ye rule us feature se poori
@@ -653,6 +666,9 @@ service cloud.firestore {
       allow write: if isOwner();
     }
     match /studentRecords/{docId} {
+      // v220: Owner ka Demo seed/reset — sirf isDemo==true
+      allow create, update: if isOwner() && request.resource.data.get('isDemo', false) == true;
+      allow list, delete: if isOwner() && resource.data.get('isDemo', false) == true;
       // v178: pehle koi bhi signed-in kisi bhi result ko BADAL sakta tha. Student sirf naya result BANATA hai (add);
       //       update/delete sirf admin. Phase 3: padhna lockdown ON hone par sirf (apna result) ya (apne institute ka) ya admin/owner.
       //       Client queries ko where(instituteId==...) / where(mobile==...) dena zaroori hai (records-lockdown.js ye khud karta hai).
@@ -728,36 +744,45 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if isAdmin() && instituteId.matches('^legacy_.*');
 
-      // ── Admin ke apne institute par allowed updates (MERGED — v221 fix) ──────────
-      // PEHLE ye 5 alag `allow update` rules the, aur har ek me `isAdmin() && instituteId == adminInstituteId()`
-      // dobara chalta tha. Firestore Rules ki limit (1000 expressions per request) 3rd rule tak khatam ho jaati thi
-      // => Drive status (v219) hamesha PERMISSION_DENIED ("maximum of 1000 expressions"). Ab admin check SIRF EK baar chalta hai,
-      // aur uske andar field-wise shartein (har ek sirf apni field badal sakti hai — pehle jaisi hi):
-      //  (a)   v111 ID Card: sirf `logoDataUrl`.
-      //  (a1)  v217: sirf `youtubeChannelUrl` — sirf https youtube.com (ya khaali = hatao).
-      //  (a1b) v219: Drive STATUS — sirf driveConnected + driveEmail (token kabhi nahi).
-      //  (a2)  v132: sirf `requiresJoinCode` flag (asli code yahan kabhi nahi aata — alag protected collection).
-      //  (a3)  v174: Drive upload storage-usage counter — sirf storageUsedBytes / storageFiles ("soft" client-side limit).
-      allow update: if isAdmin() && instituteId == adminInstituteId() && (
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['logoDataUrl']) ||
-        (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['youtubeChannelUrl']) &&
-          request.resource.data.youtubeChannelUrl is string &&
-          (request.resource.data.youtubeChannelUrl == '' ||
-            (request.resource.data.youtubeChannelUrl.size() <= 200 &&
-             request.resource.data.youtubeChannelUrl.matches('^https://(www[.]|m[.])?youtube[.]com/.*')))
-        ) ||
-        (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driveConnected', 'driveEmail']) &&
-          request.resource.data.driveConnected in [true, false] &&
-          request.resource.data.driveEmail is string &&
-          request.resource.data.driveEmail.size() <= 100 &&
-          (request.resource.data.driveConnected == true || request.resource.data.driveEmail == '') &&
-          (request.resource.data.driveEmail == '' || request.resource.data.driveEmail.matches('^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+[.][A-Za-z]{2,}$'))
-        ) ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requiresJoinCode']) ||
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['storageUsedBytes', 'storageFiles'])
-      );
+      // ── ID Card feature (v111) ────────────────────────────────────
+      // (a) Admin apne HI institute ka logo upload/badal sake (ID Card
+      //     ke corner-logo ke liye) — sirf `logoDataUrl` field, koi aur
+      //     field (name/active/allowedClasses waghera) is rule se nahi
+      //     chhed sakta.
+      allow update: if isAdmin() && instituteId == adminInstituteId() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['logoDataUrl']);
+
+      // (a1) v217: Institute ka YouTube channel link — sirf `youtubeChannelUrl`, sirf https youtube.com (ya khaali = hatao)
+      allow update: if isAdmin() && instituteId == adminInstituteId() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['youtubeChannelUrl']) &&
+        request.resource.data.youtubeChannelUrl is string &&
+        (request.resource.data.youtubeChannelUrl == '' ||
+          (request.resource.data.youtubeChannelUrl.size() <= 200 &&
+           request.resource.data.youtubeChannelUrl.matches('^https://(www[.]|m[.])?youtube[.]com/.*')));
+
+      // (a1b) v219: Drive STATUS — sirf driveConnected + driveEmail (token kabhi nahi). Sirf apna institute.
+      allow update: if isAdmin() && instituteId == adminInstituteId() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driveConnected', 'driveEmail']) &&
+        request.resource.data.driveConnected is bool &&
+        request.resource.data.driveEmail is string &&
+        request.resource.data.driveEmail.size() <= 100 &&
+        (request.resource.data.driveConnected == true || request.resource.data.driveEmail == '') &&
+        (request.resource.data.driveEmail == '' || request.resource.data.driveEmail.matches('^[^@ ]+@[^@ ]+[.][^@ ]+$'));
+
+      // (a2) v132: Institute Join Code protection ka ON/OFF flag — sirf
+      //      `requiresJoinCode` field. Asli code yahan kabhi nahi aata
+      //      (woh alag, protected `instituteJoinCodes` collection mein
+      //      hai) — yeh sirf ek public "haan/na" flag hai jisse
+      //      registration form ko pata chale ki code maangna hai ya
+      //      nahi, bina asli code kisi ko dikhaye.
+      allow update: if isAdmin() && instituteId == adminInstituteId() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requiresJoinCode']);
+
+      // (a3) v174: Drive upload ka storage-usage counter — admin sirf apne institute ke
+      //      storageUsedBytes / storageFiles badal sakta hai (limit/plan/brand sirf Owner).
+      //      Note: counter client-side maintain hota hai, isliye ye "soft" limit hai (kam sahi koshish).
+      allow update: if isAdmin() && instituteId == adminInstituteId() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['storageUsedBytes', 'storageFiles']);
 
       // (a4) v176: student registration counter — SIRF naya student banne ke saath (same batch me).
       //      Counter +1 hi ho sakta hai, aur `lastRegMobile` wala student pehle exist nahi karna chahiye
@@ -795,6 +820,13 @@ service cloud.firestore {
       // ⚠️ Students anonymous-auth hain, isliye "student X batch Y ka member hai"
       //    rules me verify nahi ho sakta (app ka purana design) — batch/item IDs
       //    random hain aur sirf published content readable hai.
+      // v220: Demo institute ka poora batch-tree (batch, items, members, ...) — Owner, sirf jab institute isDemo
+      match /batches/{batchId}/{rest=**} {
+        allow read, write: if isOwner() && isDemoInst(instituteId);
+      }
+      match /batches/{batchId} {
+        allow read, write: if isOwner() && isDemoInst(instituteId);
+      }
       match /batches/{batchId} {
         allow read: if isSignedIn() && (
           (isAdmin() && instituteId == adminInstituteId()) ||

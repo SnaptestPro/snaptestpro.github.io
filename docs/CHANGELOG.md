@@ -1,21 +1,5 @@
 # Changelog
 
-## 2026-10-17 — v222 Phase 4B: institute APK native splash + rang
-
-- Naya `scripts/android-brand.js`: institute APK me native splash (brand rang par logo card, har `splash.png` size me), Android 12+ ka splash rang + icon, status bar / app rang (`colorPrimary/Dark`).
-- `fetch-institute.js` ab `brandColor` bhi laata hai (`institute-brand.json`); `android-prepare.js` use try/catch me bulata hai; `capacitor.config.js` ka `backgroundColor` institute ka rang leta hai.
-- Workflow, owner APK aur main APK nahi badle (brand file sirf institute build me banti hai). Kill-switch: `app-config.js` me `branding2: false` (ya brand rang na ho) = purana Capacitor default.
-- Test: `test_apk_brand_v222.js`. Sandbox me `cap add android` ke baad script chalayi (11 splash.png + styles patch check). Gradle/APK build aur phone par splash chalaya nahi. Version 1.4.17 / build 222. Notes: `docs/notes/PHASE4B_APK_BRAND_v222_NOTES.md`.
-
-## 2026-10-17 — v221 Phase 4A: gehri branding (web)
-
-- Splash: pichli baar ka institute cache me ho to uska logo/naam/tagline/rang (`inline/index-inline-05.js`). Pehli baar / cache na ho to purana splash.
-- Login card (student + admin) ke upar institute ka logo + naam + tagline; home ke neeche chhota "Powered by SnapTest Pro" (sirf jab institute ka naam ho).
-- Owner Panel -> Branding & Plan: naya checkbox `hidePoweredBy` (sirf Owner). Rules me badlaav nahi (Owner pehle se institutes likh sakta hai).
-- Result sheet ka brand block (logo/naam/tagline) aur WhatsApp result/reminder text me "SnapTest Pro" ki jagah institute ka naam (`SnapBrand.rsf/plain`). Institute na ho to purana "सव्यसाची" block jaisa tha waisa.
-- Booklet aur 4-column print: upar ek patli brand patti (logo + naam, "Powered by" usi me). Layout/fonts nahi chhede.
-- Kill-switch `SNAP_CONFIG.branding2=false`. Version 1.4.16 / build 221. Tests: `test_branding2_v221.js`. Details: `docs/notes/PHASE4A_BRANDING_v221_NOTES.md`.
-
 ## 2026-10-17 — v220 Phase 3B: Demo Institute
 
 - Naya `owner-demo.js`: Owner Panel (Settings) me "Demo banao" / "Demo reset". `isDemo:true` institute `demo_sample`: 20 students (nakli mobile, login nahi), 2 batches (YouTube items), 2 tests, 40 results. Fixed IDs; reset sirf demo data hataata hai.

@@ -80,7 +80,7 @@
     var A = function (fn, icn, label, cls) { return '<button type="button"' + (cls ? ' class="' + cls + '"' : "") + ' onclick="' + fn + '">' + ic(icn, 16) + label + "</button>"; };
     var an = ownerEscAttr(nm), on = ownerEscAttr(a.ownerName || "");
     return '<div class="owner-inst-card oa-card" data-iid="' + id + '" data-name="' + esc(nm.toLowerCase()) + '">' +
-      '<div class="oa-ib"><div class="oa-lg"' + col + ">" + esc(nm.charAt(0).toUpperCase()) + "</div><div><h4>" + esc(nm) + "</h4><p>" +
+      '<div class="oa-ib"><div class="oa-lg"' + col + ">" + esc(nm.charAt(0).toUpperCase()) + "</div><div><h4>" + esc(nm) + (a.isDemo ? ' <span style="font-size:.62rem;background:#fef3c7;color:#92400e;border-radius:6px;padding:1px 6px;vertical-align:middle">DEMO</span>' : "") + "</h4><p>" +
       (a.ownerName ? "Owner: " + esc(a.ownerName) : '<span style="color:#c2410c">Owner ka naam set nahi hai</span>') + "</p></div>" +
       '<span class="owner-badge ' + (off ? "owner-badge-off" : "owner-badge-on") + '">' + (off ? "Inactive" : "Active") + "</span></div>" +
       '<div class="oa-bars"><div class="oa-rw"><span>Students</span><b' + (full ? ' style="color:#dc2626"' : "") + ">" + sc + (sl ? " / " + sl : "") + (full ? " (limit poori)" : "") + "</b></div>" +
@@ -131,7 +131,7 @@
     });
   };
   window.ownerRenderDashboard = function () {
-    var L = Object.values(_ownerInstitutesCache), act = 0, off = 0, soon = 0, exp = 0, stu = 0, bytes = 0, full = 0, soonL = [];
+    var L = Object.values(_ownerInstitutesCache).filter(function (a) { return !a.isDemo; }), act = 0, off = 0, soon = 0, exp = 0, stu = 0, bytes = 0, full = 0, soonL = [];   /* v220: demo stats me nahi */
     L.forEach(function (a) {
       a.active === false ? off++ : act++;
       var e = ownerExpState(a); if (e.k === "soon") { soon++; soonL.push(a); } if (e.k === "expired") { exp++; soonL.push(a); }
