@@ -8,7 +8,7 @@ service firebase.storage {
   match /b/{bucket}/o {
     match /batches/{inst}/{batch}/{file} {
       function adminDoc() { return firestore.get(/databases/(default)/documents/admins/$(request.auth.token.email)).data; }
-      function isEmailUser() { return request.auth != null && request.auth.token.email != null; }
+      function isEmailUser() { return request.auth != null && ('email' in request.auth.token) && request.auth.token.email != null; }
       function isInstAdmin() {
         return isEmailUser() &&
           (!firestore.exists(/databases/(default)/documents/admins/$(request.auth.token.email)) ||
@@ -26,7 +26,7 @@ service firebase.storage {
         return sessionMobile() != null &&
           firestore.exists(/databases/(default)/documents/institutes/$(inst)/batches/$(batch)/members/$(sessionMobile()));
       }
-      allow read: if request.auth != null && (!strict() || (isInstAdmin() && isEmailUser()) || isMember());
+      allow read: if request.auth != null && (!strict() || (isEmailUser() && isInstAdmin()) || isMember());
       allow create, update: if isInstAdmin() && request.resource.size < 50 * 1024 * 1024;
       allow delete: if isInstAdmin();
     }
