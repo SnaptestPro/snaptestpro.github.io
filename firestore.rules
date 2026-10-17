@@ -744,45 +744,39 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if isAdmin() && instituteId.matches('^legacy_.*');
 
-      // ── ID Card feature (v111) ────────────────────────────────────
-      // (a) Admin apne HI institute ka logo upload/badal sake (ID Card
-      //     ke corner-logo ke liye) — sirf `logoDataUrl` field, koi aur
-      //     field (name/active/allowedClasses waghera) is rule se nahi
-      //     chhed sakta.
-      allow update: if isAdmin() && instituteId == adminInstituteId() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['logoDataUrl']);
+      // ── ADMIN apne institute ke fields (v223: ek hi rule me merge) ───
+      // Pehle har field ka alag `allow update` tha, aur har ek me isAdmin() +
+      // adminInstituteId() (exists/get) dobara chalta tha — Firestore ki 1000
+      // expressions ki seema paar ho jaati thi aur beech ke (Drive status wale)
+      // sahi update bhi mana ho jaate the. Ab bhaari jaanch SIRF EK baar chalti hai.
+      // Har field ki shart pehle jaisi hi hai; sabse pehle sasti field-set jaanch
+      // hoti hai, taaki student/doosre updates isAdmin() tak pahunche hi nahi.
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['logoDataUrl', 'youtubeChannelUrl', 'driveConnected', 'driveEmail', 'requiresJoinCode', 'storageUsedBytes', 'storageFiles']) &&
+        isAdmin() && instituteId == adminInstituteId() && (
+          // (a) v111: ID Card ka corner-logo — sirf `logoDataUrl`
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['logoDataUrl']) ||
 
-      // (a1) v217: Institute ka YouTube channel link — sirf `youtubeChannelUrl`, sirf https youtube.com (ya khaali = hatao)
-      allow update: if isAdmin() && instituteId == adminInstituteId() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['youtubeChannelUrl']) &&
-        request.resource.data.youtubeChannelUrl is string &&
-        (request.resource.data.youtubeChannelUrl == '' ||
-          (request.resource.data.youtubeChannelUrl.size() <= 200 &&
-           request.resource.data.youtubeChannelUrl.matches('^https://(www[.]|m[.])?youtube[.]com/.*')));
+          // (a1) v217: YouTube channel link — sirf `youtubeChannelUrl`, sirf https youtube.com (ya khaali = hatao)
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['youtubeChannelUrl']) &&
+            request.resource.data.youtubeChannelUrl is string &&
+            (request.resource.data.youtubeChannelUrl == '' ||
+              (request.resource.data.youtubeChannelUrl.size() <= 200 &&
+               request.resource.data.youtubeChannelUrl.matches('^https://(www[.]|m[.])?youtube[.]com/.*')))) ||
 
-      // (a1b) v219: Drive STATUS — sirf driveConnected + driveEmail (token kabhi nahi). Sirf apna institute.
-      allow update: if isAdmin() && instituteId == adminInstituteId() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driveConnected', 'driveEmail']) &&
-        request.resource.data.driveConnected is bool &&
-        request.resource.data.driveEmail is string &&
-        request.resource.data.driveEmail.size() <= 100 &&
-        (request.resource.data.driveConnected == true || request.resource.data.driveEmail == '') &&
-        (request.resource.data.driveEmail == '' || request.resource.data.driveEmail.matches('^[^@ ]+@[^@ ]+[.][^@ ]+$'));
+          // (a1b) v219: Drive STATUS — sirf driveConnected + driveEmail (token kabhi nahi)
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driveConnected', 'driveEmail']) &&
+            request.resource.data.driveConnected is bool &&
+            request.resource.data.driveEmail is string &&
+            request.resource.data.driveEmail.size() <= 100 &&
+            (request.resource.data.driveConnected == true || request.resource.data.driveEmail == '') &&
+            (request.resource.data.driveEmail == '' || request.resource.data.driveEmail.matches('^[^@ ]+@[^@ ]+[.][^@ ]+$'))) ||
 
-      // (a2) v132: Institute Join Code protection ka ON/OFF flag — sirf
-      //      `requiresJoinCode` field. Asli code yahan kabhi nahi aata
-      //      (woh alag, protected `instituteJoinCodes` collection mein
-      //      hai) — yeh sirf ek public "haan/na" flag hai jisse
-      //      registration form ko pata chale ki code maangna hai ya
-      //      nahi, bina asli code kisi ko dikhaye.
-      allow update: if isAdmin() && instituteId == adminInstituteId() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requiresJoinCode']);
+          // (a2) v132: Join Code ka ON/OFF flag — sirf `requiresJoinCode` (asli code yahan kabhi nahi)
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requiresJoinCode']) ||
 
-      // (a3) v174: Drive upload ka storage-usage counter — admin sirf apne institute ke
-      //      storageUsedBytes / storageFiles badal sakta hai (limit/plan/brand sirf Owner).
-      //      Note: counter client-side maintain hota hai, isliye ye "soft" limit hai (kam sahi koshish).
-      allow update: if isAdmin() && instituteId == adminInstituteId() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['storageUsedBytes', 'storageFiles']);
+          // (a3) v174: storage-usage counter — sirf storageUsedBytes / storageFiles (soft limit, client-side counter)
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['storageUsedBytes', 'storageFiles'])
+        );
 
       // (a4) v176: student registration counter — SIRF naya student banne ke saath (same batch me).
       //      Counter +1 hi ho sakta hai, aur `lastRegMobile` wala student pehle exist nahi karna chahiye
