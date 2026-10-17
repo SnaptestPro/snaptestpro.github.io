@@ -9,8 +9,8 @@ const assert = require("assert");
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require("@firebase/rules-unit-testing");
 
 const A = "inst_A", B = "inst_B", PA = `institutes/${A}`, PB = `institutes/${B}`;
-let env, passed = 0, failed = 0;
-async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", name); } catch (e) { failed++; console.log("  ❌", name, "\n     ", (e && e.message || e).toString().split("\n")[0]); } }
+let env, passed = 0, failed = 0; const failures = [];
+async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", name); } catch (e) { failed++; failures.push(name + " :: " + (e && e.message || e).toString().split("\n")[0]); console.log("  ❌", name, "\n     ", (e && e.message || e).toString().split("\n")[0]); } }
 
 (async () => {
   env = await initializeTestEnvironment({
@@ -201,5 +201,6 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await t("Student upload NAHI kar sakta", () => assertFails(stor(stuAs).ref(`batches/${A}/b1/s.pdf`).putString("x")));
 
   await env.cleanup();
+  if (failures.length) { console.log("\n===== FAILED TESTS ====="); failures.forEach((f) => console.log(" ❌ " + f)); }
   console.log(`\n${passed} passed, ${failed} failed`); process.exit(failed ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(2); });
