@@ -299,15 +299,8 @@ async function handleAlertsList(request, env, pathname) {
   return { ok: true, alerts: JSON.parse((await env.BANK_KV.get('alerts')) || '[]') };
 }
 
-/* ---------- SnapLive: apna live + recording (Jitsi/Zoom ke bina) ----------
-   Teacher ka device khud record karta hai (MediaRecorder) aur 3-sec ke segments yahan upload karta hai -> R2 bucket.
-   Students segments + live.json (manifest) padhkar live dekhte hain; wahi segments baad me recording ban jate hain.
-   Setup: R2 bucket banao -> Worker Settings -> Bindings -> R2: variable naam LIVE_R2. (Optional) bucket ko public karo
-   aur LIVE_PUBLIC_BASE = https://pub-xxxx.r2.dev rakho (tab segment reads Worker se nahi guzarte = free-plan request limit bachti hai).
-   Bina LIVE_PUBLIC_BASE ke segments Worker khud /live/f/... se serve karta hai (chhoti classes ke liye theek). */
-const liveKeyOk = (k) => /^[a-f0-9]{48}$/.test(String(k || ''));
-const liveFileOk = (f) => /^(live\.json|p\d{1,2}\/(init|\d{1,5})\.webm)$/.test(String(f || ''));
-const LIVE_MAX_SEG = 8 * 1024 * 1024;
+/* ---------- Shared admin helpers (push + SnapFiles dono use karte hain) ----------
+   v217: SnapLive (apna R2 live) hata diya gaya — live class ab sirf YouTube link se. R2 bucket (LIVE_R2) sirf SnapFiles (files/) ke liye bacha hai. */
 async function fsGetFields(env, path) {
   const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), at = await googleAccessToken(sa), pid = env.PROJECT_ID || sa.project_id;
   const r = await fetch('https://firestore.googleapis.com/v1/projects/' + pid + '/databases/(default)/documents/' + path, { headers: { Authorization: 'Bearer ' + at } });
@@ -344,7 +337,7 @@ async function pushDirect(env, sa, projectId, email, instituteId, notifId, req) 
   if (!fr.ok) { pushSeen.delete(dk); throw new HttpErr(502, 'FCM fail ' + fr.status + ' ' + (await fr.text()).slice(0, 200)); }
   return { ok: true, direct: true };
 }
-async function liveAdmin(request, env) {
+async function adminFromRequest(request, env) {
   if (!env.SERVICE_ACCOUNT_JSON) throw new HttpErr(500, 'SERVICE_ACCOUNT_JSON secret set nahi hai');
   const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), projectId = env.PROJECT_ID || sa.project_id;
   const user = await verifyIdToken((request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, ''), projectId);
@@ -356,72 +349,7 @@ async function liveAdmin(request, env) {
   if (!active && owners.indexOf(email) < 0) throw new HttpErr(403, 'Sirf admin');
   return { email, instituteId: (f && f.instituteId && f.instituteId.stringValue) || '' };
 }
-const liveUrlBase = (env, request) => (env.LIVE_PUBLIC_BASE ? String(env.LIVE_PUBLIC_BASE).replace(/\/+$/, '') + '/live' : new URL(request.url).origin + '/live/f');
-async function liveGetJson(env, k) { const o = await env.LIVE_R2.get(k); return o ? JSON.parse(await o.text()) : null; }
-const liveMayManage = (meta, admin) => !!meta && (meta.email === admin.email || (!!admin.instituteId && meta.instituteId === admin.instituteId));
 
-async function handleLive(request, env, pathname) {
-  if (!env.LIVE_R2) throw new HttpErr(501, 'LIVE_R2 (R2 bucket) binding Worker me set nahi hai');
-  const url = new URL(request.url);
-  if (request.method === 'GET' && pathname.indexOf('/live/f/') === 0) {            // public (capability-URL) read
-    const rest = pathname.slice('/live/f/'.length), i = rest.indexOf('/'), key = rest.slice(0, i), file = rest.slice(i + 1);
-    if (i < 0 || !liveKeyOk(key) || !liveFileOk(file)) throw new HttpErr(404, 'Not found');
-    const o = await env.LIVE_R2.get('live/' + key + '/' + file);
-    if (!o) throw new HttpErr(404, 'Not found');
-    return new Response(o.body, { headers: { 'Content-Type': file.endsWith('.json') ? 'application/json' : 'video/webm', 'Cache-Control': file.endsWith('.json') ? 'no-cache, max-age=0' : 'public, max-age=31536000, immutable', ...CORS } });
-  }
-  const admin = await liveAdmin(request, env);
-  const q = (k) => url.searchParams.get(k);
-  if (request.method === 'POST' && pathname === '/live/start') {
-    const b = await request.json().catch(() => ({}));
-    if (admin.instituteId && b.instituteId && b.instituteId !== admin.instituteId) throw new HttpErr(403, 'Dusre institute ka class');
-    const inst = String(b.instituteId || admin.instituteId || '').slice(0, 80);
-    if (b.key) {                                                                      // resume (teacher ka tab/app band ho gaya tha)
-      if (!liveKeyOk(b.key)) throw new HttpErr(400, 'Bad key');
-      const meta = await liveGetJson(env, 'live/' + b.key + '/meta.json');
-      if (!liveMayManage(meta, admin)) throw new HttpErr(404, 'Session nahi mila');
-      return json({ ok: true, key: b.key, base: liveUrlBase(env, request), manifest: await liveGetJson(env, 'live/' + b.key + '/live.json') });
-    }
-    const key = [...crypto.getRandomValues(new Uint8Array(24))].map((x) => x.toString(16).padStart(2, '0')).join('');
-    const manifest = { v: 1, status: 'live', startedAt: Date.now(), totalMs: 0, parts: [] };
-    await env.LIVE_R2.put('live/' + key + '/meta.json', JSON.stringify({ email: admin.email, instituteId: inst, batchId: String(b.batchId || '').slice(0, 80), classId: String(b.classId || '').slice(0, 80), at: Date.now() }));
-    await env.LIVE_R2.put('live/' + key + '/live.json', JSON.stringify(manifest), { httpMetadata: { contentType: 'application/json', cacheControl: 'no-cache, max-age=0' } });
-    return json({ ok: true, key, base: liveUrlBase(env, request), manifest });
-  }
-  const key = q('key') || '';
-  if (!liveKeyOk(key)) throw new HttpErr(400, 'Bad key');
-  const meta = await liveGetJson(env, 'live/' + key + '/meta.json');
-  if (!liveMayManage(meta, admin)) throw new HttpErr(403, 'Is session par aapka haq nahi');
-  if (request.method === 'PUT' && pathname === '/live/seg') {
-    const part = parseInt(q('part'), 10), n = q('n'), d = Math.max(0, parseInt(q('d'), 10) || 0), t = Math.max(0, parseInt(q('t'), 10) || 0), ps = Math.max(0, parseInt(q('ps'), 10) || 0);
-    if (!(part >= 0 && part < 50) || !(n === 'init' || /^\d{1,5}$/.test(n))) throw new HttpErr(400, 'Bad part/n');
-    const buf = await request.arrayBuffer();
-    if (!buf.byteLength || buf.byteLength > LIVE_MAX_SEG) throw new HttpErr(413, 'Segment size galat');
-    await env.LIVE_R2.put('live/' + key + '/p' + part + '/' + n + '.webm', buf, { httpMetadata: { contentType: 'video/webm', cacheControl: 'public, max-age=31536000, immutable' } });
-    const m = (await liveGetJson(env, 'live/' + key + '/live.json')) || { v: 1, status: 'live', startedAt: Date.now(), totalMs: 0, parts: [] };
-    if (m.status !== 'live') throw new HttpErr(409, 'Class khatam ho chuki hai');
-    while (m.parts.length <= part) m.parts.push({ i: m.parts.length, startMs: 0, init: false, segs: [] });
-    const P = m.parts[part];
-    if (n === 'init') { P.init = true; P.startMs = ps; }
-    else if (!P.segs.some((s) => s.n === +n) && P.segs.length < 6000) P.segs.push({ n: +n, t, d });
-    const L = m.parts[m.parts.length - 1]; m.totalMs = (L.startMs || 0) + L.segs.reduce((a, s) => a + s.d, 0); m.updatedAt = Date.now();
-    await env.LIVE_R2.put('live/' + key + '/live.json', JSON.stringify(m), { httpMetadata: { contentType: 'application/json', cacheControl: 'no-cache, max-age=0' } });
-    return json({ ok: true });
-  }
-  if (request.method === 'POST' && pathname === '/live/end') {
-    const b = await request.json().catch(() => ({}));
-    const m = (await liveGetJson(env, 'live/' + key + '/live.json')) || { v: 1, parts: [], totalMs: 0 };
-    m.status = b.status === 'failed' ? 'failed' : 'ended'; m.endedAt = Date.now();
-    await env.LIVE_R2.put('live/' + key + '/live.json', JSON.stringify(m), { httpMetadata: { contentType: 'application/json', cacheControl: 'no-cache, max-age=0' } });
-    return json({ ok: true, manifest: m });
-  }
-  if (request.method === 'POST' && pathname === '/live/delete') {
-    let cursor, n = 0;
-    do { const l = await env.LIVE_R2.list({ prefix: 'live/' + key + '/', cursor, limit: 500 }); const ks = l.objects.map((o) => o.key); if (ks.length) { await env.LIVE_R2.delete(ks); n += ks.length; } cursor = l.truncated ? l.cursor : null; } while (cursor);
-    return json({ ok: true, deleted: n });
-  }
-  throw new HttpErr(404, 'Unknown live endpoint');
-}
 
 /* ---------- v169: Upcoming test reminders (cron) ----------
    Test se ~24 ghante aur ~1 ghanta pehle students ko syllabus ke saath push. Cloudflare > Worker > Settings > Triggers > Cron Triggers: har 15 minute (cron: "every 15 min" = slash-15 star star star star)
@@ -550,7 +478,7 @@ async function handleFilesKV(request, env, pathname, kv, ctx) {
   if ((request.method === 'GET' || request.method === 'HEAD') && pathname.indexOf('/files/f/') === 0) {
     const key = pathname.slice('/files/f/'.length); if (!fKeyOk(key)) throw new HttpErr(404, 'Not found'); return await kvServe(request, kv, key, ctx);
   }
-  const admin = await liveAdmin(request, env); admin.seg = fSeg(admin.instituteId || 'owner');
+  const admin = await adminFromRequest(request, env); admin.seg = fSeg(admin.instituteId || 'owner');
   const url = new URL(request.url), q = (k) => url.searchParams.get(k);
   const mine = (key) => { if (!fKeyOk(key)) throw new HttpErr(400, 'Bad key'); if (key.split('/')[0] !== admin.seg) throw new HttpErr(403, 'Ye file aapke institute ki nahi'); return key; };
   const room = async (add) => { const used = await kvUsed(kv); if (used + add > KV_CAP) throw new HttpErr(507, 'Free storage bhar gaya (' + Math.round(used / 1048576) + ' MB / 1 GB) — purani files delete karein'); return used; };
@@ -614,7 +542,7 @@ async function handleFiles(request, env, pathname, ctx) {
     const o = await R.get('files/' + key, opt); if (!o) throw new HttpErr(404, 'Not found');
     return new Response(o.body, { status, headers: H });
   }
-  const admin = await liveAdmin(request, env); admin.seg = fSeg(admin.instituteId || 'owner');
+  const admin = await adminFromRequest(request, env); admin.seg = fSeg(admin.instituteId || 'owner');
   const url = new URL(request.url), q = (k) => url.searchParams.get(k);
   const mine = (key) => { if (!fKeyOk(key)) throw new HttpErr(400, 'Bad key'); if (key.split('/')[0] !== admin.seg) throw new HttpErr(403, 'Ye file aapke institute ki nahi'); return key; };
   const meta = (name) => ({ by: admin.email, name: encodeURIComponent(String(name || 'file')).slice(0, 300), at: String(Date.now()) });
@@ -1099,7 +1027,6 @@ export default {
     try {
       if (pathname.indexOf('/student/') === 0) return await handleStudentAuth(request, env, pathname);
       if (pathname === '/bank' || pathname === '/bank/meta' || pathname === '/bank/chunk') return await handleBank(request, env, pathname);
-      if (pathname.indexOf('/live/') === 0) return await handleLive(request, env, pathname);
       if (pathname.indexOf('/files/') === 0) return await handleFiles(request, env, pathname, ctx);
       if (pathname === '/alert') return json(await handleAlert(request, env));
       if (pathname === '/alerts' || pathname === '/alerts/clear') return json(await handleAlertsList(request, env, pathname));
