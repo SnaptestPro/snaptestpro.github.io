@@ -815,27 +815,7 @@ service cloud.firestore {
           // (admin ne Go Live par daala; End Class par hat jaata hai)
 
           allow delete: if isAdmin() && instituteId == adminInstituteId();
-
-          // ── v168 SnapLive: live class chat + raise-hand ──
-          match /chat/{mid} {
-            allow read: if isSignedIn() && (
-              (isAdmin() && instituteId == adminInstituteId()) || !instStrict(instituteId) || isBatchMember(instituteId, batchId));
-            allow create: if isSignedIn() &&
-              request.resource.data.keys().hasOnly(['name', 'mobile', 'role', 'text', 'at']) &&
-              request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 300 &&
-              request.resource.data.at == request.time &&
-              ((isAdmin() && instituteId == adminInstituteId() && request.resource.data.role == 'teacher') ||
-               (request.resource.data.role == 'student' &&
-                 (!instStrict(instituteId) || (sessMobile() == request.resource.data.mobile && isBatchMember(instituteId, batchId)))));
-            allow delete: if isAdmin() && instituteId == adminInstituteId();
-          }
-          match /hands/{mobile} {
-            allow read: if isAdmin() && instituteId == adminInstituteId();
-            allow create, update: if isSignedIn() &&
-              request.resource.data.keys().hasOnly(['name', 'mobile', 'up', 'at']) && request.resource.data.mobile == mobile &&
-              (!instStrict(instituteId) || (sessMobile() == mobile && isBatchMember(instituteId, batchId)));
-            allow delete: if isSignedIn() && ((isAdmin() && instituteId == adminInstituteId()) || !instStrict(instituteId) || sessMobile() == mobile);
-          }
+          // v216: SnapLive ka chat/hands (live class) hata diya — ab live sirf YouTube link se.
         }
         // Uploaded files (Storage band ho to Firestore chunks, max ~4MB)
         match /files/{fid} {

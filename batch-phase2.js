@@ -412,7 +412,7 @@
   function itemsOf(c, b) { return c.S.items[b.id] || []; }
   function ic(i) { return { class: "🔴", recording: "🎬", note: "📄", material: "📚", ppt: "📊", announcement: "📢" }[i.kind] || "📄"; }
   function itemRow(c, i) {
-    var act = i.kind === "class" ? (i.status === "live" && (i.liveRoom || i.liveUrl || i.liveKey) ? '<button class="go" style="background:#ef4444" data-xl="' + i.id + '">Join</button>' : '<span class="bm-badge ' + (i.status === "completed" ? "" : "b") + '">' + (i.status === "completed" ? "Done" : i.status === "cancelled" ? "Cancelled" : "Upcoming") + "</span>") : c.hasFile(i) ? '<button class="go" data-xv="' + i.id + '">' + (i.kind === "recording" ? "▶ Play" : "View") + "</button>" : "";
+    var act = i.kind === "class" ? (i.status === "live" && (i.liveRoom || i.liveUrl) ? '<button class="go" style="background:#ef4444" data-xl="' + i.id + '">Join</button>' : '<span class="bm-badge ' + (i.status === "completed" ? "" : "b") + '">' + (i.status === "completed" ? "Done" : i.status === "cancelled" ? "Cancelled" : "Upcoming") + "</span>") : c.hasFile(i) ? '<button class="go" data-xv="' + i.id + '">' + (i.kind === "recording" ? "▶ Play" : "View") + "</button>" : "";
     return '<div class="bm-item"><div class="ic">' + ic(i) + '</div><div class="g"><b>' + c0(i.title) + "</b><small>" + c0(i.kind === "class" ? c.fdate(i.scheduledAt) : (i.cat || "")) + "</small></div>" + act + "</div>";
   }
   function bindItems(c, b, box) {
@@ -473,7 +473,7 @@
   function rerender(c, b, box) { EXT.studentTabs.subjects.render(b, box, c); }
   function dashPage(c, b, box, subs) {
     var its = itemsOf(c, b), done = X.prog[b.id] || {}, cnt = its.filter(function (i) { return COUNTABLE.indexOf(i.kind) > -1; }), dn = cnt.filter(function (i) { return done[i.id]; }).length, pct = cnt.length ? Math.round(100 * dn / cnt.length) : 0;
-    var live = its.filter(function (i) { return i.kind === "class" && i.status === "live" && (i.liveRoom || i.liveUrl || i.liveKey); })[0], nxt = its.filter(function (i) { return i.kind === "class" && i.status === "upcoming" && c.ms(i.scheduledAt) >= Date.now() - 36e5; }).sort(function (a, z) { return c.ms(a.scheduledAt) - c.ms(z.scheduledAt); })[0];
+    var live = its.filter(function (i) { return i.kind === "class" && i.status === "live" && (i.liveRoom || i.liveUrl); })[0], nxt = its.filter(function (i) { return i.kind === "class" && i.status === "upcoming" && c.ms(i.scheduledAt) >= Date.now() - 36e5; }).sort(function (a, z) { return c.ms(a.scheduledAt) - c.ms(z.scheduledAt); })[0];
     var rec = its.filter(function (i) { return i.kind === "recording"; }).sort(function (a, z) { return c.ms(z.createdAt) - c.ms(a.createdAt); }).slice(0, 3), nts = its.filter(function (i) { return i.kind === "note" || i.kind === "material"; }).sort(function (a, z) { return c.ms(z.createdAt) - c.ms(a.createdAt); }).slice(0, 3), ann = its.filter(function (i) { return i.kind === "announcement"; }).sort(function (a, z) { return c.ms(z.createdAt) - c.ms(a.createdAt); }).slice(0, 2);
     var list = subs.length ? subs : subjectsFor(c, b.id);
     box.innerHTML = '<div class="bx-prog"><div><b>Aapki progress</b><small>' + dn + "/" + cnt.length + ' lectures/notes dekhe</small></div><div class="bx-bar"><i style="width:' + pct + '%"></i></div><b>' + pct + "%</b></div>" +

@@ -104,20 +104,3 @@
 .bx-back{border:0;background:none;color:#4f46e5;font-weight:600;padding:4px 0;cursor:pointer}
 .bx-sec{background:#fff;border-radius:12px;margin:8px 0;padding:6px 10px;box-shadow:0 1px 4px rgba(15,23,42,.06)}.bx-sec summary{cursor:pointer;font-weight:600;padding:6px 0;font-size:.9rem}
 .bx-bimg{width:100%;height:96px;object-fit:cover;border-radius:10px;margin-bottom:6px}
-
-/* SnapLive */
-.sl-ov{position:fixed;inset:0;z-index:100000;background:#0b1020;color:#e5e7eb;display:flex;flex-direction:column;font-family:inherit}
-.sl-top{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#111936}.sl-top b{flex:1;font-size:.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.sl-top button,.sl-ctl button,.sl-hand,.sl-send button,.sl-unmute{border:0;border-radius:10px;padding:8px 12px;background:#4f46e5;color:#fff;font-weight:600;cursor:pointer}
-.sl-lag{font-size:.72rem;color:#94a3b8}
-.sl-main{flex:1;display:flex;min-height:0}.sl-vid,.sl-vod{position:relative;flex:1;background:#000;display:flex;align-items:center;justify-content:center;min-height:0}
-.sl-vid video,.sl-vod video{width:100%;height:100%;object-fit:contain;background:#000}
-.sl-badge{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(15,23,42,.8);padding:8px 14px;border-radius:12px;font-size:.85rem;text-align:center;max-width:80%}
-.sl-unmute{position:absolute;right:10px;bottom:10px;background:#ef4444}
-.sl-side{width:300px;display:flex;flex-direction:column;gap:8px;padding:8px;background:#111936;min-height:0}
-.sl-chat{flex:1;overflow:auto;font-size:.82rem;display:flex;flex-direction:column;gap:4px;min-height:80px}.sl-chat .t{color:#fde68a}.sl-chat b{color:#a5b4fc}.sl-dim{color:#64748b}
-.sl-send{display:flex;gap:6px}.sl-send input{flex:1;border-radius:10px;border:1px solid #334155;background:#0b1020;color:#fff;padding:8px}
-.sl-hand.on{background:#f59e0b}.sl-ctrl{display:flex;flex-direction:column;gap:6px}.sl-ctrl select{padding:8px;border-radius:10px}.sl-ctrl .go{background:#16a34a}.sl-ctrl .red{background:#dc2626;color:#fff;border:0;border-radius:10px;padding:8px}
-.sl-stat{font-size:.78rem;color:#cbd5e1}.sl-hands{font-size:.8rem;color:#fcd34d}
-.sl-vod{flex:1}.sl-ctl{display:flex;align-items:center;gap:8px;padding:10px;background:#111936}.sl-ctl input[type=range]{flex:1}
-@media(max-width:720px){.sl-main{flex-direction:column}.sl-side{width:auto;max-height:42%}}
