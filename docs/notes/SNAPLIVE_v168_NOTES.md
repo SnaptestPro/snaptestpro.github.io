@@ -1,3 +1,5 @@
+> ⚠️ **REMOVED (v216, Phase 0).** SnapLive (apna R2 live + recording) hata diya gaya hai. Live class ab sirf YouTube link se; recording sirf link. Ye note sirf itihaas ke liye hai — iske setup steps mat chalao.
+
 # SnapLive — apna Live Class + Recording (Jitsi/Zoom ke bina)
 
 **Kya hai:** teacher ka device (camera ya screen + mic) khud record karta hai, har ~3 sec ka tukda aapke Cloudflare Worker ke through **R2** me jata hai.
