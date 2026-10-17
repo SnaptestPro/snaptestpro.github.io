@@ -29,7 +29,10 @@ const val = f => f == null ? undefined : (f.stringValue !== undefined ? f.string
   const m = /^data:image\/[a-z+]+;base64,(.+)$/i.exec(d.logoDataUrl || '');
   if (m) { fs.writeFileSync(path.join(ROOT, 'institute-icon.img'), Buffer.from(m[1], 'base64')); hasIcon = true; }
   else { const own = path.join(ROOT, 'institute-icons', id + '.png'); if (fs.existsSync(own)) { fs.copyFileSync(own, path.join(ROOT, 'institute-icon.img')); hasIcon = true; } }
-  console.log({ name, pkg, hasIcon });
+  /* v222: native splash/status bar rang ke liye (android-brand.js padhta hai); sirf valid #rrggbb */
+  const bc = /^#[0-9a-f]{6}$/i.test(d.brandColor || '') ? d.brandColor : '';
+  if (bc) fs.writeFileSync(path.join(ROOT, 'institute-brand.json'), JSON.stringify({ brandColor: bc }));
+  console.log({ name, pkg, hasIcon, brandColor: bc || '-' });
   const out = { app_name: name, slug, package: pkg, has_icon: hasIcon, active: d.active === false ? 'false' : 'true' };
   if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(out).map(([k, v]) => `${k}=${v}`).join('\n') + '\n');
 })();

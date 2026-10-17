@@ -57,4 +57,6 @@ fs.writeFileSync(g, b);
   }
   console.log('icons generated');
 })();
+// 4) v222: institute ka native splash + status bar rang (brand data na ho to kuch nahi; fail ho to build nahi tootta)
+(async () => { try { await require('./android-brand.js').apply(A, (process.env.ICON_FILE || '').trim()); } catch (e) { console.warn('native branding chhoda:', e.message); } })();
 console.log('android prepared: versionCode', code, 'versionName', name);
