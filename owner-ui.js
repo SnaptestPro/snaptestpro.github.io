@@ -27,7 +27,7 @@
   window.ouiShowFilter = function (f) { _ownerDashFilter = f; window.ouiTab("inst"); markFilters(); ownerDashApplyFilter(); };
 
   /* ---------- naya institute sheet ---------- */
-  window.ouiOpenSheet = function () { try { ownerRenderNewInstituteClassCheckboxes(); } catch (e) {} var s = $("oa-sheet"); if (s) s.classList.remove("hidden"); };
+  window.ouiOpenSheet = function () { if ((window.SNAP_CONFIG || {}).onboarding !== false && window.ownerWizardOpen) { window.ownerWizardOpen(); return; } try { ownerRenderNewInstituteClassCheckboxes(); } catch (e) {} var s = $("oa-sheet"); if (s) s.classList.remove("hidden"); };
   window.ouiCloseSheet = function () { var s = $("oa-sheet"); if (s) s.classList.add("hidden"); };
   window.ouiAddInst = function (e) {
     e.preventDefault();
@@ -64,6 +64,13 @@
   }
   function sorted() { return Object.values(_ownerInstitutesCache).sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); }); }
 
+  /* v219: Branding / Drive / YouTube status (institute doc me jo pehle se hai wahi; koi naya read nahi) */
+  function statusChips(a) {
+    var chip = function (ok, t) { return '<span style="display:inline-block;font-size:.72rem;margin:0 6px 4px 0;padding:2px 8px;border-radius:99px;background:' + (ok ? "#dcfce7;color:#166534" : "#fee2e2;color:#991b1b") + '">' + (ok ? "✅ " : "❌ ") + t + "</span>"; };
+    var br = !!(a.logoDataUrl || a.tagline || a.brandColor);
+    return '<div class="oa-chips" style="margin:2px 0 6px">' + chip(br, "Branding") + chip(a.driveConnected === true, "Drive") + chip(!!a.youtubeChannelUrl, "YouTube") + "</div>";
+  }
+
   /* ---------- institute card ---------- */
   function card(a, adm) {
     var id = a.id, nm = a.name || "(naam nahi)", sc = +a.studentCount || 0, sl = +a.studentLimit || 0;
@@ -81,6 +88,7 @@
       '<div class="oa-rw"><span>Storage</span><b' + (over ? ' style="color:#dc2626"' : "") + ">" + fmtMB(used) + (lim ? " / " + fmtMB(lim) : "") + "</b></div>" +
       (lim ? '<div class="oa-bar"><i class="' + (over ? "r" : "") + '" style="width:' + Math.min(100, used / lim * 100) + '%"></i></div>' : '<div style="height:8px"></div>') +
       '<div class="oa-rw"><span>' + esc(a.plan || "Free") + ' plan</span><b style="color:' + ex.c + '">' + ex.t + "</b></div></div>" +
+      statusChips(a) +
       '<div class="owner-inst-classes">' + ownerClassChipsHtml(a) + "</div>" +
       '<div class="oa-ac">' +
       A("ownerRenameInstitute('" + id + "','" + an + "')", "edit", "Rename") +

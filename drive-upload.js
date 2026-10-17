@@ -118,5 +118,38 @@
 
   function remove(id) { if (!id || !ready()) return Promise.resolve(false); return api("DELETE", "https://www.googleapis.com/drive/v3/files/" + id).then(function () { return true; }, function () { return false; }); }
 
-  window.SnapDrive = { ready: ready, upload: upload, remove: remove };
+  /* ===== v219 Phase 3A: Drive STATUS (sirf driveConnected + driveEmail Firestore me; TOKEN kabhi save nahi hota) ===== */
+  var st = {};                                       /* inst -> { connected, email } (memory cache) */
+  var MAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  function idb() { var v = window.vishnuFirebase; return v && v.enabled !== false && v.db; }
+  function status(inst, force) {
+    if (!inst) return Promise.resolve({ connected: false, email: "" });
+    if (!force && st[inst]) return Promise.resolve(st[inst]);
+    var db = idb(); if (!db) return Promise.resolve({ connected: false, email: "", unknown: true });
+    return db.collection("institutes").doc(inst).get().then(function (d) {
+      var x = d && d.exists ? d.data() : {}; return (st[inst] = { connected: x.driveConnected === true, email: String(x.driveEmail || ""), files: +x.storageFiles || 0, usedMB: Math.round((+x.storageUsedBytes || 0) / 1048576) });
+    }, function () { return { connected: false, email: "", unknown: true }; });
+  }
+  function saveStatus(inst, connected, email) {
+    var db = idb(); if (!db) return Promise.reject(new Error("Firebase ready nahi"));
+    email = connected && MAIL.test(email || "") ? String(email).slice(0, 100) : "";
+    return db.collection("institutes").doc(inst).update({ driveConnected: !!connected, driveEmail: email }).then(function () { st[inst] = Object.assign(st[inst] || {}, { connected: !!connected, email: email }); return st[inst]; });
+  }
+  /* admin ke Google account se jodo: popup -> Drive ke "about" se email -> sirf status save */
+  function connect(inst) {
+    if (!C().googleClientId) return Promise.reject(new Error("Google Client ID abhi set nahi hai (Owner ko batayein)"));
+    tok = null;                                       /* naya account chunne ka mauka */
+    return getToken(true).then(function () { return api("GET", "https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)"); })
+      .then(function (j) { return folder("SnapTest Pro").then(function (r) { return folder(String(inst), r); }).then(function () { return saveStatus(inst, true, j && j.user && j.user.emailAddress); }); });
+  }
+  function disconnect(inst) {
+    var t = tok; tok = null; tokExp = 0; folders = {};
+    try { if (t && window.google && google.accounts && google.accounts.oauth2) google.accounts.oauth2.revoke(t, function () {}); } catch (e) {}
+    return saveStatus(inst, false, "");
+  }
+  function folderUrl(inst) { return getToken().then(function () { return folder("SnapTest Pro"); }).then(function (r) { return folder(String(inst), r); }).then(function (id) { return "https://drive.google.com/drive/folders/" + id; }); }
+  /* upload tabhi band jab Owner ne SNAP_CONFIG.driveRequired=true kiya ho AUR status pata ho ki Drive jura nahi. Default: kabhi block nahi. */
+  function blocked(inst) { return C().driveRequired === true && !!C().googleClientId && !!st[inst] && st[inst].connected !== true; }
+
+  window.SnapDrive = { ready: ready, upload: upload, remove: remove, status: status, connect: connect, disconnect: disconnect, folderUrl: folderUrl, blocked: blocked, _t: { MAIL: MAIL } };
 })();

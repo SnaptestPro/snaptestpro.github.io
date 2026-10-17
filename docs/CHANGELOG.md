@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-17 — v219 Phase 3A: Institute onboarding wizard + Drive status
+
+- Naya `owner-wizard.js`: Owner Panel "Naya Institute" ab 6-step wizard (Basics, Branding + preview, Fair-use tier, YouTube, Drive sujhaav, Summary + app link). Maujooda institute fields hi likhta hai; billing nahi.
+- Institute card par Branding/Drive/YouTube status chips (pehle se loaded data).
+- `SnapDrive`: `status/connect/disconnect/folderUrl`. Firestore me sirf `driveConnected` + `driveEmail`, token kabhi nahi. Admin Panel me "Setup adhoora" banner aur Institute Settings me "Mera Storage" card.
+- `driveRequired` (default false): true + Client ID set hone par hi Drive na jure institute ka file upload band.
+- `firestore.rules`: admin apne institute ka Drive status (email format check). Tests: `test_onboarding_v219.js`, 5 naye rules test (chalaya nahi).
+- `docs/setup/DRIVE_SETUP_HINDI.md`, `scripts/build-www.js` owner list fix. Version 1.4.14 / build 219. Kill-switch `SNAP_CONFIG.onboarding`.
+
 ## 2026-10-17 — v218 Phase 2: Catalog (student reads kam)
 
 - Naya `batch-catalog.js`: har batch ke published items ka compact catalog `institutes/{i}/batches/{b}/catalog/c1,c2…` (max 300 entries/doc, koi link nahi).

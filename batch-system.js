@@ -81,6 +81,7 @@
   function b64(buf) { var s = "", a = new Uint8Array(buf), k = 0x8000; for (var i = 0; i < a.length; i += k) s += String.fromCharCode.apply(null, a.subarray(i, i + k)); return btoa(s); }
   function uploadFile(file, inst, batchId, prog) {
     var sd = window.SnapDrive;
+    if (sd && sd.blocked && sd.blocked(inst)) { toast("Pehle Institute Settings → Mera Storage me apna Drive jodein"); return Promise.reject(Object.assign(new Error("Drive jura nahi"), { quota: true })); }
     if (sd && sd.ready()) {
       var qc = window.SnapQuota ? window.SnapQuota.check(inst, file.size) : Promise.resolve({ ok: true });
       return qc.then(function (q) {
@@ -238,7 +239,7 @@
     Object.keys(EXT.adminViews).forEach(function (k) { if (!NAV.some(function (n) { return n[0] === k; })) base.push([k, EXT.adminViews[k].icon || "•", EXT.adminViews[k].label || k]); });
     return base;
   }
-  function ctx() { return { A: A, S: S, DB: DB, FV: FV, bref: bref, esc: esc, ms: ms, fdate: fdate, toast: toast, form: form, sure: sure, audit: audit, adminEmail: adminEmail, ytId: ytId, ytWatch: ytWatch, authReady: authReady, loadAll: loadAll, adminGo: adminGo, openItem: openItem, hasFile: hasFile, sess: sess, rnd: rnd, shrink: shrink, subjOf: subjOf, batchName: batchName, topBtn: topBtn, stBadge: stBadge, rupee: rupee, sBatch: sBatch, sHome: sHome, closeStudent: closeStudent, allItems: allItems, joinLive: joinLive, $: $ }; }
+  function ctx() { return { A: A, S: S, DB: DB, FV: FV, bref: bref, esc: esc, ms: ms, fdate: fdate, toast: toast, form: form, sure: sure, audit: audit, adminEmail: adminEmail, ytId: ytId, ytWatch: ytWatch, authReady: authReady, loadAll: loadAll, adminGo: adminGo, driveBanner: driveBanner, openItem: openItem, hasFile: hasFile, sess: sess, rnd: rnd, shrink: shrink, subjOf: subjOf, batchName: batchName, topBtn: topBtn, stBadge: stBadge, rupee: rupee, sBatch: sBatch, sHome: sHome, closeStudent: closeStudent, allItems: allItems, joinLive: joinLive, $: $ }; }
   function nv(ev, it) { try { window.SnapV169 && window.SnapV169.itemEvent(ev, it); } catch (e) { console.warn(e); } }
   function fire(name, a, b) { try { var f = EXT.hooks[name]; f && f(a, b); } catch (e) { console.warn("[batch hook " + name + "]", e); } }
   function buildAdmin() {
@@ -247,7 +248,7 @@
     o.innerHTML = '<aside class="bm-side"><div class="bm-logo"><img src="icon-512-maskable.png" alt="">SnapTest Pro</div>' +
       navAll().map(function (n) { return '<button class="bm-nav" data-v="' + n[0] + '"><span>' + n[1] + '</span>' + n[2] + '</button>'; }).join("") +
       '<button class="bm-nav" data-v="exit"><span>⬅️</span>Admin Home</button><div class="bm-me">' + esc(adminEmail()) + '<br>Admin</div></aside>' +
-      '<main class="bm-main"><div class="bm-top"><button class="bm-burger" id="bm-burger">☰</button><h2 id="bm-title"></h2><span id="bm-topact"></span></div><div id="bm-main"></div></main>';
+      '<main class="bm-main"><div class="bm-top"><button class="bm-burger" id="bm-burger">☰</button><h2 id="bm-title"></h2><span id="bm-topact"></span></div><div id="bm-drivebn"></div><div id="bm-main"></div></main>';
     document.body.appendChild(o);
     $("#bm-burger").onclick = function () { o.classList.toggle("open"); };
     o.querySelectorAll(".bm-nav").forEach(function (b) { b.onclick = function () { A.touched = true; o.classList.remove("open"); b.dataset.v === "exit" ? o.remove() : (A.f = {}, adminGo(b.dataset.v)); }; });
@@ -257,9 +258,19 @@
     $("#bm-title").textContent = t; $("#bm-topact").innerHTML = "";
     var sb = $('#bm-admin .bm-nav[data-v="students"]'); sb && (sb.innerHTML = "<span>👥</span>Students" + (A.reqs && A.reqs.length ? ' <span class="bm-badge o">' + A.reqs.length + "</span>" : ""));
     document.querySelectorAll("#bm-admin .bm-nav").forEach(function (b) { b.classList.toggle("on", b.dataset.v === v); });
-    var m = $("#bm-main");
+    var m = $("#bm-main"); driveBanner();
     var xv = EXT.adminViews[v]; if (xv && xv.render) { try { return xv.render(m, ctx()); } catch (e) { console.warn(e); m.innerHTML = '<div class="bm-empty">Ye section load nahi hua: ' + esc(e.message || e) + "</div>"; return; } }
     ({ dash: vDash, batches: vBatches, students: vStudents, tests: vTests, pay: vPay, payset: vPaySet })[v] ? ({ dash: vDash, batches: vBatches, students: vStudents, tests: vTests, pay: vPay, payset: vPaySet })[v](m) : vItems(m, v);
+  }
+  /* v219: "Setup adhoora" banner — Drive jura na ho to. SNAP_CONFIG.onboarding=false par band. */
+  function driveBanner() {
+    var bn = $("#bm-drivebn"); if (!bn || !window.SnapDrive || (window.SNAP_CONFIG || {}).onboarding === false) return;
+    window.SnapDrive.status(A.inst).then(function (s) {
+      var b = $("#bm-drivebn"); if (!b) return;
+      if (s.connected || s.unknown) { b.innerHTML = ""; return; }
+      var ok = !!(window.SNAP_CONFIG || {}).googleClientId;
+      b.innerHTML = '<div class="bm-card bx-warn" style="margin:8px 0"><b>⚠️ Setup adhoora: apna Drive jodein</b><div class="bm-note">' + (ok ? "Institute Settings → Mera Storage me Google Drive jodein. Tab tak links/YouTube chalte rahenge." : "Drive jodne ka setup abhi baaki hai (Owner ko batayein). Tab tak links/YouTube chalte rahenge.") + "</div></div>";
+    });
   }
   function topBtn(label, fn) { var s = $("#bm-topact"); s.innerHTML = '<button class="bm-btn">' + label + '</button>'; s.firstChild.onclick = fn; }
 

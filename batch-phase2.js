@@ -289,6 +289,7 @@
       var d = { instituteId: c.A.inst, batchId: o.batchId, title: o.title, desc: o.desc || "", subject: o.subject || "", chapter: o.chapter || "", due: o.dueTxt ? new Date(o.dueTxt).getTime() : 0, maxMarks: +o.maxMarks || 0, url: o.url || "", updatedAt: c.FV().serverTimestamp() }; EXT.stampIds(d, o);
       var upP = Promise.resolve(null);
       if (o.file) {
+        if (window.SnapDrive && window.SnapDrive.blocked && window.SnapDrive.blocked(c.A.inst)) { c.toast("Pehle Institute Settings → Mera Storage me apna Drive jodein"); return false; }
         var sdv = window.SnapDrive && window.SnapDrive.ready();
         if (!sdv && !(window.SnapFiles && window.SnapFiles.ready())) { c.toast("File storage abhi chalu nahi — link daalein"); return false; }
         c.toast("⏳ Upload ho raha hai… (band na karein)");
@@ -386,8 +387,26 @@
         '<button class="bm-btn' + (on ? " red" : "") + '" id="bx-strict">' + (on ? "Strict Mode OFF karein" : "Strict Mode ON karein") + "</button></div>" +
         '<div class="bm-card"><h3>Institute</h3><div class="bm-row"><div class="g">Institute ID</div><code>' + c0(inst) + "</code></div><div class=\"bm-row\"><div class=\"g\">Admin</div><span>" + c0(c.adminEmail()) + "</span></div></div>" +
         '<div class="bm-card"><h3>📚 Catalog (reads kam)</h3><div class="bm-note">Student ko batch ki list chhote "catalog" se milti hai (bahut kam Firestore reads). Ye admin ke har badlaav par apne-aap theek hota hai. Kuch galat dikhe to yahan se dobara banayein.</div><button class="bm-btn" id="bx-cat">Catalog dobara banayein</button></div>' +
+        '<div class="bm-card" id="bx-drv"></div>' +
         '<div class="bm-card"><h3>▶ YouTube</h3><label>Institute ka YouTube channel link (optional)</label><input id="bx-yc" type="url" placeholder="https://www.youtube.com/@aapkachannel" value="' + c0(chUrl) + '"><div class="bm-note">Student ko batch page par "Channel dekho" link dikhega. Sirf https://youtube.com/… link chalega.</div><button class="bm-btn" id="bx-ycs">Save</button>' +
         '<div class="bm-note" style="margin-top:10px">ℹ️ Live/recording ke liye <b>Unlisted</b> YouTube link use karein. Unlisted link koi bhi forward kar sakta hai — ye poori suraksha nahi hai. App link student ko seedha nahi dikhati, sirf andar embed karti hai.</div></div>';
+      (function drv() {
+        var box = m.querySelector("#bx-drv"), sd = window.SnapDrive; if (!box || !sd) return;
+        var hasId = !!(window.SNAP_CONFIG || {}).googleClientId;
+        sd.status(inst, true).then(function (s) {
+          var on = s.connected;
+          box.innerHTML = "<h3>💾 Mera Storage (Google Drive) — " + (on ? '<span class="bm-badge">Jura hai</span>' : '<span class="bm-badge o">Jura nahi</span>') + "</h3>" +
+            (on ? '<div class="bm-row"><div class="g">Account</div><b>' + c0(s.email || "—") + '</b></div><div class="bm-row"><div class="g">Files / use</div><span>' + (s.files || 0) + " files • " + (s.usedMB || 0) + " MB</span></div>"
+                : '<div class="bm-note">' + (hasId ? "Apna Google Drive jodein — files aapke apne Drive me rahengi (data aapka)." : "Drive jodne ka setup abhi baaki hai (Owner ko batayein). Tab tak links/YouTube chalte rahenge.") + "</div>") +
+            '<div class="bm-note">💡 Institute ke naam ka <b>alag Google account</b> use karein (personal se nahi) — admin badle to files saath na jaayein. App sirf apni banayi hui files dekh sakta hai.</div>' +
+            '<button class="bm-btn" id="bx-dc"' + (hasId ? "" : " disabled") + ">" + (hasId ? (on ? "Account badlein" : "Drive jodein") : "Setup baaki hai") + "</button>" +
+            (on ? ' <button class="bm-btn" id="bx-do">📂 Drive folder kholein</button> <button class="bm-btn red" id="bx-dd">Disconnect</button>' : "");
+          var bc = box.querySelector("#bx-dc"), bo = box.querySelector("#bx-do"), bd = box.querySelector("#bx-dd");
+          bc && (bc.onclick = function () { bc.disabled = true; sd.connect(inst).then(function () { c.audit("institute.driveConnect", inst); c.toast("✅ Drive jur gaya"); drv(); try { c.driveBanner(); } catch (e) {} }, function (e) { bc.disabled = false; c.toast("Drive nahi juda: " + (e && e.message || e)); }); });
+          bo && (bo.onclick = function () { sd.folderUrl(inst).then(function (u) { window.open(u, "_blank", "noopener"); }, function (e) { c.toast("Folder nahi khula: " + (e && e.message || e)); }); });
+          bd && (bd.onclick = function () { if (!confirm("Drive disconnect karein? Purani files Drive me rahengi, par nayi upload band hogi.")) return; sd.disconnect(inst).then(function () { c.audit("institute.driveDisconnect", inst); c.toast("Disconnect ho gaya"); drv(); }, function (e) { c.toast("Nahi hua: " + (e.code || e.message)); }); });
+        });
+      })();
       m.querySelector("#bx-cat").onclick = function () {
         var bt = this; if (!window.SnapCatalog) return c.toast("Catalog module load nahi hua"); bt.disabled = true;
         window.SnapCatalog.syncAll(c.A.inst, c.A.batches, c.A.items, true).then(function () { bt.disabled = false; c.toast("✅ Catalog ban gaya (" + c.A.batches.length + " batch)"); }, function () { bt.disabled = false; c.toast("Catalog nahi bana"); });

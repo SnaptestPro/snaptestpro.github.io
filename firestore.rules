@@ -744,6 +744,15 @@ service cloud.firestore {
           (request.resource.data.youtubeChannelUrl.size() <= 200 &&
            request.resource.data.youtubeChannelUrl.matches('^https://(www[.]|m[.])?youtube[.]com/.*')));
 
+      // (a1b) v219: Drive STATUS — sirf driveConnected + driveEmail (token kabhi nahi). Sirf apna institute.
+      allow update: if isAdmin() && instituteId == adminInstituteId() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driveConnected', 'driveEmail']) &&
+        request.resource.data.driveConnected is bool &&
+        request.resource.data.driveEmail is string &&
+        request.resource.data.driveEmail.size() <= 100 &&
+        (request.resource.data.driveConnected == true || request.resource.data.driveEmail == '') &&
+        (request.resource.data.driveEmail == '' || request.resource.data.driveEmail.matches('^[^@ ]+@[^@ ]+[.][^@ ]+$'));
+
       // (a2) v132: Institute Join Code protection ka ON/OFF flag — sirf
       //      `requiresJoinCode` field. Asli code yahan kabhi nahi aata
       //      (woh alag, protected `instituteJoinCodes` collection mein

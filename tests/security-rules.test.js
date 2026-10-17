@@ -85,6 +85,11 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await t("Admin A apne institute ka youtubeChannelUrl set kar sakta hai", () => assertSucceeds(d(adminA, `institutes/${A}`).update({ youtubeChannelUrl: "https://www.youtube.com/@abc" })));
   await t("youtubeChannelUrl me non-youtube / http link NAHI chalta", () => assertFails(d(adminA, `institutes/${A}`).update({ youtubeChannelUrl: "https://evil.example.com/x" })));
   await t("Admin A, Institute B ka youtubeChannelUrl NAHI badal sakta", () => assertFails(d(adminA, `institutes/${B}`).update({ youtubeChannelUrl: "https://www.youtube.com/@abc" })));
+  await t("v219: Admin A apne institute ka Drive status (driveConnected+driveEmail) set kar sakta hai", () => assertSucceeds(d(adminA, `institutes/${A}`).update({ driveConnected: true, driveEmail: "inst.coaching@gmail.com" })));
+  await t("v219: Drive status me galat email NAHI chalta", () => assertFails(d(adminA, `institutes/${A}`).update({ driveConnected: true, driveEmail: "not-an-email" })));
+  await t("v219: Drive status ke saath koi aur field NAHI badal sakta (name)", () => assertFails(d(adminA, `institutes/${A}`).update({ driveConnected: true, driveEmail: "a@b.co", name: "Hack" })));
+  await t("v219: Admin A, Institute B ka Drive status NAHI badal sakta", () => assertFails(d(adminA, `institutes/${B}`).update({ driveConnected: true, driveEmail: "a@b.co" })));
+  await t("v219: driveConnected=false ke saath email NAHI rakh sakte (token/email leftover nahi)", () => assertFails(d(adminA, `institutes/${A}`).update({ driveConnected: false, driveEmail: "a@b.co" })));
   await t("Admin A, Institute B me item NAHI bana sakta", () => assertFails(d(adminA, `${PB}/batches/b1/items/x`).set({ kind: "note", title: "x", published: true, instituteId: B, batchId: "b1" })));
   await t("Admin A, Institute B ka subject/teacher/doubt NAHI bana/padh sakta", async () => {
     await assertFails(d(adminA, `${PB}/batches/b1/subjects/hack`).set({ name: "H", status: "active", instituteId: B, batchId: "b1" }));
