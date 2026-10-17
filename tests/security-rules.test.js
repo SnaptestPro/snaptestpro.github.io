@@ -91,7 +91,7 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await t("v219: Admin A, Institute B ka Drive status NAHI badal sakta", () => assertFails(d(adminA, `institutes/${B}`).update({ driveConnected: true, driveEmail: "a@b.co" })));
   await t("v219: driveConnected=false ke saath email NAHI rakh sakte (token/email leftover nahi)", () => assertFails(d(adminA, `institutes/${A}`).update({ driveConnected: false, driveEmail: "a@b.co" })));
   /* v220 Demo institute: Owner sirf isDemo data par */
-  await env.withSecurityRulesDisabled(async (c) => { await c.firestore().doc("institutes/demo_sample").set({ name: "Demo", isDemo: true }); await c.firestore().doc("tests/demo-test-x").set({ isDemo: true, title: "d" }); await c.firestore().doc("tests/real-test-x").set({ title: "r", instituteId: A }); });
+   await env.withSecurityRulesDisabled(async (c) => { const db = c.firestore(); await db.doc("institutes/demo_sample").set({ name: "Demo", isDemo: true }); await db.doc("tests/demo-test-x").set({ isDemo: true, title: "d" }); await db.doc("tests/real-test-x").set({ title: "r", instituteId: A }); });
   await t("v220: Owner demo student bana sakta hai (isDemo:true)", () => assertSucceeds(d(claimOwner, "students/0000000001").set({ name: "D", isDemo: true, instituteId: "demo_sample" })));
   await t("v220: Owner bina isDemo ke student NAHI bana sakta", () => assertFails(d(claimOwner, "students/9999999999").set({ name: "Real", instituteId: A })));
   await t("v220: Owner demo result bana sakta hai, asli result NAHI", () => Promise.all([assertSucceeds(d(claimOwner, "studentRecords/demo_rec_1_01").set({ isDemo: true, mobile: "0000000001" })), assertFails(d(claimOwner, "studentRecords/real1").set({ mobile: "9999999999" }))]));
