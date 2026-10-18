@@ -23,7 +23,7 @@
       // v120: ab local (same-origin) owner-panel.js aur exam-manager.js
       // bhi isi on-demand loader se load hoti hain — pehle dono
       // <script defer> se har page load par eager download hoti thin.
-            examManager: ["exam-manager.js?v=5"],
+            examManager: ["exam-manager.js?v=6"],
       // v125: 3D Solids Lab — React + Three.js + Babel-standalone (JSX
       // ko browser mein hi compile karta hai, kyunki app khud koi
       // build-step use nahi karta) — sab kuch sirf tabhi load hota hai
