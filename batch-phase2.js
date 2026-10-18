@@ -470,7 +470,7 @@
   function me() { var s = C().sess(); return s ? { mobile: String(s.mobile), name: s.name || "" } : null; }
   function strictFor(c) { var inst = c.S.inst; if (X.strict[inst] !== undefined) return Promise.resolve(X.strict[inst]); return secRef(c, inst).get().then(function (d) { return (X.strict[inst] = !!(d.exists && d.data().strict)); }).catch(function () { return false; }); }
   function progRef(c, b) { return sub(c, c.S.inst, b, "progress").doc(me().mobile); }
-  function loadProg(c, b) { return X.prog[b] ? Promise.resolve(X.prog[b]) : progRef(c, b).get().then(function (d) { return (X.prog[b] = (d.exists && d.data().done) || {}); }).catch(function () { return (X.prog[b] = {}); }); }
+  
   var COUNTABLE = ["recording", "note", "material", "ppt"];
   EXT.hooks.open = function (it, b) {
     try { if (!it || COUNTABLE.indexOf(it.kind) < 0 || !b) return; var c = C(), m = me(); if (!m) return; X.prog[b] = X.prog[b] || {}; if (X.prog[b][it.id]) return; X.prog[b][it.id] = 1;

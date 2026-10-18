@@ -31,3 +31,5 @@ Firestore individual requests must stay within provider limits for document coun
 - `deletedQuestions` listener is capped at 100 and `pdfDrafts` at 150.
 - Student test-attempt map (`savya_attempts_cache_<mobile>`) is reused for 10 minutes (`savya_attempts_ts_<mobile>`); own submissions call `_invalidateMyRecords()` which forces a fresh read.
 - Admin startup no longer loads the OMR exam list; it loads when the OMR tab opens.
+- v228: opening the app restores the admin's last tab; the heavy tools behind Records > Directory / Fix Mobile no longer auto-run on that restore (`window.__restoringView`). Students Directory record counts are cached 30 min (`snap_srcount_v1_<inst>`); the Fix Mobile scan (whole `studentRecords`) runs only on an explicit click after a restore.
+- v228: removed unused code (toggleTestLeaderboard, restoreDeletedTestOnline, deleteBankOnline, handlePdfUpload, renderAnalysis, getSelectedChapters, generateQuestionsForChapters, checkAutoSave, loadProg, loadAvail0, batchConvertMathEquations, needsMathConversion, runAutoDuplicateCheck, qgen helpers).

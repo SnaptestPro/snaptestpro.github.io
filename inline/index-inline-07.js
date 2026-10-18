@@ -1621,7 +1621,7 @@ function findDuplicates() {
 var lastDupGroups = [];
 var autoDupInProgress = false;
 var autoDupDebounceTimer = null;
-var autoDupHasRunOnce = false;
+
 
 function showDuplicateReport() {
   lastDupGroups = findDuplicates();
@@ -1636,54 +1636,11 @@ function scheduleAutoDuplicateCheck() {
   // no-op: silent auto-merge disabled on purpose
 }
 
-async function runAutoDuplicateCheck() {
-  if (autoDupInProgress) return;
-  var groups = findDuplicates();
-  lastDupGroups = groups;
-  var panelOpen = document.getElementById('dup-report-panel');
-  if (panelOpen) renderDupReportPanel(); // keep an open report panel in sync
-  if (!groups.length) return;
 
-  autoDupInProgress = true;
-  var totalRemoved = 0, groupCount = groups.length;
-  showAutoDupToast('🔁 ' + groupCount + ' duplicate group(s) mile — automatic merge ho raha hai...', true);
-  for (var i = 0; i < groups.length; i++) {
-    var group = groups[i].items;
-    var keep = pickBestInGroup(group);
-    var removeIds = group.filter(function(q){ return q.id !== keep.id; }).map(function(q){ return q.id; });
-    try {
-      var res = await window.mergeDuplicateGroup(keep.id, removeIds);
-      totalRemoved += res.ok;
-    } catch (e) { console.warn('[AutoDup] merge failed for a group', e); }
-  }
-  autoDupInProgress = false;
-  autoDupHasRunOnce = true;
-  if (totalRemoved > 0) {
-    showAutoDupToast('✅ Automatic Duplicate Check: ' + totalRemoved + ' duplicate(s) Recycle Bin mein move ho gaye (' + groupCount + ' group' + (groupCount > 1 ? 's' : '') + ').', false);
-  }
-  lastDupGroups = findDuplicates();
-  if (document.getElementById('dup-report-panel')) renderDupReportPanel();
-  if (typeof renderBank === 'function') renderBank();
-}
 
-function showAutoDupToast(msg, persistent) {
-  var old = document.getElementById('auto-dup-toast');
-  if (old) old.remove();
-  var t = document.createElement('div');
-  t.id = 'auto-dup-toast';
-  t.style.cssText = 'position:fixed;bottom:20px;right:20px;left:auto;max-width:340px;background:linear-gradient(135deg,#059669,#047857);color:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);z-index:99999;font-size:.82rem;font-weight:600;line-height:1.4;';
-  t.textContent = msg;
-  document.body.appendChild(t);
-  if (!persistent) {
-    setTimeout(function () {
-      t.style.transition = 'opacity .6s';
-      t.style.opacity = '0';
-      setTimeout(function () { t.remove(); }, 600);
-    }, 5500);
-  }
-}
+
 window.scheduleAutoDuplicateCheck = scheduleAutoDuplicateCheck;
-window.runAutoDuplicateCheck = runAutoDuplicateCheck;
+
 
 async function autoMergeAllDuplicates() {
   if (autoDupInProgress) { alert('Automatic merge already chal raha hai, thoda wait karo.'); return; }

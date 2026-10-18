@@ -728,7 +728,7 @@ function vPay(m) {
     });
   }
   function loadPay() { return pref(S.inst).get().then(function (d) { S.pay = d.exists ? d.data() : null; }).catch(function () { S.pay = null; }); }
-  function loadAvail() { return loadAvail0(); }
+  
   /* v170: request-status aur payment doc tabhi padhe jaate hain jab student "Available" tab kholta hai */
   function loadReqs() { var s = sess(); S.reqs = S.reqs || {}; return Promise.all([loadPay()].concat((S.avail || []).map(function (b) { return bref(S.inst, b.id).collection("requests").doc(String(s.mobile)).get().then(function (r) { b.req = r.exists ? r.data().status : null; S.reqs[b.id] = b.req; }).catch(function () {}); }))); }
   function payForm(b) {
@@ -750,10 +750,7 @@ function vPay(m) {
       }).then(function () { b.req = "pending"; md.remove(); toast("✅ Payment details bhej di — admin verify karega"); sHome(); }).catch(function (e) { btn.disabled = false; toast("Nahi gaya: " + (e.code || e.message)); });
     };
   }
-  function loadAvail0() {
-    var mine = S.mine || [];
-    return fetchAllBatches(S.ver).then(function (all) { S.avail = all.filter(function (b) { return mine.indexOf(b.id) < 0; }); applyReqCache(); }).catch(function () { S.avail = []; });
-  }
+  
   function reqEnroll(id) {
     var b0 = S.avail.filter(function (x) { return x.id === id; })[0]; if (b0 && b0.fee > 0) return payForm(b0);
     var s = sess(); bref(S.inst, id).collection("requests").doc(String(s.mobile)).set({ mobile: String(s.mobile), name: s.name || "", status: "pending", createdAt: FV().serverTimestamp() })
