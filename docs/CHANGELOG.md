@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-18 — v229: Multiple Sets (Paper Generator <-> OMR Exam Manager)
+
+- Paper Generator: Number of Sets (1–5), Set A–E preview/answer key/print/booklet/Word (All Sets), options shuffle toggle; `qSets` draft/test me save.
+- Publish sync: Exam Manager me `sets:N` + har set ki `answerKeys` paper ke order se; manual-edit safe (`manualSets`), `paperAnswerKeys`, "Paper se dobara bharo".
+- Safety: stale sets reject + warning, blank Set bubble warning/no auto-save, khali set key = ungraded.
+- Naye: `paper-sets.js`, `qgen-sets.js`; test `test_multi_sets_v229.js`; npm test 42/42. Version 1.4.20 / build 229. Notes: `docs/notes/MULTI_SETS_v229_NOTES.md`.
+
 ## 2026-10-17 — v224 Phase 6: institute ke liye pitch, demo, pehle din ki checklist, legal appendix
 
 - Naya `pitch.html` (noindex, sirf seedha link se): features (sirf wahi jo repo mein hain), kya abhi nahi hai, 2 minute demo script, pehle din ki checklist.

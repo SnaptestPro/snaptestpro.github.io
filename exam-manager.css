@@ -30,3 +30,7 @@
 .examgr-settings-footer{display:flex;gap:10px;margin-top:18px}
 .examgr-settings-footer button{flex:1;min-height:44px}
 @media(max-width:420px){.examgr-settings-sheet{padding:18px}.examgr-settings-section{padding:11px}.examgr-settings-grid{gap:8px}}
+
+/* v229 Multiple Sets */
+.examgr-akey-note{font-size:.8rem;line-height:1.5;padding:8px 10px;margin:6px 0;border-radius:8px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.25)}
+.examgr-akey-warn{color:#b91c1c;font-weight:700;margin-bottom:4px}

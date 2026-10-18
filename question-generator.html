@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
-<link rel="stylesheet" href="qgen-style.css?v=20260708-noback"/>
+<link rel="stylesheet" href="qgen-style.css?v=20261018-sets"/>
 <link rel="stylesheet" href="liquid-glass-qgen.css?v=1">
 </head>
 <body>
@@ -326,6 +326,19 @@ Model Answer: समाजवाद एक आर्थिक व्यवस्
         <label>Instructions (Hindi)</label>
         <textarea id="instructions" rows="2">सभी प्रश्न अनिवार्य हैं। प्रत्येक प्रश्न के लिए एक ही सही उत्तर है।</textarea>
       </div>
+      <div class="form-group qg-sets-box" id="qgSetsBox">
+        <label>Number of Sets (Multiple Sets)</label>
+        <select id="setCountSel" onchange="window.QGSets&amp;&amp;QGSets.setCount(this.value)">
+          <option value="1">1 Set (normal)</option>
+          <option value="2">2 Sets (A, B)</option>
+          <option value="3">3 Sets (A–C)</option>
+          <option value="4">4 Sets (A–D)</option>
+          <option value="5">5 Sets (A–E)</option>
+        </select>
+        <label class="qg-check"><input type="checkbox" id="setOptShuffle" onchange="window.QGSets&amp;&amp;QGSets.setOptShuffle(this.checked)"/> Options bhi shuffle karein</label>
+        <button type="button" class="btn btn-sm btn-outline full" id="setRegenBtn" style="display:none" onclick="window.QGSets&amp;&amp;QGSets.regenerate()">🔀 Sets dobara shuffle karein</button>
+        <div class="qg-set-info" id="setInfo">1 set = purana tareeka. 2–5 chunne par Set B–E auto-shuffle se banenge.</div>
+      </div>
       <button class="btn btn-success full" onclick="syncHeader()">✅ Apply Settings</button>
     </div>
 
@@ -359,11 +372,14 @@ Model Answer: समाजवाद एक आर्थिक व्यवस्
         <span class="badge" id="paperCount">0 Questions</span>
         <button class="btn btn-sm btn-outline" onclick="shuffleQuestions()">🔀 Shuffle</button>
         <button class="btn btn-sm btn-primary" onclick="exportToWord()">📄 Word (.docx)</button>
+        <button class="btn btn-sm btn-primary" id="qgAllSetsWordBtn" style="display:none" onclick="window.QGSets&amp;&amp;QGSets.exportWord(true)">📄 Word (All Sets)</button>
         <button class="btn btn-sm btn-danger" onclick="printPaper()">🖨️ Print PDF</button>
         <button class="btn btn-sm btn-outline" onclick="printPaperBooklet()">📖 Booklet</button>
         <button class="btn btn-sm btn-outline" onclick="exportBookletToWord()">📄 Booklet Word</button>
       </div>
     </div>
+
+    <div id="qgSetBar" class="qg-setbar" style="display:none"></div>
 
     <!-- PREVIEW TAB -->
     <div class="main-content" id="tab-preview">
@@ -372,7 +388,7 @@ Model Answer: समाजवाद एक आर्थिक व्यवस्
 
           <div class="paper-header">
             <div class="paper-header-top">
-              <span class="hbadge">TEST NO. <span id="h-testno">4</span></span>
+              <span class="hbadge">TEST NO. <span id="h-testno">4</span><span id="h-setlabel"></span></span>
               <span class="htopic" id="h-subject">COMBINED AUB.</span>
               <span class="hbadge">ON <span id="h-date">——</span></span>
             </div>
@@ -409,7 +425,7 @@ Model Answer: समाजवाद एक आर्थिक व्यवस्
             <div class="paper-header-top">
               <span class="hbadge">ANSWER KEY</span>
               <span class="htopic" id="ak-subject">COMBINED AUB.</span>
-              <span class="hbadge">TEST NO. <span id="ak-testno">4</span></span>
+              <span class="hbadge">TEST NO. <span id="ak-testno">4</span><span id="ak-setlabel"></span></span>
             </div>
           </div>
           <div class="ak-grid" id="akGrid">
@@ -441,7 +457,9 @@ Model Answer: समाजवाद एक आर्थिक व्यवस्
      since #omr-generate-sheet-btn / the `tests` global don't exist on
      this page. -->
 <script src="omr.js"></script>
-<script>document.write('<script src="qgen-app.js?v=20261008"><\/script>');</script>
+<script src="paper-sets.js?v=1"></script>
+<script src="qgen-sets.js?v=1"></script>
+<script>document.write('<script src="qgen-app.js?v=20261018"><\/script>');</script>
 <script>document.write('<script src="booklet-print.js?v=' + Date.now() + '"><\/script>');</script>
 <script>
 function updateQPreview() {

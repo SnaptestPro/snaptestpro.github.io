@@ -125,6 +125,10 @@
    *  STEP 1 — Collect questions + header (runs in the PARENT app window)  *
    * -------------------------------------------------------------------- */
   function collectQuestions() {
+    // v229 Multiple Sets: jo set preview me chuna hai, usi set ke order + option order me print/export
+    try {
+      if (window.QGSets && typeof window.QGSets.flat === "function") return window.QGSets.flat();
+    } catch (e) {}
     try {
       if (typeof isSectionMode === "function" && isSectionMode() && typeof getAllQuestionsFlat === "function") {
         return getAllQuestionsFlat();

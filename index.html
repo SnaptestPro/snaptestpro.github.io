@@ -769,8 +769,10 @@
         <div class="test-analysis-title">✅ Answer Key</div>
         <p class="muted-text" id="examgr-akey-sub">Har question ke liye sahi option par click karein.</p>
         <div class="examgr-akey-tabs" id="examgr-akey-tabs" hidden></div>
+        <div class="examgr-akey-note" id="examgr-akey-note" hidden></div>
         <div class="examgr-akey-list" id="examgr-akey-list"></div>
         <div class="examgr-akey-footer">
+          <button type="button" class="btn-secondary" id="examgr-akey-refill-btn" hidden>📄 Paper se dobara bharo</button>
           <button type="button" class="btn-secondary" id="examgr-akey-reset-btn">Reset</button>
           <button type="button" class="btn-primary" id="examgr-akey-save-btn">💾 Save</button>
         </div>
@@ -2265,6 +2267,7 @@ B"></textarea>
           guaranteed hai — is URL-versioning ki ab zaroorat nahi. Stable
           URL rakhne se browser/SW ka apna cache theek se kaam karta hai
           aur repeat visits kaafi fast ho jaate hain. -->
+<script defer src="paper-sets.js?v=1"></script>
 <script defer src="subject-resolver.js"></script>
 <script defer src="bank-idb.js?v=1"></script>
 <script defer src="pdf-import.js"></script>
