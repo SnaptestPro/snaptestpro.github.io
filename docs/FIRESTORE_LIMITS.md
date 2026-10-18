@@ -29,3 +29,5 @@ Firestore individual requests must stay within provider limits for document coun
 - Admin leaderboard no longer reads 3000 `studentRecords` on every render. Admin and students share the persisted delta cache (`savya_lb_light_v2`): one full read, then only newer records; full refresh every 6h (admin) / 24h (student).
 - Question-bank background auto-fixes (class tag, chapter merge, ID migration) are opt-in: `SNAP_CONFIG.bankAutoFix = true` or run `runBankAutoFixNow()` once from the console. Each migrated question costs 2 reads + 1 write + 1 delete.
 - `deletedQuestions` listener is capped at 100 and `pdfDrafts` at 150.
+- Student test-attempt map (`savya_attempts_cache_<mobile>`) is reused for 10 minutes (`savya_attempts_ts_<mobile>`); own submissions call `_invalidateMyRecords()` which forces a fresh read.
+- Admin startup no longer loads the OMR exam list; it loads when the OMR tab opens.
