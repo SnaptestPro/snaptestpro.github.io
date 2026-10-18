@@ -23,3 +23,9 @@ Firestore individual requests must stay within provider limits for document coun
 - Update security rules, required composite indexes, deletion scope, `DATA_MODEL.md` and tests with each new collection/query.
 
 `loadStudentsDirectory(true)` intentionally supports an explicit full-scan legacy recovery action. Keep that action clearly marked as slower and avoid invoking it automatically. The migration from load-all result screens to visible cursor-based pagination is incremental; current compatibility views still walk the bounded pages until the full history is loaded.
+
+## v226 read-reduction notes
+
+- Admin leaderboard no longer reads 3000 `studentRecords` on every render. Admin and students share the persisted delta cache (`savya_lb_light_v2`): one full read, then only newer records; full refresh every 6h (admin) / 24h (student).
+- Question-bank background auto-fixes (class tag, chapter merge, ID migration) are opt-in: `SNAP_CONFIG.bankAutoFix = true` or run `runBankAutoFixNow()` once from the console. Each migrated question costs 2 reads + 1 write + 1 delete.
+- `deletedQuestions` listener is capped at 100 and `pdfDrafts` at 150.

@@ -6,6 +6,7 @@
    ============================================================ */
 window.SNAP_CONFIG = {
   appName: "SnapTestPro",
+  bankAutoFix: false,  // v226 READS FIX: true karne par admin login par question-bank ki auto class-tag / chapter-merge / ID-migration chalti hai (har question par 2 reads+write+delete — bahut mehngi). Default false. Ek baar chalane ke liye console me: runBankAutoFixNow()
   serverAuth: false,   // Phase 4: true karne par login/register/PIN Worker se (salted hash + rate limit). Pehle docs/PHASE4_AUTH.md padhein.
   appCheck: {
     enabled: true,
@@ -44,7 +45,7 @@ window.SNAP_CONFIG = {
   },
   appLock: true,                                                      // institute-APK / ?inst= link lock + "app band hai" screen (kill-switch)
   ownerAlertEmail: "vishnu1234stm@gmail.com",                         // is email se login par owner app me alerts ka push aata hai
-  build: "225",
+  build: "226",
   ownerName: "Vishnu Sharma",
   supportPhone: "9525208263",
   supportWhatsapp: "9525208263",          // WhatsApp number (khaali = phone wala use hoga)
