@@ -507,6 +507,55 @@ service cloud.firestore {
       }
     }
 
+    // examRegistrations is the private, authoritative per-exam roster.
+    // Only admins in the same institute can list or change it. Students
+    // never read this collection; their published card is copied to the
+    // separately scoped studentExamRegistrations collection below.
+    match /examRegistrations/{registrationId} {
+      // A registration transaction reads deterministic candidate paths;
+      // allow an admin to observe that a path is absent without exposing
+      // another institute's existing registration.
+      allow get: if isAdmin() && (
+        resource == null ||
+        resource.data.instituteId == adminInstituteId()
+      );
+      allow list: if isAdmin() && resource.data.instituteId == adminInstituteId();
+      allow create: if isAdmin() &&
+        request.resource.data.instituteId == adminInstituteId() &&
+        request.resource.data.examId is string &&
+        request.resource.data.mobile is string &&
+        request.resource.data.rollNumber is int;
+      allow update: if isAdmin() &&
+        resource.data.instituteId == adminInstituteId() &&
+        request.resource.data.instituteId == adminInstituteId() &&
+        request.resource.data.examId == resource.data.examId;
+      allow delete: if isAdmin() &&
+        resource.data.instituteId == adminInstituteId();
+    }
+
+    // This collection contains only published admit cards. Students can
+    // query their own cards by mobile; the server rules ensure every
+    // returned document belongs to the authenticated student session.
+    // Institute admins can update card snapshots when exam details change.
+    match /studentExamRegistrations/{registrationId} {
+      allow get, list: if (isAdmin() &&
+        resource.data.instituteId == adminInstituteId()) ||
+        (isSignedIn() &&
+          resource.data.mobile == sessMobile());
+      allow create: if isAdmin() &&
+        request.resource.data.instituteId == adminInstituteId() &&
+        request.resource.data.admitCardPublished == true &&
+        request.resource.data.mobile is string &&
+        request.resource.data.examId is string;
+      allow update: if isAdmin() &&
+        resource.data.instituteId == adminInstituteId() &&
+        request.resource.data.instituteId == adminInstituteId() &&
+        request.resource.data.examId == resource.data.examId &&
+        request.resource.data.admitCardPublished == true;
+      allow delete: if isAdmin() &&
+        resource.data.instituteId == adminInstituteId();
+    }
+
     // app_settings holds sensitive things like the Groq AI API key —
     // admin-only, full stop.
     match /app_settings/{docId} {

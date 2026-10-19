@@ -1,0 +1,14 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "examRegistrations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "instituteId", "order": "ASCENDING" },
+        { "fieldPath": "examId", "order": "ASCENDING" },
+        { "fieldPath": "rollNumber", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

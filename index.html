@@ -123,12 +123,14 @@
   <link rel="stylesheet" href="creative-dashboard.css?v=1" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="exam-manager.css?v=1" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="id-card.css?v=2" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="admit-card.css?v=1" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="app-ui.css?v=7" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="batch-system.css?v=1">
   <noscript>
     <link rel="stylesheet" href="creative-dashboard.css?v=1">
     <link rel="stylesheet" href="exam-manager.css?v=1">
     <link rel="stylesheet" href="id-card.css?v=2">
+    <link rel="stylesheet" href="admit-card.css?v=1">
   </noscript>
   
   <!-- PERF FIX v2: 8 heavy CDN libraries (chart/OCR/excel/pdf/word-
@@ -808,6 +810,7 @@
              here; the actual suggested student match happens in the
              Link-to-Student step (examgr-link-student-overlay) below. -->
         <div class="examgr-scan-name-guess muted-text" id="examgr-scan-name-guess" hidden></div>
+        <div class="examgr-scan-roster-match" id="examgr-scan-roster-match" aria-live="polite" hidden></div>
 
         <!-- Quality warning: shown after capture when the picked frame is
              still blurry and/or too dark, so a bad scan gets caught here
@@ -2303,6 +2306,7 @@ B"></textarea>
 <script defer src="branding.js?v=1"></script>
 <script defer src="pdf-viewer.js?v=1"></script>
 <script defer src="id-card.js"></script>
+<script defer src="admit-card.js?v=1"></script>
 <script defer src="omr.js?v=2"></script>
 <script defer src="push-notifications.js"></script>
 <script defer src="native-push.js"></script>

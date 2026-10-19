@@ -16,6 +16,8 @@ This is a source-level map of the Firestore paths used by SnapTest Pro. Field se
 | `studentRecords/{recordId}` | Submitted answers, score, timing, student/test identifiers and review data. |
 | `studentMistakes/{mobile}` | Bounded mistake-review items for one student. |
 | `studentScanReports/{reportId}` | OMR scan results linked to a student and test. |
+| `examRegistrations/{examId}_{mobile}` | Private exam-specific student roster, sequential roll number and registration snapshot; readable by the owning institute admin. |
+| `studentExamRegistrations/{mobile}_{examId}` | Published admit card snapshot. Students can read only cards whose mobile matches their authenticated student session. |
 | `deletedQuestions/{questionId}`, `deletedTests/{testId}` | Soft-delete/recycle-bin metadata used by admin restore flows. |
 | `pdfDrafts/{draftId}`, `examManagerExams/{examId}` | Question-paper drafts and OMR/exam-manager setup. |
 | `instituteJoinCodes/{instituteId}`, `instituteJoinCodeChecks/{mobile}` | Join-code configuration and short-lived registration verification. |

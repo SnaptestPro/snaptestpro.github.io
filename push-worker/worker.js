@@ -925,6 +925,35 @@ async function fsDeleteMobileCollection(env, collectionId, mobile) {
   if ((await fsQueryMobile(env, collectionId, mobile)).length) throw new HttpErr(503, 'Linked data zyada hai. Delete process ko dobara chalayein; account abhi active hai.');
   return removed;
 }
+async function fsDeleteExamRegistrations(env, mobile) {
+  let removed = 0;
+  for (let page = 0; page < 3; page++) {
+    const docs = await fsQueryMobile(env, 'examRegistrations', mobile);
+    const matches = docs.filter((d) => fsDocPath(d).startsWith('examRegistrations/'));
+    if (!matches.length) break;
+    const byExam = new Map();
+    for (const doc of matches) {
+      const fields = doc.fields || {}, examId = fields.examId && fields.examId.stringValue;
+      if (examId) byExam.set(examId, (byExam.get(examId) || 0) + 1);
+    }
+    await fsBatchDeleteDocuments(env, matches.map(fsDocPath));
+    removed += matches.length;
+    for (const [examId, count] of byExam) {
+      const path = 'examManagerExams/' + examId, exam = await fsGetFields(env, path);
+      if (!exam || !exam.registeredStudentCount) continue;
+      const owner = exam.instituteId && exam.instituteId.stringValue;
+      const registration = matches.find((d) => d.fields && d.fields.examId && d.fields.examId.stringValue === examId);
+      const registrationInstitute = registration && registration.fields.instituteId && registration.fields.instituteId.stringValue;
+      if (owner && registrationInstitute && owner !== registrationInstitute) continue;
+      const oldCount = Number(exam.registeredStudentCount.integerValue || exam.registeredStudentCount.doubleValue || 0);
+      const nextCount = Math.max(0, oldCount - count);
+      await fsSetFields(env, path, { registeredStudentCount: nextCount, students: nextCount, updatedAt: new Date() }, []);
+    }
+    if (docs.length < 500) break;
+  }
+  if ((await fsQueryMobile(env, 'examRegistrations', mobile)).length) throw new HttpErr(503, 'Exam registrations zyada hain. Delete process ko dobara chalayein; account abhi active hai.');
+  return removed;
+}
 async function fsDeleteBatchMemberships(env, mobile, instituteId) {
   if (!instituteId) return 0;
   let removed = 0;
@@ -954,6 +983,8 @@ async function deleteStudentData(env, mobile, instituteId) {
   const removed = { records: 0, scanReports: 0, sessions: 0, batchMemberships: 0 };
   removed.records = await fsDeleteMobileCollection(env, 'studentRecords', mobile);
   removed.scanReports = await fsDeleteMobileCollection(env, 'studentScanReports', mobile);
+  await fsDeleteExamRegistrations(env, mobile);
+  await fsDeleteMobileCollection(env, 'studentExamRegistrations', mobile);
   removed.sessions = await fsDeleteMobileCollection(env, 'studentSessions', mobile);
   removed.batchMemberships = await fsDeleteBatchMemberships(env, mobile, instituteId);
   await fsDeleteDocument(env, 'studentMistakes/' + mobile);
