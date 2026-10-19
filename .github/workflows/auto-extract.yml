@@ -1,0 +1,47 @@
+name: Auto Extract Zip
+
+on:
+  push:
+    paths:
+      - '*.zip'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract all zip files
+        run: |
+          shopt -s nullglob dotglob
+          found=0
+          for z in *.zip; do
+            found=1
+            rm -rf /tmp/x && mkdir /tmp/x
+            unzip -q -o "$z" -d /tmp/x
+            rm -rf /tmp/x/__MACOSX
+
+            items=(/tmp/x/*)
+            if [ ${#items[@]} -eq 1 ] && [ -d "${items[0]}" ]; then
+              src="${items[0]}"
+            else
+              src=/tmp/x
+            fi
+
+            rm -rf "$src/.git" "$src/.github"
+            cp -a "$src"/. .
+            rm -f "$z"
+          done
+
+          if [ "$found" -eq 1 ]; then
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git add -A
+            git commit -m "Auto extract zip" || echo "No changes"
+            git pull --rebase
+            git push
+          fi
