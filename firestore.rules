@@ -514,6 +514,36 @@ service cloud.firestore {
       }
     }
 
+    // v231: Registration — test banne se pehle students register + roll shuffle + admit card.
+    // examManagerExams jaisa institute-wise isolation. Students ise nahi padhte
+    // (unhe sirf apna studentAdmitCards doc dikhta hai).
+    match /examRegistrations/{regId} {
+      allow read: if isAdmin() && (
+        !('instituteId' in resource.data) ||
+        resource.data.instituteId == adminInstituteId()
+      );
+      allow create: if isAdmin() && (
+        !('instituteId' in request.resource.data) ||
+        request.resource.data.instituteId == adminInstituteId()
+      );
+      allow update: if isAdmin() && (
+        !('instituteId' in resource.data) ||
+        resource.data.instituteId == adminInstituteId()
+      ) && (
+        !('instituteId' in request.resource.data) ||
+        request.resource.data.instituteId == adminInstituteId()
+      );
+      allow delete: if isAdmin() && (
+        !('instituteId' in resource.data) ||
+        resource.data.instituteId == adminInstituteId()
+      );
+
+      // roster/main = { list:[{name,mobile,classId,cls,group,roll?}], retired:[...] } — sirf admin
+      match /roster/{rid} {
+        allow read, write: if isAdmin();
+      }
+    }
+
     // v230: Admit Card — publish par har student ka ek doc (id = {examId}_{mobile}).
     // studentScanReports jaisa trust model: padhna signed-in, likhna/mitana sirf admin
     // aur sirf apne institute ke student ke liye.

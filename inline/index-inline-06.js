@@ -23,7 +23,7 @@
       // v120: ab local (same-origin) owner-panel.js aur exam-manager.js
       // bhi isi on-demand loader se load hoti hain — pehle dono
       // <script defer> se har page load par eager download hoti thin.
-            examManager: ["exam-manager.js?v=8", "exam-roster.js?v=1"],
+            examManager: ["exam-manager.js?v=9", "exam-roster.js?v=2", "exam-registration.js?v=1"],
       // v125: 3D Solids Lab — React + Three.js + Babel-standalone (JSX
       // ko browser mein hi compile karta hai, kyunki app khud koi
       // build-step use nahi karta) — sab kuch sirf tabhi load hota hai
@@ -78,6 +78,11 @@
     }
 
     // v179: Owner Panel entry hata diya (alag Owner APK). Exam Manager ke liye safe wrapper neeche rehta hai.
+    window.__examgrOpenRegSafe = function () {
+      window.__ensureLib("examManager").then(function () {
+        if (window.SnapReg) window.SnapReg.open();
+      });
+    };
     window.__examgrOpenAddSafe = function () {
       window.__ensureLib("examManager").then(function () {
         if (typeof window.examgrOpenAdd === "function") window.examgrOpenAdd();

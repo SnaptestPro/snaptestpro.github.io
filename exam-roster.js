@@ -5,10 +5,12 @@
    Data:  examManagerExams/{exam}/roster/main  = { list:[{roll,name,mobile,set,classId}], nextRoll }
           studentAdmitCards/{exam}_{mobile}    = student ko dikhne wala card (publish par bantा hai)
    exam-manager.js sirf chhote hooks se is module ko bulata hai (preload/onScan/guardSave/autoWhy/fieldsFor/linkTarget/tag/open).
+   v231: Exam banane se PEHLE "Registration" (exam-registration.js) me students register + roll shuffle + admit card publish ho sakta hai.
+         Exam ko Registration se jodne par (linkRegistration) wahi roll/students exam roster me copy ho jaate hain; scan verification waisa hi chalta hai.
    Kill-switch: SNAP_CONFIG.roster=false -> koi hook kuch nahi karta. */
 (function (root) {
   "use strict";
-  var SETS = ["A", "B", "C", "D", "E"], MAX_ROSTER = 3000, CARDS = "studentAdmitCards", EXAMS = "examManagerExams";
+  var SETS = ["A", "B", "C", "D", "E"], MAX_ROSTER = 3000, CARDS = "studentAdmitCards", EXAMS = "examManagerExams", REGS = "examRegistrations";
 
   /* ======================= PURE LOGIC (tests me bhi chalta hai) ======================= */
   function pad(n, d) { return String(n).padStart(d, "0"); }
@@ -75,6 +77,18 @@
     return { list: out, error: null };
   }
 
+  /* v231: Registration ka roster -> exam roster. Roll registration me fix hote hain (shuffled);
+     Set exam ke sets ke hisaab se roll se nikalta hai (admit card par set nahi chhapta). */
+  function fromRegistration(list, exam) {
+    exam = exam || {}; var out = [], max = 0;
+    (list || []).forEach(function (e) {
+      if (!e || !e.roll || !e.mobile) return;
+      var n = parseInt(e.roll, 10) || 0; if (n > max) max = n;
+      out.push({ roll: String(e.roll), name: e.name || "Student", mobile: e.mobile, classId: e.classId || null, set: exam.scanIgnoreSet ? null : setForRoll(e.roll, exam.sets) });
+    });
+    out.sort(cmpRoll); return { list: out, nextRoll: max + 1 };
+  }
+
   /* scan verification. R={list,by}, exam, scan={roll,setLetter,id}, results=[...], ocr=string
      -> {level:'none'|'ok'|'warn'|'error', issues:[{level,code,msg}], entry} */
   function verify(R, exam, scan, results, ocr) {
@@ -109,12 +123,12 @@
   }
   function csvCell(v) { return '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"'; }
 
-  var pure = { pad: pad, setForRoll: setForRoll, nameLooksSame: nameLooksSame, sim: sim, mergeRoster: mergeRoster, repad: repad, verify: verify, summary: summary, indexList: indexList, csvCell: csvCell, MAX_ROSTER: MAX_ROSTER };
+  var pure = { pad: pad, setForRoll: setForRoll, nameLooksSame: nameLooksSame, sim: sim, mergeRoster: mergeRoster, repad: repad, fromRegistration: fromRegistration, verify: verify, summary: summary, indexList: indexList, csvCell: csvCell, MAX_ROSTER: MAX_ROSTER };
   if (typeof module !== "undefined" && module.exports) module.exports = { pure: pure };
   if (typeof document === "undefined") return;
 
   /* ======================= BROWSER PART ======================= */
-  var C = {}, last = null, P = { id: null, sel: {}, q: "", tq: "", scope: "class", profile: true }, OV = null;
+  var C = {}, last = null, P = { id: null, sel: {}, q: "", tq: "", scope: "class", profile: true, regs: [] }, OV = null;
   function on() { return !(root.SNAP_CONFIG && root.SNAP_CONFIG.roster === false); }
   function X() { return root.__examgrCtx || null; }
   function DB() { return typeof root.getDB === "function" ? root.getDB() : null; }
@@ -234,13 +248,51 @@
       var R = C[id]; if (!on() || !R || !R.by || !R.by[String(roll || "").trim()]) return "";
       return " · " + String(R.by[String(roll).trim()].name).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
     },
-    open: function () { if (!on()) { alert("Roster feature band hai."); return; } openPanel(); }
+    open: function () { if (!on()) { alert("Roster feature band hai."); return; } openPanel(); },
+
+    /* ---- v231: Registration se jodna ---- */
+    regOptions: function () {
+      var d = DB(); if (!d) return Promise.resolve([]);
+      var iid = typeof getCurrentAdminInstituteId === "function" ? getCurrentAdminInstituteId() : null;
+      var q = iid ? d.collection(REGS).where("instituteId", "==", iid) : d.collection(REGS);
+      return q.get().then(function (snap) {
+        return snap.docs.map(function (x) { var v = x.data(); return { id: x.id, name: v.name || "Registration", date: v.date || "", published: !!v.published, count: Number(v.count) || 0, rollDigits: Number(v.rollDigits) || 3 }; })
+          .sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+      }).catch(function () { return []; });
+    },
+    /* Exam banane wale form ka "Registration se jodein" dropdown bharta hai */
+    fillRegSelect: function () {
+      var sel = document.getElementById("examgr-add-reg"), row = document.getElementById("examgr-add-reg-row"); if (!sel) return;
+      sel.textContent = ""; sel.appendChild(h("option", { value: "", text: "— Koi nahi (baad me bhi jod sakte hain) —" }));
+      if (row) row.style.display = "none"; if (!on()) return;
+      api.regOptions().then(function (arr) {
+        if (!arr.length) return; if (row) row.style.display = "";
+        arr.forEach(function (r) { var o = h("option", { value: r.id, text: r.name + " • " + r.count + " students" + (r.published ? "" : " (publish baaki)") }); if (!r.published) o.disabled = true; sel.appendChild(o); });
+      });
+    },
+    /* Registration ke published students + rolls ko exam ke roster me copy karo. Promise<bool> */
+    linkRegistration: function (examId, regId) {
+      var d = DB(), c = X(), ex = c && c.all()[examId];
+      if (!on() || !d || !ex || !regId) return Promise.resolve(false);
+      var ref = d.collection(REGS).doc(regId);
+      return Promise.all([ref.get(), ref.collection("roster").doc("main").get()]).then(function (r) {
+        if (!r[0].exists) throw new Error("Registration nahi mili.");
+        var reg = r[0].data(), ros = r[1].exists ? r[1].data() : { list: [] };
+        if (!reg.published) throw new Error("Pehle Registration publish karein — roll no publish par hi bante hain.");
+        var digits = Math.max(1, Math.min(5, Number(reg.rollDigits) || 3)), conv = fromRegistration(ros.list, ex);
+        if (!conv.list.length) throw new Error("Registration me koi student nahi hai.");
+        return d.collection(EXAMS).doc(examId).collection("roster").doc("main").set({ list: conv.list, nextRoll: conv.nextRoll, registrationId: regId, updatedAt: root.firebase.firestore.FieldValue.serverTimestamp() }).then(function () {
+          setData(examId, { list: conv.list, nextRoll: conv.nextRoll }); saveLocal(examId);
+          return c.patch(examId, { registrationId: regId, registrationName: reg.name || "", rollDigits: digits, students: conv.list.length, rosterCount: conv.list.length, instituteName: reg.instituteName || ex.instituteName || "" });
+        });
+      }).then(function (ok) { if (ok) c.refresh(); return !!ok; }).catch(function (e) { alert("Registration se jodna nahi ho paya: " + (e.message || e)); return false; });
+    }
   };
 
   /* ======================= ADMIN PANEL ======================= */
   function cardFor(ex, en) {
     var a = ex.admit || {};
-    return { examId: P.id, instituteName: ex.instituteName || "", examName: ex.examName || "", className: ex.className || "", date: ex.date || "", time: a.time || "", reportTime: a.reportTime || "", venue: a.venue || "", notes: a.notes || "", name: en.name, roll: en.roll, setLetter: en.set || null, mobile: en.mobile };
+    return { examId: P.id, instituteName: ex.instituteName || "", examName: ex.examName || "", className: ex.className || "", date: ex.date || "", time: a.time || "", reportTime: a.reportTime || "", venue: a.venue || "", notes: a.notes || "", name: en.name, roll: en.roll, mobile: en.mobile };
   }
   function instName(ex) {
     if (ex.instituteName) return Promise.resolve(ex.instituteName);
@@ -255,6 +307,7 @@
 
   function addStudents(arr) {
     var ex = ctxEx(), R = C[P.id]; if (!ex || !R) return;
+    if (ex.registrationId) { note("🔗 Ye exam Registration se juda hai — naye students Registration me jodein, phir yahan Sync dabayein."); return; }
     var res = mergeRoster(R.list, arr, { rollDigits: ex.rollDigits, sets: ex.sets, ignoreSet: ex.scanIgnoreSet, useProfile: P.profile, nextRoll: R.nextRoll });
     if (res.error) { note(res.error.code === "TOO_MANY" ? "⚠️ Ek exam me max " + res.error.max + " students." : "⚠️ Roll digits kam hain — Exam Settings me Roll No digits " + res.error.need + " ya zyada karein."); return; }
     R.list = res.list; R.nextRoll = res.nextRoll;
@@ -264,6 +317,7 @@
     });
   }
   function removeEntry(en) {
+    if (ctxEx().registrationId) { note("🔗 Registration se jude exam me student Registration se hatayein, phir Sync dabayein."); return; }
     if (!confirm("Roll " + en.roll + " — " + en.name + " ko roster se hata dein?" + (ctxEx().admitPublished ? "\nIska published Admit Card bhi delete ho jayega." : ""))) return;
     var R = C[P.id]; R.list = R.list.filter(function (x) { return x.roll !== en.roll; });
     var d = DB(); if (d && ctxEx().admitPublished) d.collection(CARDS).doc(P.id + "_" + en.mobile).delete().catch(function () {});
@@ -335,7 +389,7 @@
     });
   }
   function waLink(en, ex) {
-    var t = "Namaste " + en.name + ", " + (ex.examName || "exam") + " (" + root.SnapAdmit.prettyDate(ex.date) + ") ka Admit Card ready hai. Roll No: " + en.roll + (en.set ? ", Set " + en.set : "") + ". SnapTest app me \"Admit Card\" se dekhein/download karein.";
+    var t = "Namaste " + en.name + ", " + (ex.examName || "exam") + " (" + root.SnapAdmit.prettyDate(ex.date) + ") ka Admit Card ready hai. Roll No: " + en.roll + ". SnapTest app me \"Admit Card\" se dekhein/download karein.";
     return "https://wa.me/91" + en.mobile + "?text=" + encodeURIComponent(t);
   }
 
@@ -376,7 +430,7 @@
         h("span", { class: "ros-pill " + (b ? "ok" : ""), text: b ? "✅ " + b.marks : "—" }),
         h("button", { type: "button", class: "ros-ic", title: "Admit card dekhein", onclick: function () { instName(ex).then(function (n) { var c = cardFor(ex, e); c.instituteName = n; root.SnapAdmit.preview(c, photoOf(e.mobile)); }); } }, ["🎫"]),
         h("a", { class: "ros-ic", title: "WhatsApp", href: waLink(e, ex), target: "_blank", rel: "noopener" }, ["💬"]),
-        h("button", { type: "button", class: "ros-ic", title: "Hatayein", onclick: function () { removeEntry(e); } }, ["🗑️"])
+        ex.registrationId ? null : h("button", { type: "button", class: "ros-ic", title: "Hatayein", onclick: function () { removeEntry(e); } }, ["🗑️"])
       ]));
     });
     if (rows.length > 300) box.appendChild(h("div", { class: "muted-text", text: "Pehle 300 dikh rahe hain — search use karein." }));
@@ -408,6 +462,10 @@
     } }));
     var a = ex.admit || {}; ["time", "reportTime", "venue", "notes"].forEach(function (k) { var el = document.getElementById("ros-f-" + k); if (el && document.activeElement !== el) el.value = a[k] || ""; });
     var al = document.getElementById("ros-f-autolink"); if (al) al.checked = ex.rosterAutoLink !== false;
+    var lk = !!ex.registrationId, shw = function (id, v) { var el = document.getElementById(id); if (el) el.style.display = v ? "" : "none"; };
+    shw("ros-sec-add", !lk); shw("ros-sec-admit", !lk); shw("ros-link-sel", !lk); shw("ros-link-btn", !lk); shw("ros-sync-btn", lk);
+    var li = document.getElementById("ros-link-info");
+    if (li) li.textContent = lk ? "✅ Ye exam \"" + (ex.registrationName || "Registration") + "\" se juda hai. Roll No aur Admit Card wahin se bante/publish hote hain. Registration me badlav ke baad 'Sync' dabayein." : (P.regs && P.regs.length ? "Registration me pehle se students register hain? Chunkar jodein — roll no wahi rahenge jo admit card par hain." : "Koi publish ki hui Registration nahi mili. Exam Manager → 📝 Registration se banayein.");
     var pb = document.getElementById("ros-publish-btn"); if (pb) pb.textContent = ex.admitPublished ? "🔄 Admit Card dobara Publish (update)" : "🚀 Students ko Admit Card bhejein";
     renderStats(); renderPicker(); renderTable(); renderStatus();
   }
@@ -424,9 +482,23 @@
     if (miss.length) note("⚠️ Ye mobile registered students me nahi mile: " + miss.slice(0, 5).join(", ") + (miss.length > 5 ? " …" : "")); 
     if (found.length) addStudents(found);
   }
+  function fillLinkSel() {
+    var sel = document.getElementById("ros-link-sel"); if (!sel) return; sel.textContent = "";
+    sel.appendChild(h("option", { value: "", text: "— Registration chunein —" }));
+    P.regs.forEach(function (r) { var o = h("option", { value: r.id, text: r.name + " • " + r.count + " students" + (r.published ? " • roll digits " + r.rollDigits : " (publish baaki)") }); if (!r.published) o.disabled = true; sel.appendChild(o); });
+  }
+  function linkFromPanel(forceId) {
+    var ex = ctxEx(), sel = document.getElementById("ros-link-sel"), rid = typeof forceId === "string" ? forceId : (sel && sel.value), R = C[P.id];
+    if (!rid) { note("⚠️ Pehle upar se Registration chunein."); return; }
+    var reg = P.regs.filter(function (r) { return r.id === rid; })[0];
+    if (!ex.registrationId && R && R.list.length && !confirm("Is exam ke abhi ke " + R.list.length + " roster students hat kar Registration wale students aa jayenge. Aage badhein?")) return;
+    if (reg && reg.rollDigits !== (Number(ex.rollDigits) || 2) && !confirm("Exam ke Roll digits " + (Number(ex.rollDigits) || 2) + " se " + reg.rollDigits + " ho jayenge (OMR sheet par roll columns badlenge — chhapi hui sheet dobara chhapni pad sakti hai). Aage badhein?")) return;
+    note("⏳ Registration se jod rahe hain...");
+    api.linkRegistration(P.id, rid).then(function (ok) { if (ok) { renderAll(); note("✅ Registration se " + ((C[P.id] && C[P.id].list.length) || 0) + " students jud gaye. Roll No wahi hain jo admit card par hain."); } else note(""); });
+  }
   function build() {
     if (OV) return;
-    function sec(title, kids, open) { var d = h("details", open ? { open: "" } : {}, [h("summary", { text: title })].concat(kids)); d.className = "ros-sec"; return d; }
+    function sec(title, kids, open, id) { var d = h("details", open ? { open: "" } : {}, [h("summary", { text: title })].concat(kids)); d.className = "ros-sec"; if (id) d.id = id; return d; }
     function field(id, label, tag, ph) { var i = h(tag || "input", { id: "ros-f-" + id, placeholder: ph || "" }); if (tag === "textarea") i.rows = 3; return h("label", { class: "ros-field" }, [h("span", { text: label }), i]); }
     var scope = h("select", { id: "ros-scope", onchange: function () { P.scope = this.value; renderPicker(); } }, [h("option", { value: "class", text: "Is exam ki Class ke students" }), h("option", { value: "all", text: "Institute ke saare students" })]);
     var search = h("input", { type: "search", placeholder: "Naam / mobile se dhoondhein", oninput: function () { P.q = this.value; renderPicker(); } });
@@ -438,6 +510,13 @@
       h("div", { class: "ros-stats", id: "ros-stats" }),
       h("p", { class: "examgr-notice", id: "ros-notice", hidden: "" }),
       h("div", { class: "examgr-notice ros-warnbox", id: "ros-warn", hidden: "" }),
+      sec("🔗 Registration se jodein (pehle se register students)", [
+        h("p", { class: "muted-text", id: "ros-link-info" }),
+        h("select", { id: "ros-link-sel", class: "ros-linksel" }),
+        h("div", { class: "ros-btnrow" }, [
+          h("button", { type: "button", class: "btn-primary", id: "ros-link-btn", text: "🔗 Jodein", onclick: function () { linkFromPanel(); } }),
+          h("button", { type: "button", class: "btn-secondary", id: "ros-sync-btn", text: "🔄 Registration se dobara sync", onclick: function () { var ex = ctxEx(); if (ex && ex.registrationId) linkFromPanel(ex.registrationId); } })])
+      ], true, "ros-sec-link"),
       sec("👥 1. Students chunein (Roll No + Set auto)", [
         h("div", { class: "ros-ctl" }, [scope, search]),
         h("label", { class: "ros-chk" }, [prof, h("span", { text: "Student profile ka Roll Number use karein (jahan numeric aur unique ho), baaki auto" })]),
@@ -447,7 +526,7 @@
           h("button", { type: "button", class: "btn-primary", id: "ros-add-btn", text: "➕ Add karein", onclick: function () { addStudents(Object.keys(P.sel).map(function (k) { return P.sel[k]; })); } })]),
         h("label", { class: "ros-field" }, [h("span", { text: "Ya mobile numbers paste karein (comma / space se alag)" }), h("textarea", { id: "ros-mobiles", rows: "2" })]),
         h("button", { type: "button", class: "btn-secondary", text: "➕ Mobile se add karein", onclick: addByMobiles })
-      ], true),
+      ], true, "ros-sec-add"),
       sec("📋 Roster (Roll No → Student)", [h("input", { type: "search", placeholder: "Roster me dhoondhein", oninput: function () { P.tq = this.value; renderTable(); } }), h("div", { id: "ros-table" })], true),
       sec("🎫 2. Admit Card details", [
         field("time", "Exam Time", "input", "jaise 10:00 AM – 1:00 PM"), field("reportTime", "Reporting Time", "input", "jaise 9:30 AM"), field("venue", "Venue / Center", "input", "Hall / Room / Address"),
@@ -457,7 +536,7 @@
           h("button", { type: "button", class: "btn-secondary", text: "💾 Details save", onclick: saveSettings }),
           h("button", { type: "button", class: "btn-primary", id: "ros-publish-btn", text: "🚀 Publish", onclick: publish }),
           h("button", { type: "button", class: "btn-secondary", text: "📄 Sab ke Print (PDF)", onclick: printAll })])
-      ]),
+      ], false, "ros-sec-admit"),
       sec("📊 3. Scan status & Anomalies", [h("div", { id: "ros-status" }), h("div", { class: "ros-btnrow" }, [
         h("button", { type: "button", class: "btn-secondary", text: "🙈 Absentees auto-fill", onclick: fillAbsentees }),
         h("button", { type: "button", class: "btn-secondary", text: "⬇️ Attendance CSV", onclick: csvDownload }),
@@ -473,6 +552,7 @@
     P.id = c.id(); P.sel = {}; P.q = ""; P.tq = ""; build();
     c.hideDetails(); OV.classList.remove("hidden"); note("");
     Promise.all([load(P.id), typeof root.ensureAllStudentsCache === "function" ? Promise.resolve(root.ensureAllStudentsCache()).catch(function () {}) : null]).then(renderAll);
+    api.regOptions().then(function (arr) { P.regs = arr; fillLinkSel(); renderAll(); });
     renderAll();
   }
   root.SnapRoster = api;

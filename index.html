@@ -121,13 +121,13 @@
        jab tak admin us panel par jaaye, tab tak yeh already load ho
        chuki hoti hain. -->
   <link rel="stylesheet" href="creative-dashboard.css?v=1" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="exam-manager.css?v=2" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="exam-manager.css?v=3" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="id-card.css?v=2" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="app-ui.css?v=7" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="batch-system.css?v=1">
   <noscript>
     <link rel="stylesheet" href="creative-dashboard.css?v=1">
-    <link rel="stylesheet" href="exam-manager.css?v=2">
+    <link rel="stylesheet" href="exam-manager.css?v=3">
     <link rel="stylesheet" href="id-card.css?v=2">
   </noscript>
   
@@ -661,7 +661,11 @@
           <label for="examgr-add-roll-digits">Roll No Digits (sheet par kitne digit bubble columns)</label>
           <select id="examgr-add-roll-digits"><option value="1">1 digit</option><option value="2" selected>2 digits</option><option value="3">3 digits</option><option value="4">4 digits</option><option value="5">5 digits</option></select>
         </div>
-        <p class="muted-text" style="font-size:.78rem;margin-top:-6px;">Note: printable OMR sheet ek fixed 100-question/5-column layout par based hai, isliye questions max 100 tak rakhein. 1 se zyada set ho to har set ki apni answer key Answer Key screen mein alag se bharni hogi.</p>
+        <div class="field-row" id="examgr-add-reg-row" style="display:none">
+           <label for="examgr-add-reg">📝 Registration se jodein (pehle se register students + roll)</label>
+           <select id="examgr-add-reg"></select>
+         </div>
+         <p class="muted-text" style="font-size:.78rem;margin-top:-6px;">Note: printable OMR sheet ek fixed 100-question/5-column layout par based hai, isliye questions max 100 tak rakhein. 1 se zyada set ho to har set ki apni answer key Answer Key screen mein alag se bharni hogi.</p>
         <button type="button" class="btn-primary" id="examgr-add-save-btn" style="width:100%;">💾 Exam Banayein</button>
       </div>
     </div>
@@ -2034,6 +2038,7 @@ B"></textarea>
         <div class="card" style="margin-bottom:16px;">
           <h3 class="section-title">🗂️ Exam Manager</h3>
           <p class="muted-text">Apne offline/paper exams yahan manage karein — question bank se link nahi hai, sirf ek halka record hai: answer key, sheets ka collection-count, aur reports jaisi bookkeeping ke liye.</p>
+          <button type="button" class="btn-secondary" onclick="__examgrOpenRegSafe()" style="width:100%;margin-bottom:8px;">📝 Registration (test se pehle students + admit card)</button>
           <button type="button" class="btn-primary" onclick="__examgrOpenAddSafe()" style="width:100%;">+ Naya Exam Banayein</button>
           <button type="button" class="btn-secondary" onclick="syncOldTestsToExamManager()" id="examgr-sync-old-btn" style="width:100%;margin-top:10px;">🔄 Purane Publish Kiye Tests Ko Sync Karein</button>
           <p class="muted-text" style="font-size:.78rem;margin-top:4px;">Naye publish hone wale tests ab yahan khud-ba-khud aa jaate hain. Ye button un purane tests ke liye hai jo is feature se PEHLE publish ho chuke the — ek baar dabane se sabhi (draft chhodkar) yahan sync ho jaayenge.</p>

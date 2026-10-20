@@ -80,3 +80,9 @@
 .ros-err{background:#fee2e2;border-color:#ef4444;color:#7f1d1d}
 .ros-wait{background:#eef2ff;color:#3730a3}
 @media (max-width:520px){.ros-stats{grid-template-columns:repeat(2,1fr)}}
+
+/* v231 registration */
+.reg-row .reg-main{cursor:pointer;flex:1;min-width:0}
+.reg-new{padding:12px;margin-bottom:12px}
+.reg-back{margin-bottom:8px}
+.ros-linksel{width:100%;margin:6px 0}

@@ -92,13 +92,8 @@
         c.fillStyle = NAVY; c.font = "bold 46px Arial, 'Noto Sans Devanagari', 'Nirmala UI', Mangal, sans-serif"; c.textAlign = "center"; c.fillText(roll.charAt(i), bx + i * 62 + 27, by + 54); c.textAlign = "left";
       }
       var after = bx + roll.length * 62 + 20;
-      if (card.setLetter) {
-        c.fillStyle = GRAY; c.font = "bold 16px Arial, 'Noto Sans Devanagari', 'Nirmala UI', Mangal, sans-serif"; c.fillText("EXAM SET", after, by - 8);
-        c.fillStyle = NAVY; c.fillRect(after, by, 92, 72); c.fillStyle = GOLD; c.font = "bold 52px Arial, 'Noto Sans Devanagari', 'Nirmala UI', Mangal, sans-serif"; c.textAlign = "center";
-        c.fillText(String(card.setLetter), after + 46, by + 54); c.textAlign = "left"; after += 112;
-      }
       c.fillStyle = INK; c.font = "17px Arial, 'Noto Sans Devanagari', 'Nirmala UI', Mangal, sans-serif";
-      wrap(c, "OMR sheet ke 'Roll No' me yahi number bharein" + (card.setLetter ? " aur Exam Set me " + card.setLetter + "." : "."), W - after - 44, 3)
+      wrap(c, "OMR sheet ke 'Roll No' me yahi number bharein.", W - after - 44, 3)
         .forEach(function (ln, k) { c.fillText(ln, after, by + 22 + k * 24); });
       /* instructions */
       c.fillStyle = SOFT; c.fillRect(40, 590, W - 80, 176);
@@ -193,7 +188,7 @@
         var row = document.createElement("div"); row.className = "examgr-report-row ros-cardrow";
         var l = document.createElement("div"); l.className = "ros-cardrow-l";
         var a = document.createElement("strong"); a.textContent = cd.examName || "Exam";
-        var b = document.createElement("span"); b.className = "muted-text"; b.textContent = prettyDate(cd.date) + (cd.time ? " • " + cd.time : "") + " • Roll " + (cd.roll || "-") + (cd.setLetter ? " • Set " + cd.setLetter : "");
+        var b = document.createElement("span"); b.className = "muted-text"; b.textContent = prettyDate(cd.date) + (cd.time ? " • " + cd.time : "") + " • Roll " + (cd.roll || "-");
         l.appendChild(a); l.appendChild(b);
         var v = document.createElement("button"); v.type = "button"; v.className = "btn-primary"; v.textContent = "Dekhein";
         v.onclick = function () { v.disabled = true; photoP = photoP || myPhoto(m); photoP.then(function (p) { return preview(cd, p); }).then(function () { v.disabled = false; }); };

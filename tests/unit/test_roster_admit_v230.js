@@ -182,7 +182,7 @@ T('exam-manager.js me saare hooks maujood aur syntax theek', () => {
 });
 T('index.html: button + admit-card.js; loader me exam-roster.js; sw precache; rules; flags; css', () => {
   assert.ok(R('index.html').includes('data-action="roster"')); assert.ok(R('index.html').includes('admit-card.js'));
-  assert.ok(/examManager:\s*\["exam-manager\.js\?v=8",\s*"exam-roster\.js/.test(R('inline/index-inline-06.js')));
+  assert.ok(/examManager:\s*\["exam-manager\.js\?v=\d+",\s*"exam-roster\.js/.test(R('inline/index-inline-06.js')));
   const sw = R('sw.js'); assert.ok(sw.includes('"/exam-roster.js"') && sw.includes('"/admit-card.js"'));
   const fr = R('firestore.rules'); assert.ok(/match \/roster\/\{rid\}/.test(fr) && /match \/studentAdmitCards\/\{docId\}/.test(fr));
   const cfg = R('app-config.js'); assert.ok(/roster:\s*true/.test(cfg) && /admitCard:\s*true/.test(cfg));
