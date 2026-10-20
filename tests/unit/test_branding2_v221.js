@@ -27,7 +27,7 @@ assert(/Powered by SnapTest Pro/.test(win.SnapBrand.printBar())); assert(!/<b>|<
 ({ win, store } = boot({ branding2: false }, B)); assert.strictEqual(win.SnapBrand.rsf('name', 'सव्यसाची'), 'सव्यसाची'); assert.strictEqual(win.SnapBrand.plain(), 'SnapTest Pro'); assert.strictEqual(win.SnapBrand.printBar(), ''); assert.strictEqual(store.snap_brand2_off, '1');
 ({ win, store } = boot({}, B)); assert.strictEqual(store.snap_brand2_off, undefined);
 /* cache na ho -> sab purana */
-({ win } = boot({}, null)); assert.strictEqual(win.SnapBrand.rsf('name', 'X'), 'X'); assert.strictEqual(win.SnapBrand.printBar(), '');
+({ win } = boot({}, null)); assert.strictEqual(win.SnapBrand.rsf('name', 'X'), 'X'); assert(/Powered by SnapTest Pro/.test(win.SnapBrand.printBar()), 'v233: bina institute-branding ke bhi tag-only bar'); assert(!/<img/.test(win.SnapBrand.printBar()));
 /* hooks maujood: result sheet, WhatsApp, print, owner switch, config, splash */
 const sj = rd('script.js'); assert(/SnapBrand\.rsf\("logo"/.test(sj) && /SnapBrand\.rsf\("name"/.test(sj)); assert.strictEqual((sj.match(/SnapBrand\.plain\(\)/g) || []).length, 4);
 assert(/SnapBrand\.plain/.test(rd('upgrade.js'))); assert(/printBar/.test(rd('booklet-print.js'))); assert(/printBar/.test(rd('four-column-print.js')));

@@ -9,6 +9,12 @@
   var NAVY = "#1e1b4b", GOLD = "#fbbf24", INK = "#111827", GRAY = "#6b7280", LINE = "#c7d2fe", SOFT = "#eef2ff";
 
   function admitId(examId, roll) { return String(examId || "").slice(0, 5).toUpperCase() + "-" + String(roll || ""); }
+  /* "Powered by SnapTest Pro" tag (Owner Panel hidePoweredBy ya SNAP_CONFIG.brandMark=false par nahi) */
+  function markText() {
+    if (root.SNAP_CONFIG && root.SNAP_CONFIG.brandMark === false) return "";
+    var B = root.SnapBrand; if (B && B.mark) return B.mark.on() ? B.mark.text : "";
+    return "Powered by SnapTest Pro";
+  }
   function maskMobile(m) { m = String(m || "").replace(/\D/g, "").slice(-10); return m.length === 10 ? "XXXXXX" + m.slice(6) : ""; }
   function prettyDate(s) {
     var d = new Date(String(s || "") + "T00:00:00"); if (isNaN(d.getTime())) return String(s || "");
@@ -106,6 +112,7 @@
         c.beginPath(); c.moveTo(s[0] - 130, 806); c.lineTo(s[0] + 130, 806); c.stroke(); c.fillText(s[1], s[0], 826);
       });
       c.textAlign = "right"; c.font = "bold 15px Arial, 'Noto Sans Devanagari', 'Nirmala UI', Mangal, sans-serif";
+      var mk = markText(); if (mk) { c.textAlign = "left"; c.fillStyle = GRAY; c.font = "bold 15px Arial, sans-serif"; c.fillText(mk, 44, 852); c.textAlign = "right"; c.fillStyle = GRAY; }
       c.fillText("Admit ID: " + admitId(card.examId, card.roll) + (card.mobile ? "  •  " + maskMobile(card.mobile) : ""), W - 44, 852);
       return cv;
     });

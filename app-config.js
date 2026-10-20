@@ -26,6 +26,7 @@ window.SNAP_CONFIG = {
   catalog: true,                                                      // v218: batch ki list chhote catalog se (reads kam). false = purana tareeka (poore items padhna)
   youtubeLive: true,                                                  // v217: live class = YouTube embed (ytId). false = Phase 0 wala purana link-prompt (kill-switch)
   driveUpload: true,
+  brandMark: true,                                                    // v233: har output (admit card, result sheet, paper print) par "Powered by SnapTest Pro" tag. Institute-wise chhupana: Owner Panel hidePoweredBy. false = sab jagah band
   registration: true,                                                 // v231: Test se pehle "Registration" (students + shuffled roll + admit card). false = band
   roster: true,                                                       // v230: Exam Manager me "Admit Card & Roster" + scan par roll-match/anomaly check. false = purana scan flow (kill-switch)
   admitCard: true,                                                    // v230: student dashboard par "Admit Card" card. false = card nahi dikhta (kill-switch)

@@ -63,8 +63,13 @@
     return "";
   }
   /* print (booklet / 4-column) ke upar ek patli brand patti; "Powered by" usi me chhoti, taaki page layout na chhede */
+  /* v233: "Powered by SnapTest Pro" tag -- institute ke generate kiye outputs (admit card, result sheet, paper print) par.
+     Institute-wise chhupana: Owner Panel -> "Powered by chhupayein" (hidePoweredBy). Kill-switch: SNAP_CONFIG.brandMark=false */
+  var MARK_TXT = "Powered by SnapTest Pro";
+  function markOn() { if (window.SNAP_CONFIG && window.SNAP_CONFIG.brandMark === false) return false; var x = cur && jget(PFX + cur); return !(x && x.hidePoweredBy); }
+  function markHtml(style) { return markOn() ? '<div class="snap-mark" style="' + (style || "text-align:center;font-size:10px;color:#6b7280;padding:4px 0;") + '">' + MARK_TXT + "</div>" : ""; }
   function printBar() {
-    var x = curB(); if (!x) return "";
+    var x = curB(); if (!x) return on2() && markOn() ? '<div class="snap-mark" style="text-align:right;font-size:9px;color:#6b7280;padding:2px 8px;margin-bottom:4px;">' + MARK_TXT + "</div>" : "";
     var col = okColor(x.brandColor) ? x.brandColor : "#1f2937";
     return '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;margin-bottom:6px;border-bottom:2px solid ' + col + ';-webkit-print-color-adjust:exact;print-color-adjust:exact;">' +
       (okLogo(x.logoDataUrl) ? '<img src="' + x.logoDataUrl + '" alt="" style="width:26px;height:26px;object-fit:contain;">' : "") +
@@ -169,7 +174,7 @@
   }
 
   window.SnapBrand = { refresh: refresh, load: load, cached: function (id) { return jget(PFX + id); } };
-  window.SnapBrand.plain = plain; window.SnapBrand.rsf = rsf; window.SnapBrand.printBar = printBar;
+  window.SnapBrand.plain = plain; window.SnapBrand.rsf = rsf; window.SnapBrand.printBar = printBar; window.SnapBrand.mark = { on: markOn, text: MARK_TXT, html: markHtml };
   window.SnapQuota = { check: check, add: function (id, b) { return bump(id, b, 1); }, sub: function (id, b) { return bump(id, -Math.abs(b || 0), -1); } };
 
   /* splash (index-inline-05.js) ke liye kill-switch flag — wo script app-config se pehle chalti hai, isliye localStorage me */

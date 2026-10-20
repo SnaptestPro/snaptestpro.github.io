@@ -80,3 +80,13 @@ Browser se seedha Google Form banana possible nahi (Google OAuth chahiye), isliy
 - Form responses **pull** hote hain (🔄 dabana padta hai) — live push nahi, kyunki bina server ke Firestore me Google Form se seedha likhna surakshit nahi.
 - Token sirf is registration/admin ka hai; URL+token jisko mile wo form responses (naam/mobile) padh sakta hai — URL kisi ko na dein.
 - Firestore rules me `photos/{pid}` add hua — **firestore.rules dobara publish karein.**
+
+---
+# v233 — "Powered by SnapTest Pro" tag
+
+Institute jo bhi output banaye usme tag: **Admit Card** (canvas footer, isliye PDF/preview/download sab me), **Result Sheet**, **Question-paper print (booklet / 4-column)** (pehle sirf naam wale institute ko aata tha; ab har institute ko tag-only patti). **OMR sheet** (HTML aur .docx) ke title me pehle se "SnapTest Pro" hai — alag se nahi badla.
+- Helper: `SnapBrand.mark` (`on()`, `text`, `html()`), branding.js me.
+- Institute-wise chhupana: Owner Panel → institute → "Powered by chhupayein" (`hidePoweredBy`) ON ho to tag nahi aata (white-label plan ke liye).
+- Sab jagah band: `app-config.js` → `brandMark: false`.
+- Abhi tag nahi: ID card (app ke andar ka view), CSV files, OMR sheet par alag footer, exam-manager ki baaki reports.
+- Tests: tests/unit/test_brandmark_v233.js; test_branding2_v221.js me printBar ki expectation badli (ab tag-only bar aata hai).
