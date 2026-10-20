@@ -53,3 +53,30 @@ Badle: `exam-manager.js` (13 chhote hooks, `window.SnapRoster` na ho to purana b
 ## Limit
 - Dusre institute ke *registered* student ka card app me tab nahi jayega jab rules `studentBelongsToAdmin` roke — publish uski ginti dikhata hai; unhe PDF/WhatsApp se dein.
 - `studentAdmitCards` abhi har signed-in user padh sakta hai (v230 jaisa trust model).
+
+
+---
+# v232 — App par registered hona zaroori nahi + Google Form auto-register
+
+## Kya badla
+- Registration me ab **app ke students nahi dikhte**. Admin har student ko khud bharta hai: Naam*, Mobile*, Father, Class, DOB, School/Institute, **Photo** (camera/gallery). School/Class agle student par yaad rehta hai (institute-institute jaakar bharne ke liye).
+- **Excel/Sheet paste**: har line `Naam, Mobile, Father, Class, DOB, School` (tab ya comma; mobile kisi bhi column me).
+- Student ko edit (✏️), photo badalna/lagana (➕📷) list se. Publish ke baad edit karne par card doc update.
+- **Admit card** par ab Father's name / DOB / Class / School bhi (jo bhara ho). Set abhi bhi nahi.
+- Photo `examRegistrations/{id}/photos/{mobile}` me (240x300 jpeg ~15–20KB). Student-app wale card doc me photo nahi jaati (wo sab signed-in users padh sakte hain) — photo sirf PDF/preview me.
+- PDF "Institute: X" chunkar institute-wise.
+
+## Google Form (auto-generate + auto-register)
+Browser se seedha Google Form banana possible nahi (Google OAuth chahiye), isliye **ek baar** ka setup:
+1. Registration → "📋 Google Form" → "Setup": app ek Apps Script code deta hai (token ke saath).
+2. script.google.com → New project → code paste → Deploy → Web app (Execute as: Me, Access: Anyone) → URL app me paste → Save & test.
+3. Uske baad har registration me **📋 Google Form banayein** = naya Form automatic (Naam, Mobile (10-digit validation), Father, Class, DOB, School). Link copy/WhatsApp.
+4. Students form bharte hain → admin **🔄 Responses laayein** dabata hai → naye students register (duplicate mobile skip; publish ho chuka ho to turant random roll + card).
+5. **⛔ Form band** se registration band.
+- Setup ka URL+token registration doc (`formEndpoint`, `formToken`) me save hota hai, isliye dusri registration/device par dobara nahi bharna.
+
+## Limit
+- Google Form me **photo upload nahi** (Apps Script se file-upload question banta hi nahi + respondent ko Google login chahiye). Photo list se admin lagata hai.
+- Form responses **pull** hote hain (🔄 dabana padta hai) — live push nahi, kyunki bina server ke Firestore me Google Form se seedha likhna surakshit nahi.
+- Token sirf is registration/admin ka hai; URL+token jisko mile wo form responses (naam/mobile) padh sakta hai — URL kisi ko na dein.
+- Firestore rules me `photos/{pid}` add hua — **firestore.rules dobara publish karein.**

@@ -542,6 +542,11 @@ service cloud.firestore {
       match /roster/{rid} {
         allow read, write: if isAdmin();
       }
+
+      // v232: students ki photo (240x300 jpeg data-URL) — roster doc ke 1MB budget se alag, sirf admin
+      match /photos/{pid} {
+        allow read, write: if isAdmin();
+      }
     }
 
     // v230: Admit Card — publish par har student ka ek doc (id = {examId}_{mobile}).

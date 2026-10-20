@@ -86,3 +86,8 @@
 .reg-new{padding:12px;margin-bottom:12px}
 .reg-back{margin-bottom:8px}
 .ros-linksel{width:100%;margin:6px 0}
+.reg-prev{width:96px;height:120px;object-fit:cover;border-radius:10px;border:2px solid #1f1b4d;margin:6px 0;display:block}
+.reg-code{width:100%;font-family:monospace;font-size:.72rem;margin:6px 0}
+.reg-formlink{width:100%;margin:6px 0}
+.reg-alink{display:inline-flex;align-items:center;text-decoration:none;padding:8px 12px}
+.reg-setup-link{background:none;border:0;color:#4f46e5;text-decoration:underline;margin-top:8px;padding:4px 0;cursor:pointer}

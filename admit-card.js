@@ -69,20 +69,20 @@
         c.fillStyle = GRAY; c.font = "16px Arial, 'Noto Sans Devanagari', 'Nirmala UI', Mangal, sans-serif"; c.fillText("Photo yahan lagayein", 150, 440); c.textAlign = "left";
       }
       /* fields */
-      var rows = [
-        ["STUDENT NAME", card.name || "-"],
-        ["CLASS", card.className || "-"],
-        ["DATE", prettyDate(card.date) + (card.time ? "   •   Time: " + card.time : "")],
-        ["VENUE / CENTER", card.venue || "-"]
-      ];
-      if (card.reportTime) rows[2][1] += "   •   Reporting: " + card.reportTime;
-      var y = 222;
+      var rows = [["STUDENT NAME", card.name || "-"]];
+      if (card.fatherName || card.dob) rows.push(["FATHER'S NAME" + (card.dob ? " / DATE OF BIRTH" : ""), (card.fatherName || "") + (card.fatherName && card.dob ? "   •   DOB: " : card.dob ? "DOB: " : "") + (card.dob ? prettyDate(card.dob) : "")]);
+      rows.push([card.school ? "CLASS / SCHOOL" : "CLASS", [card.className, card.school].filter(Boolean).join("   •   ") || "-"]);
+      var dateRow = ["DATE", prettyDate(card.date) + (card.time ? "   •   Time: " + card.time : "")];
+      if (card.reportTime) dateRow[1] += "   •   Reporting: " + card.reportTime;
+      rows.push(dateRow); rows.push(["VENUE / CENTER", card.venue || "-"]);
+      var dense = rows.length > 4, step = dense ? 54 : 66, y = dense ? 210 : 222;
       rows.forEach(function (rw) {
         c.fillStyle = GRAY; c.font = "bold 16px Arial, 'Noto Sans Devanagari', 'Nirmala UI', Mangal, sans-serif"; c.fillText(rw[0], 296, y);
-        c.fillStyle = INK; fit(c, String(rw[1]), W - 340, 30, "bold"); c.fillText(String(rw[1]), 296, y + 34);
-        c.strokeStyle = LINE; c.lineWidth = 1; c.beginPath(); c.moveTo(296, y + 48); c.lineTo(W - 44, y + 48); c.stroke();
-        y += 66;
+        c.fillStyle = INK; fit(c, String(rw[1]), W - 340, dense ? 26 : 30, "bold"); c.fillText(String(rw[1]), 296, y + (dense ? 30 : 34));
+        c.strokeStyle = LINE; c.lineWidth = 1; c.beginPath(); c.moveTo(296, y + (dense ? 39 : 48)); c.lineTo(W - 44, y + (dense ? 39 : 48)); c.stroke();
+        y += step;
       });
+
       /* roll digits */
       var roll = String(card.roll || ""), bx = 296, by = 492;
       c.fillStyle = GRAY; c.font = "bold 16px Arial, 'Noto Sans Devanagari', 'Nirmala UI', Mangal, sans-serif"; c.fillText("ROLL NO", bx, by - 8);
