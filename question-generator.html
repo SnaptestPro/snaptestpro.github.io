@@ -351,7 +351,6 @@ Model Answer: समाजवाद एक आर्थिक व्यवस्
       <button class="btn btn-sm btn-danger" onclick="printPaper()">🖨️ Print</button>
       <button class="btn btn-sm btn-outline" style="grid-column: span 2;" onclick="printPaperBooklet()">📖 Booklet Print (Fold-able)</button>
       <button class="btn btn-sm btn-outline" style="grid-column: span 2;" onclick="exportBookletToWord()">📄 Booklet Word (.docx)</button>
-      <button class="btn btn-sm btn-primary" style="grid-column: span 2;" onclick="exportPaperFormatWord()">📘 Paper Format Word (Test format)</button>
       <button class="btn btn-sm btn-outline" style="grid-column: span 2;" onclick="openBookletSettings()">⚙️ Booklet Settings</button>
       <button id="omr-sheet-btn-qgen" class="btn btn-sm btn-outline" style="grid-column: span 2;" onclick="generateOMRSheetForPaper()">🎯 OMR Sheet (Blank)</button>
       <button class="btn btn-sm btn-success" style="grid-column: span 2;" onclick="savePaperAsDraft()">☁️ Save to Drafts</button>
@@ -377,7 +376,6 @@ Model Answer: समाजवाद एक आर्थिक व्यवस्
         <button class="btn btn-sm btn-danger" onclick="printPaper()">🖨️ Print PDF</button>
         <button class="btn btn-sm btn-outline" onclick="printPaperBooklet()">📖 Booklet</button>
         <button class="btn btn-sm btn-outline" onclick="exportBookletToWord()">📄 Booklet Word</button>
-        <button class="btn btn-sm btn-primary" onclick="exportPaperFormatWord()">📘 Paper Format Word</button>
       </div>
     </div>
 
@@ -463,7 +461,6 @@ Model Answer: समाजवाद एक आर्थिक व्यवस्
 <script src="qgen-sets.js?v=1"></script>
 <script>document.write('<script src="qgen-app.js?v=20261018"><\/script>');</script>
 <script>document.write('<script src="booklet-print.js?v=' + Date.now() + '"><\/script>');</script>
-<script>document.write('<script src="paper-format-word.js?v=' + Date.now() + '"><\/script>');</script>
 <script>
 function updateQPreview() {
   var raw = (document.getElementById('qText') || {}).value || '';

@@ -135,6 +135,7 @@ function ownerBrandingEdit(id){
     <input id="obr-color" type="color" value="${/^#[0-9a-f]{6}$/i.test(a.brandColor||"")?a.brandColor:"#4f46e5"}" style="width:100%;height:42px;margin:4px 0 10px;">
     <label style="font-size:.8rem;font-weight:600;">Tagline (header ke neeche)</label>
     <input id="obr-tag" type="text" maxlength="60" value="${ownerEscAttr(a.tagline||"")}" placeholder="jaise: Success Starts Here" style="width:100%;padding:8px;margin:4px 0 10px;box-sizing:border-box;">
+    <label style="display:flex;align-items:center;gap:8px;font-size:.8rem;font-weight:600;margin:0 0 10px;"><input id="obr-hpb" type="checkbox" ${a.hidePoweredBy===true?"checked":""}> "Powered by SnapTest Pro" chhupao</label>
     <label style="font-size:.8rem;font-weight:600;">Logo (square, chhota)</label>
     <div style="display:flex;gap:10px;align-items:center;margin:4px 0 10px;"><img id="obr-prev" src="${a.logoDataUrl||""}" style="width:52px;height:52px;object-fit:contain;border:1px solid #ddd;border-radius:8px;background:#fafafa;${a.logoDataUrl?"":"visibility:hidden;"}"><input id="obr-logo" type="file" accept="image/*"></div>
     <label style="font-size:.8rem;font-weight:600;">Plan</label>
@@ -170,7 +171,7 @@ function ownerBrandingEdit(id){
     try{await ownerRetryOnPermissionDenied(()=>ownerGetDb().collection("institutes").doc(id).update({storageUsedBytes:0,storageFiles:0}));try{localStorage.removeItem("snap_brand_"+id)}catch(e){}alert("Usage reset ho gaya.");m.remove();}catch(e){alert("Nahi hua: "+(e.message||e));}
   };
   m.querySelector("#obr-ok").onclick=async()=>{
-    const d={brandColor:m.querySelector("#obr-color").value,tagline:m.querySelector("#obr-tag").value.trim(),plan:m.querySelector("#obr-plan").value,storageLimitMB:Math.max(0,+m.querySelector("#obr-lim").value||0),studentLimit:Math.max(0,Math.floor(+m.querySelector("#obr-slim").value||0)),planExpiresAt:(()=>{const v=m.querySelector("#obr-exp").value;const t=v?Date.parse(v+"T23:59:59+05:30"):0;return t>0?t:0})()};
+    const d={brandColor:m.querySelector("#obr-color").value,tagline:m.querySelector("#obr-tag").value.trim(),hidePoweredBy:!!m.querySelector("#obr-hpb").checked,plan:m.querySelector("#obr-plan").value,storageLimitMB:Math.max(0,+m.querySelector("#obr-lim").value||0),studentLimit:Math.max(0,Math.floor(+m.querySelector("#obr-slim").value||0)),planExpiresAt:(()=>{const v=m.querySelector("#obr-exp").value;const t=v?Date.parse(v+"T23:59:59+05:30"):0;return t>0?t:0})()};
     if(logo)d.logoDataUrl=logo;
     try{await ownerRetryOnPermissionDenied(()=>ownerGetDb().collection("institutes").doc(id).update(d));try{localStorage.removeItem("snap_brand_"+id)}catch(e){}m.remove();alert("✅ Save ho gaya. Is institute ke admin/students ko agli baar app khulne par naya look dikhega.");}catch(e){alert("Save nahi hua: "+(e.message||e));}
   };

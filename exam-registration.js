@@ -399,7 +399,7 @@
       .then(function (ok) { if (!ok) throw new Error("roster save nahi hua"); return instName(reg); })
       .then(function (inst) { return writeCards(reg, R.list, inst).then(function (failed) { return patchReg({ published: true, publishedAt: Date.now(), instituteName: inst || reg.instituteName || "" }).then(function () { return failed; }); }); })
       .then(function (failed) {
-        note("🚀 " + R.list.length + " students ke Roll No shuffle hokar publish ho gaye." + (failed ? " ⚠️ " + failed + " cards app tak nahi pahunche — unhe PDF ya WhatsApp se dein." : " Jinke paas app hai unhe Admit Card app me dikhega.") + " Ab \"📄 PDF\" se print/WhatsApp kar sakte hain.");
+        note("🚀 " + R.list.length + " students ke Roll No shuffle hokar publish ho gaye." + (failed ? " ⚠️ " + failed + " cards app tak nahi pahunche — unhe PDF ya WhatsApp se dein." : " Jinke paas app hai unhe Admit Card app me dikhega.") + " Ab \"📄 PDF\" se print karein, aur neeche \"🔗 4. Test se jodein\" se test jodein.");
         renderCur();
       }).catch(function (e) { R.list = prevList; note("❌ Publish nahi hua: " + (e.code || e.message || e)); renderCur(); });
   }
@@ -514,6 +514,44 @@
     box.appendChild(h("button", { type: "button", class: "btn-link reg-setup-link", text: "⚙️ Setup / script dobara dekhein", onclick: function () { S.setup = true; renderForm(); } }));
   }
 
+  /* ---------- Test (Exam) se jodna ---------- */
+  function examsMap() { try { return root.__examgrCtx && root.__examgrCtx.all ? root.__examgrCtx.all() || {} : {}; } catch (e) { return {}; } }
+  function linkExam(id, sync) {
+    var ex = examsMap()[id], reg = S.reg;
+    if (!ex) { note("⚠️ Pehle upar se test chunein."); return; }
+    if (!sync) {
+      var msgs = [];
+      if (ex.registrationId && ex.registrationId !== reg.id) msgs.push("Ye test pehle se \"" + (ex.registrationName || "dusri registration") + "\" se juda hai — uske students hat kar is registration ke aa jayenge.");
+      else if (!ex.registrationId && Number(ex.rosterCount) > 0) msgs.push("Is test ke abhi ke " + ex.rosterCount + " roster students hat kar is registration ke " + S.R.list.length + " students aa jayenge.");
+      if ((Number(ex.rollDigits) || 2) !== digitsOf(reg.rollDigits)) msgs.push("Test ke Roll digits " + (Number(ex.rollDigits) || 2) + " se " + digitsOf(reg.rollDigits) + " ho jayenge (OMR sheet par roll columns badlenge — chhapi hui sheet dobara chhapni pad sakti hai).");
+      if (msgs.length && !confirm(msgs.join("\n\n") + "\n\nAage badhein?")) return;
+    }
+    note("⏳ Test se jod rahe hain...");
+    root.SnapRoster.linkRegistration(id, reg.id).then(function (ok) {
+      note(ok ? "✅ \"" + (ex.examName || "Test") + "\" ab is registration se juda hai (wahi roll no). Ab OMR scan par registered students se match hoga; bahar ka roll error dikhayega." : "");
+      renderLinks();
+    });
+  }
+  function renderLinks() {
+    var box = $("reg-link-box"); if (!box || !S.reg) return; box.textContent = "";
+    var reg = S.reg, all = examsMap(), ids = Object.keys(all).sort(function (a, b) { return String(all[b].date || "").localeCompare(String(all[a].date || "")); });
+    if (!reg.published) { box.appendChild(h("p", { class: "muted-text", text: "Pehle upar se Publish karein (roll no tabhi bante hain) — uske baad yahan se kisi bhi test se jod sakte hain." })); return; }
+    if (!root.SnapRoster || !root.SnapRoster.linkRegistration) { box.appendChild(h("p", { class: "muted-text", text: "Roster module load nahi hua — page refresh karke Exam Manager se dobara kholein." })); return; }
+    var linked = ids.filter(function (id) { return all[id].registrationId === reg.id; }), others = ids.filter(function (id) { return all[id].registrationId !== reg.id; });
+    box.appendChild(h("p", { class: "muted-text", text: linked.length ? "Is registration se jude tests (ek registration se kai tests jud sakte hain, jaise Paper 1 aur Paper 2 — roll wahi rahega):" : "Abhi koi test is registration se juda nahi hai." }));
+    linked.forEach(function (id) {
+      var ex = all[id];
+      box.appendChild(h("div", { class: "examgr-report-row ros-row" }, [
+        h("div", { class: "ros-rn" }, [h("strong", { text: ex.examName || "Exam" }), h("small", { text: (ex.date || "") + " • " + (Number(ex.rosterCount) || 0) + " students • " + (ex.sets || 1) + " set" })]),
+        h("button", { type: "button", class: "btn-secondary", text: "🔄 Sync", onclick: function () { linkExam(id, true); } })]));
+    });
+    var sel = h("select", { id: "reg-link-sel", class: "ros-linksel" }); sel.appendChild(h("option", { value: "", text: others.length ? "— Jodne ke liye test chunein —" : "— Koi aur test nahi mila —" }));
+    others.forEach(function (id) { var ex = all[id]; sel.appendChild(h("option", { value: id, text: (ex.examName || "Exam") + (ex.date ? " • " + ex.date : "") + (ex.registrationId ? " (dusri registration se juda)" : "") })); });
+    box.appendChild(sel);
+    box.appendChild(h("button", { type: "button", class: "btn-primary", text: "🔗 Is test se jodein", onclick: function () { linkExam(($("reg-link-sel") || {}).value); } }));
+    box.appendChild(h("p", { class: "muted-text", text: "Test abhi bana nahi hai? Exam Manager me \"+ Naya Exam\" banate waqt \"Registration se jodein\" me yahi registration chunein — ya test banakar yahan wapas aayein." }));
+  }
+
   /* ---------- render ---------- */
   function stat(label, val, cls) { return h("div", { class: "ros-stat " + (cls || "") }, [h("strong", { text: String(val) }), h("span", { text: label })]); }
   function refreshList() { return loadRegs().then(renderList); }
@@ -562,7 +600,7 @@
     var phn = $("reg-pub-hint"); if (phn) phn.textContent = reg.published ? "Roll lock ho chuke hain. Naya student jodoge to use bache hue numbers me se random roll milega." : "Abhi roll nahi bane. Test se 1–2 din pehle jab chahein tab Publish dabayein.";
     var cb = $("reg-pdf-btn"); if (cb) cb.disabled = !reg.published;
     var dl = $("reg-m-groups"); if (dl) { dl.textContent = ""; gs2.forEach(function (g) { dl.appendChild(h("option", { value: g })); }); }
-    renderForm(); renderTable();
+    renderForm(); renderTable(); renderLinks();
   }
   function showView(v) { $("reg-view-list").style.display = v === "list" ? "" : "none"; $("reg-view-cur").style.display = v === "cur" ? "" : "none"; }
 
@@ -624,7 +662,8 @@
         h("div", { class: "ros-btnrow" }, [
           h("button", { type: "button", class: "btn-secondary", id: "reg-pdf-btn", text: "📄 Admit Card PDF", onclick: printPdf }),
           h("button", { type: "button", class: "btn-secondary", text: "⬇️ Roll list CSV", onclick: csvDownload })])
-      ])
+      ]),
+      sec("🔗 4. Test (Exam) se jodein", [h("div", { id: "reg-link-box" })])
     ]);
     var sheet = h("div", { class: "test-analysis-sheet ros-sheet" }, [
       h("button", { type: "button", class: "test-analysis-close", text: "✕", "aria-label": "Band karein", onclick: close }),

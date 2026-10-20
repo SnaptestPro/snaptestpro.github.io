@@ -181,6 +181,14 @@ console.log('registration v231 tests passed: ' + n);
     reg['reg-m-name'].value = 'Late Student'; reg['reg-m-mobile'].value = '9000000004'; reg['reg-m-btn'].onclick(); await tick(); await tick(); await tick();
     const r3 = store[rid + '/roster/main'].list, late = r3.find(e => e.mobile === '9000000004'); assert.ok(late && /^\d\d$/.test(late.roll) && !['01', '02', '03'].includes(late.roll));
     assert.ok(store['studentAdmitCards/' + rid.split('/')[1] + '_9000000004']);
+    // registration screen se test se jodna (+ Sync)
+    const linkedCalls = []; win.SnapRoster = { linkRegistration: async (id, rid) => { linkedCalls.push([id, rid]); return true; } };
+    win.__examgrCtx = { all: () => ({ ex1: { examName: 'Paper 1', date: '2026-11-08', rollDigits: 2, sets: 3, rosterCount: 0 }, ex2: { examName: 'Old', date: '2026-01-01', rollDigits: 2, registrationId: 'someOther', registrationName: 'Other' } }) };
+    find(sheet(), '💾 Details save').onclick(); await tick(); await tick();
+    assert.ok(reg['reg-link-sel'], 'link select nahi bana'); assert.ok(reg['reg-link-sel'].children.length === 3, 'select me 2 test + placeholder hone chahiye');
+    reg['reg-link-sel'].value = 'ex1'; find(sheet(), '🔗 Is test se jodein').onclick(); await tick(); await tick();
+    assert.deepStrictEqual(linkedCalls[0], ['ex1', rid.split('/')[1]]);
+    reg['reg-link-sel'].value = ''; find(sheet(), '🔗 Is test se jodein').onclick(); await tick(); assert.strictEqual(linkedCalls.length, 1, 'bina chune jodna nahi chahiye');
     n++; console.log('  PASS e2e: register(form+paste, bina app account) -> publish shuffle -> cards -> late student');
   } catch (e) { console.log('  FAIL e2e flow\n   ' + (e.stack || e)); process.exitCode = 1; }
   console.log('registration e2e done');
