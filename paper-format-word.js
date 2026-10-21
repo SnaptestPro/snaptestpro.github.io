@@ -6,18 +6,15 @@
 
    Button: "📄 Paper Format Word"  ->  window.exportPaperFormatWord()
 
-   Output = A4 landscape, 4 Word pages. Har page = 2 half-pages (8019 twips),
-   har half-page ke andar 2 question-columns. Half-pages ko BOOKLET order me
-   rakha gaya hai (print karke fold karne par page 1..8 sahi order me aate hain):
+   Output = A4 landscape, Word "Narrow" margins (0.5"). Booklet pages ki ginti
+   questions ke hisaab se khud banti hai: 4, 8, 12 ... 40 pages (= N/2 Word pages).
+   Har Word page = 2 half-pages, har half-page me 2 columns. Imposition (N pages):
+        sheet s : front [N-2s | 1+2s] , back [2+2s | N-1-2s]
+   N = 8 par:  [8|1] [2|7] [6|3] [4|5]   (page 1 = header box + instruction)
 
-        Word page 1 :  [ page 8 | page 1 ]   (page 1 = header box + instruction)
-        Word page 2 :  [ page 2 | page 7 ]
-        Word page 3 :  [ page 6 | page 3 ]
-        Word page 4 :  [ page 4 | page 5 ]
-
-   - Page 1..7  : MCQ, column 1 pehle poora bharta hai, phir column 2 (sequential),
-                  phir agla page. Ek question kabhi beech me nahi kategta.
-   - Page 8     : Subjective questions (single column list).
+   - MCQ        : page 1 se aage, column 1 pehle poora bharta hai, phir column 2.
+                  Ek question kabhi beech me nahi kategta.
+   - Subjective : aakhri page(s) par (N-1 / N), single column list.
    - Page numbers print NAHI hote.
 
    Pagination kaise: har question ki height Word ke hisaab se estimate hoti hai
@@ -31,10 +28,11 @@
   "use strict";
 
   /* ---- geometry (twips; 1pt = 20) ------------------------------------- */
-  var PAGE_M = 400;                       // A4 landscape page margin
-  var HALF_W = 8019;                      // (16838 - 2*400) / 2
-  var ROW_H = 10950;                      // exact row height (page content 11106 - tiny para)
-  var PAD_X = 200, PAD_Y = 100;           // half-page inner padding
+  var PAGE_M = 720;                       // Word "Narrow" margins = 0.5" (720 twips) on all sides
+  var HF_DIST = 432;                      // Narrow preset: header/footer distance 0.3"
+  var HALF_W = 7699;                      // (16838 - 2*720) / 2
+  var ROW_H = 10400;                      // exact row height (page content 10466 - tiny para)
+  var PAD_X = 160, PAD_Y = 60;            // half-page inner padding
   var INNER_W = HALF_W - PAD_X * 2;       // 7619
   var COL_W = Math.floor(INNER_W / 2);    // 3809
   var COL_PAD = 60;                       // column cell side margin
@@ -45,9 +43,8 @@
   var SZ = 16, PT = 8;                    // body font: 8pt
   var LH = 260;                           // exact line height (13pt)
   var SPACER = 60;                        // gap after each question
-  var SAFETY = 1.08;                      // estimate safety margin
-  var N_COLS = 14;                        // 7 pages x 2 columns
-  var SHEETS = [[8, 1], [2, 7], [6, 3], [4, 5]];   // booklet imposition
+  var SAFETY = 1.05;                      // estimate safety margin (kam = zyada fit, zyada = zyada khali jagah)
+  var MAX_PAGES = 40;                     // booklet max: 4, 8, 12 ... 40 pages
   var CLASS_KEY = "pfwClass";
 
   /* ---- collect questions (same source as Booklet Print) --------------- */
@@ -77,9 +74,9 @@
     var d = document.createElement("div");
     d.innerHTML = html;
     var frac = d.querySelectorAll("table").length, rad = d.querySelectorAll("radical").length;
-    var w = (textW(prefix, pt) + textW(d.textContent || "", pt)) * 1.1;
+    var w = (textW(prefix, pt) + textW(d.textContent || "", pt)) * 1.03;
     var n = Math.max(1, Math.ceil(w / (widthTw / 20)));
-    var extra = Math.min(frac, n) * 140 + Math.min(rad, n) * 60;
+    var extra = Math.min(frac, n) * 90 + Math.min(rad, n) * 40;
     return { lines: n, math: frac + rad > 0, h: n * LH + extra };
   }
   function sp(math, after) {               // math wali line: AT_LEAST (clip na ho), baaki EXACT
@@ -135,7 +132,7 @@
   function subBlock(n, q) {
     var html = mathToWordHtml(q.text || ""), e = est(html, n + ". ", INNER_W - 40, PT + 0.5);
     return {
-      h: (e.h + 100) * SAFETY,
+      h: (e.h + e.lines * 20 + 100) * SAFETY,
       children: [new docx.Paragraph({
         spacing: Object.assign(sp(e.math, 100), { line: LH + 20 }),
         children: [new docx.TextRun({ text: n + ". ", bold: true, size: SZ + 1 })].concat(htmlToDocxRuns(html, { size: SZ + 1 }))
@@ -203,20 +200,17 @@
       spacing: { line: 240, lineRule: docx.LineRuleType.EXACT, before: 60, after: 60 },
       children: [new docx.TextRun({ text: instr, bold: true, italics: true, size: 17 })]
     });
-    return { children: [box, ip], h: (tsz * 12 + 520 + 120 + 24 + il * 240 + 120 + 80) };
+    return { children: [box, ip], h: (tsz * 12 + 520 + 120 + 24 + il * 240 + 120) };
   }
 
-  /* ---- distribute MCQ blocks into 14 columns --------------------------- */
-  function distribute(blocks, headerH) {
-    var cols = [], i;
-    for (i = 0; i < N_COLS; i++) cols.push([]);
-    var ci = 0, used = 0, dropped = 0;
+  /* ---- distribute MCQ blocks into columns (as many as needed, up to maxCols) --- */
+  function distribute(blocks, headerH, maxCols) {
+    var cols = [[]], ci = 0, used = 0, dropped = 0;
     blocks.forEach(function (b) {
-      if (ci >= N_COLS) { dropped++; return; }
       var avail = COL_H - (ci < 2 ? headerH : 0);
       if (used > 0 && used + b.h > avail) {
-        ci++; used = 0;
-        if (ci >= N_COLS) { dropped++; return; }
+        if (ci + 1 >= maxCols) { dropped++; return; }
+        ci++; used = 0; cols.push([]);
       }
       cols[ci].push(b);
       used += b.h;
@@ -269,47 +263,58 @@
     });
 
     var mcqBlocks = mcq.map(function (q, i) { return mcqBlock(i + 1, q); });
-    var dist = distribute(mcqBlocks, header.h);
 
-    // page 8 (subjective)
-    var subInstr = new docx.Paragraph({
-      alignment: docx.AlignmentType.RIGHT,
-      spacing: { line: 240, lineRule: docx.LineRuleType.EXACT, before: 0, after: 120 },
-      children: [new docx.TextRun({ text: "Instructions: सभी प्रश्न अनिवार्य हैं।", bold: true, italics: true, size: 17 })]
+    // subjective pages (single column per page); instruction sirf pehle subjective page par
+    var SUB_INSTR_H = 400;
+    var subPages = [], cur = [], used = 0;
+    sub.map(function (q, i) { return subBlock(i + 1, q); }).forEach(function (b) {
+      var avail = COL_H - (subPages.length === 0 ? SUB_INSTR_H : 0);
+      if (cur.length && used + b.h > avail) { subPages.push(cur); cur = []; used = 0; }
+      cur.push(b); used += b.h;
     });
-    var subKids = [subInstr], subUsed = 240 + 120, subDropped = 0;
-    sub.forEach(function (q, i) {
-      var b = subBlock(i + 1, q);
-      if (subUsed + b.h > COL_H) { subDropped++; return; }
-      subUsed += b.h;
-      subKids = subKids.concat(b.children);
-    });
+    if (cur.length) subPages.push(cur);
+    var subDropped = 0;
+    while (subPages.length > MAX_PAGES - 1) subDropped += subPages.pop().length;
+    var sp = subPages.length;
+
+    var dist = distribute(mcqBlocks, header.h, (MAX_PAGES - sp) * 2);
+    var mp = Math.max(1, Math.ceil(dist.cols.length / 2));
+    var N = Math.max(4, Math.ceil((mp + sp) / 4) * 4);          // total booklet pages: 4, 8, 12 ... 40
 
     var dropped = dist.dropped + subDropped;
     if (dropped > 0) {
-      var msg = "⚠️ " + dropped + " question is format ke page me nahi aa rahe" +
-        (dist.dropped ? " (MCQ: " + dist.dropped + ", max ~" + N_COLS + " column)" : "") +
-        (subDropped ? " (Subjective: " + subDropped + ", page 8 full)" : "") +
-        ".\nBaaki questions ke saath file bana dein?";
-      if (!confirm(msg)) return;
+      if (!confirm("⚠️ " + dropped + " question 40 page ki limit me nahi aa rahe.\nBaaki questions ke saath file bana dein?")) return;
     }
 
-    // half-page content by page number
+    // half-page content by booklet page number
     var pageKids = {};
-    pageKids[8] = subKids;
-    for (var p = 1; p <= 7; p++) {
+    for (var p = 1; p <= N; p++) {
       var kids = [];
-      if (p === 1) kids = kids.concat(header.children);
-      kids.push(colsTable(dist.cols[(p - 1) * 2], dist.cols[(p - 1) * 2 + 1]));
-      kids.push(spacer());
+      if (p <= mp) {
+        if (p === 1) kids = kids.concat(header.children);
+        kids.push(colsTable(dist.cols[(p - 1) * 2] || [], dist.cols[(p - 1) * 2 + 1] || []));
+        kids.push(spacer());
+      } else if (p > N - sp) {
+        var si = p - (N - sp) - 1, blocks = subPages[si];
+        if (si === 0) kids.push(new docx.Paragraph({
+          alignment: docx.AlignmentType.RIGHT,
+          spacing: { line: 240, lineRule: docx.LineRuleType.EXACT, before: 0, after: 120 },
+          children: [new docx.TextRun({ text: "Instructions: सभी प्रश्न अनिवार्य हैं।", bold: true, italics: true, size: 17 })]
+        }));
+        blocks.forEach(function (b) { kids = kids.concat(b.children); });
+      } else kids.push(spacer());
       pageKids[p] = kids;
     }
 
-    var sections = SHEETS.map(function (pair) {
+    // booklet imposition for ANY multiple of 4:  front [N-2s, 1+2s], back [2+2s, N-1-2s]
+    var pairs = [];
+    for (var s2 = 0; s2 < N / 4; s2++) { pairs.push([N - 2 * s2, 1 + 2 * s2]); pairs.push([2 + 2 * s2, N - 1 - 2 * s2]); }
+
+    var sections = pairs.map(function (pair) {
       return {
         properties: { page: {
           size: { width: 11906, height: 16838, orientation: docx.PageOrientation.LANDSCAPE },
-          margin: { top: PAGE_M, bottom: PAGE_M, left: PAGE_M, right: PAGE_M, header: 0, footer: 0 }
+          margin: { top: PAGE_M, bottom: PAGE_M, left: PAGE_M, right: PAGE_M, header: HF_DIST, footer: HF_DIST }
         } },
         children: [
           new docx.Table({
@@ -350,7 +355,7 @@
       a.href = url; a.download = filename;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-      if (typeof toast === "function") toast("📄 Paper Format Word download shuru ho gayi!");
+      if (typeof toast === "function") toast("📄 Paper Format Word: " + N + " page (" + (N / 2) + " Word page) — download shuru!");
     } catch (err) {
       console.error(err);
       alert("Paper Format Word banane mein error: " + (err.message || err));

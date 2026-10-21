@@ -1,27 +1,5 @@
 # Changelog
 
-## 2026-10-18 — v229: Multiple Sets (Paper Generator <-> OMR Exam Manager)
-
-- Paper Generator: Number of Sets (1–5), Set A–E preview/answer key/print/booklet/Word (All Sets), options shuffle toggle; `qSets` draft/test me save.
-- Publish sync: Exam Manager me `sets:N` + har set ki `answerKeys` paper ke order se; manual-edit safe (`manualSets`), `paperAnswerKeys`, "Paper se dobara bharo".
-- Safety: stale sets reject + warning, blank Set bubble warning/no auto-save, khali set key = ungraded.
-- Naye: `paper-sets.js`, `qgen-sets.js`; test `test_multi_sets_v229.js`; npm test 42/42. Version 1.4.20 / build 229. Notes: `docs/notes/MULTI_SETS_v229_NOTES.md`.
-
-## 2026-10-17 — v224 Phase 6: institute ke liye pitch, demo, pehle din ki checklist, legal appendix
-
-- Naya `pitch.html` (noindex, sirf seedha link se): features (sirf wahi jo repo mein hain), kya abhi nahi hai, 2 minute demo script, pehle din ki checklist.
-- `privacy.html` aur `terms.html`: upar student-facing text aur version `2026-10-15-v1` nahi badle. Neeche "Parishisht (Appendix): Institute ke liye template" jodi (placeholders, "ye legal advice nahi" chetavani, CA/lawyer check).
-- `app-config.js` ka version wahi. Policy text badle to privacyVersion/termsVersion bhi badlein (counsel ke baad).
-- Version 1.4.19 / build 224. Test: `tests/unit/test_phase6_v224.js`; `npm test` 41/41. Notes: `docs/notes/PHASE6_v224_NOTES.md`.
-
-## 2026-10-17 — v223 Phase 5: bechne ke features (topper, parent report, anti-cheat, analytics, fee due, daily challenge)
-
-- Naye files: `topper-card.js` (top-3 canvas image), `parent-report.js` (WhatsApp message, auto-send nahi), `anti-cheat.js` (timed test me tab/app switch ginti, sirf record), `admin-analytics.js` (class avg, galat sawal, chapter kamzori, inactive, switch list), `result-tools.js` (Records hub me "Result Tools" card), `fee-due.js` (Batch Admin me "Fee Due": pending, due date, reminder, batch notification ek due date par ek baar), `daily-challenge.js` (roz 5 sawal, 10 galti revision, device streak).
-- `script.js`: result save me anti-cheat fields jude (ek line). `index.html`: 7 script tags. `sw.js`: 7 files precache, cache `snaptestpro-v223`.
-- `app-config.js` kill-switches: `topperCard`, `parentReport`, `antiCheat`, `analytics`, `resultTools`, `feeDue`, `dailyChallenge` (sab true; false = purana behaviour).
-- `firestore.rules` nahi badle. Batch doc me optional `feeDueDate`; notification type `fee`.
-- Test: `tests/unit/test_phase5_v223.js`; `npm test` 40/40. Emulator, phone aur APK build nahi chale. Version 1.4.18 / build 223. Notes: `docs/notes/PHASE5_v223_NOTES.md`.
-
 ## 2026-10-17 — v222 Phase 4B: institute APK native splash + rang
 
 - Naya `scripts/android-brand.js`: institute APK me native splash (brand rang par logo card, har `splash.png` size me), Android 12+ ka splash rang + icon, status bar / app rang (`colorPrimary/Dark`).
