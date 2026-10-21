@@ -48,3 +48,14 @@ Replace/add: `paper-format-word.js` (new), `question-generator.html` (2 buttons 
 
 ## v1.3
 Body text size 8pt -> **9.5pt** (`PT` constant, file ke upar). Line-height aur page-fit apne aap us hisaab se adjust hoti hai.
+
+## v1.4
+Questions ke beech ka extra stretch cap 300 -> 40 twips (pehle kuch columns me ek poori line jitna gap dikhta tha). Gap ab sab jagah ek jaisa chhota rehta hai.
+
+## v1.4
+- Questions ke beech extra gap hataya (`MAX_EXTRA = 0`): sab gap barabar, koi "line chhooti" nahi.
+- Columns ke beech ki vertical line hata di.
+
+## v1.5
+- Per-column question limit kahin nahi hai: questions serial order me tab tak isi column me jaate hain jab tak jagah ho. Fit rule thoda tight kiya (`SAFETY = 1.0`, aakhri question ka trailing gap count nahi, `FIT_GUARD = 80`).
+- `LH_RATIO` constant (1.625) alag kiya — 1.5 karne par aur zyada questions aate hain.

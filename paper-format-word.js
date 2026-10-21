@@ -42,11 +42,13 @@
   var OPT_W = Math.floor(OPT_TBL_W / 2) - 60 - 40; // text width inside one option cell
   var PT = 9.5;                          // body font size (pt) — yahin se badlo (9 / 9.5 / 10)
   var SZ = Math.round(PT * 2);            // docx half-points
-  var LH = Math.round(PT * 1.625 * 20);   // exact line height (twips), 1.625 x font
+  var LH_RATIO = 1.625;                   // line height = font x ye ratio (1.5 = aur tight, par Hindi matra kat sakti hai)
+  var LH = Math.round(PT * LH_RATIO * 20);   // exact line height (twips)
   var SPACER = 60;                        // base gap between questions
   var BOTTOM_GUARD = 100;                 // columns ke neeche itni jagah chhodte hain (twips)
-  var MAX_EXTRA = 300;                    // gap me max extra stretch per question (twips)
-  var SAFETY = 1.03;                      // estimate safety margin (kam = zyada fit, zyada = zyada khali jagah)
+  var MAX_EXTRA = 0;                      // 0 = questions ke beech koi extra gap NAHI (sab gap barabar). >0 rakhoge to column neeche tak stretch hoga
+  var SAFETY = 1.0;                       // estimate safety margin (1.0 = sabse zyada questions fit; 1.03-1.05 = zyada safe)
+  var FIT_GUARD = 80;                     // column ke neeche itni jagah (twips) hamesha khali rakhte hain, kategne se bachne ke liye
   var MAX_PAGES = 40;                     // booklet max: 4, 8, 12 ... 40 pages
   var CLASS_KEY = "pfwClass";
 
@@ -154,7 +156,6 @@
       margins: { top: 0, bottom: 0, left: isRight ? 100 : COL_PAD, right: COL_PAD },
       children: kids
     };
-    if (isRight) cfg.borders = { left: { style: docx.BorderStyle.SINGLE, size: 4, color: "888888" } };
     return new docx.TableCell(cfg);
   }
   function colsTable(left, right, exL, exR) {
@@ -213,7 +214,8 @@
     var cols = [[]], usedArr = [0], ci = 0, dropped = 0;
     blocks.forEach(function (b) {
       var avail = COL_H - (ci < 2 ? headerH : 0);
-      if (usedArr[ci] > 0 && usedArr[ci] + b.h > avail) {
+      // question tab tak isi column me jaata hai jab tak jagah ho (serial order); aakhri question ka trailing gap count nahi hota
+      if (usedArr[ci] > 0 && usedArr[ci] + b.h - SPACER * SAFETY > avail - FIT_GUARD) {
         if (ci + 1 >= maxCols) { dropped++; return; }
         ci++; cols.push([]); usedArr.push(0);
       }
