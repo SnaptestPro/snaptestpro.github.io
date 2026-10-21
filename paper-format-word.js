@@ -6,7 +6,7 @@
 
    Button: "📄 Paper Format Word"  ->  window.exportPaperFormatWord()
 
-   Output = A4 landscape, Word "Narrow" margins (0.5"). Booklet pages ki ginti
+   Output = A4 landscape, margins 0.25" (print-safe). Booklet pages ki ginti
    questions ke hisaab se khud banti hai: 4, 8, 12 ... 40 pages (= N/2 Word pages).
    Har Word page = 2 half-pages, har half-page me 2 columns. Imposition (N pages):
         sheet s : front [N-2s | 1+2s] , back [2+2s | N-1-2s]
@@ -28,15 +28,15 @@
   "use strict";
 
   /* ---- geometry (twips; 1pt = 20) ------------------------------------- */
-  var PAGE_M = 720;                       // Word "Narrow" margins = 0.5" (720 twips) on all sides
-  var HF_DIST = 432;                      // Narrow preset: header/footer distance 0.3"
-  var HALF_W = 7699;                      // (16838 - 2*720) / 2
-  var ROW_H = 10340;                      // exact row height (page content 10466 minus section-break paragraph + slack)
-  var PAD_X = 160, PAD_Y = 60;            // half-page inner padding
+  var PAGE_M = 360;                       // 0.25" (6.35mm) = zyadatar printers ka safe minimum; aur kam karoge to print me kinara kat sakta hai
+  var HF_DIST = 200;                      // header/footer distance (page me header/footer hai hi nahi)
+  var HALF_W = (16838 - 2 * PAGE_M) / 2;   // 8059
+  var ROW_H = 11906 - 2 * PAGE_M - 126;   // 11060: exact row height (page content minus section-break paragraph + slack)
+  var PAD_X = 160, PAD_Y = 40, PAD_TOP = 0;   // half-page inner padding (upar 0 = header ke upar khali jagah nahi)
   var INNER_W = HALF_W - PAD_X * 2;       // 7619
   var COL_W = Math.floor(INNER_W / 2);    // 3809
   var COL_PAD = 60;                       // column cell side margin
-  var COL_H = ROW_H - PAD_Y * 2;          // usable height of a column
+  var COL_H = ROW_H - PAD_TOP - PAD_Y;     // usable height of a column
   var TXT_W = COL_W - 160;                // text width (right column ki asli width: 100 + 60 margin)
   var OPT_TBL_W = COL_W - COL_PAD * 2;    // 2x2 option table width
   var OPT_W = Math.floor(OPT_TBL_W / 2) - 60 - 20; // text width inside one option cell
@@ -46,7 +46,7 @@
   var LH = Math.round(PT * LH_RATIO * 20);   // exact line height (twips)
   var SPACER = 60;                        // base gap between questions
   var BOTTOM_GUARD = 100;                 // columns ke neeche itni jagah chhodte hain (twips)
-  var MAX_EXTRA = 0;                      // 0 = questions ke beech koi extra gap NAHI (sab gap barabar). >0 rakhoge to column neeche tak stretch hoga
+  var MAX_EXTRA = 160;                    // bhare column ko neeche tak barabar baantne ke liye har gap me max itna (twips) extra: neeche anjaan khali patti nahi dikhegi, gap bhi bade nahi lagenge
   var SAFETY = 1.0;                       // estimate safety margin (1.0 = sabse zyada questions fit; 1.03-1.05 = zyada safe)
   var FIT_GUARD = 100;                    // column ke neeche itni jagah (twips) hamesha khali rakhte hain, kategne se bachne ke liye
   var MAX_PAGES = 40;                     // booklet max: 4, 8, 12 ... 40 pages
@@ -223,14 +223,14 @@
      Image jaisa: gol corner wala halka-grey box, shadow wala bada title, neeche ek line me
      TEST (date) | TIME | M.M.  Word table me gol corner nahi ban sakte, isliye box ek
      high-quality PNG ki tarah (canvas se) banta hai — har paper ke naam/date/time ke saath. */
-  var HDR_PX_W = 508, HDR_PX_H = 71;       // 96dpi px (= INNER_W twips x ~1065 twips)
+  var HDR_PX_W = Math.round(INNER_W / 15), HDR_PX_H = Math.round(HDR_PX_W * 63 / 451);   // 96dpi px
   function drawHeaderPng(h) {
     var S = 4, W = 451, H = Math.round(451 * HDR_PX_H / HDR_PX_W), cv = document.createElement("canvas");
     cv.width = W * S; cv.height = H * S;
     var c = cv.getContext("2d"); c.scale(S, S);
     var FF = "'Times New Roman', Times, 'Noto Serif', 'Mangal', 'Noto Sans Devanagari', serif";
     // rounded box
-    var x0 = 8, y0 = 6, x1 = W - 8, y1 = H - 3, r = 9;
+    var x0 = 1.5, y0 = 1.5, x1 = W - 1.5, y1 = H - 1.5, r = 9;
     c.beginPath(); c.moveTo(x0 + r, y0); c.lineTo(x1 - r, y0); c.quadraticCurveTo(x1, y0, x1, y0 + r);
     c.lineTo(x1, y1 - r); c.quadraticCurveTo(x1, y1, x1 - r, y1); c.lineTo(x0 + r, y1);
     c.quadraticCurveTo(x0, y1, x0, y1 - r); c.lineTo(x0, y0 + r); c.quadraticCurveTo(x0, y0, x0 + r, y0); c.closePath();
@@ -239,18 +239,18 @@
     var title = String(h.title || "").toUpperCase(), fs = 31, gap = 2.2, tw;
     function twOf() { c.font = "bold " + fs + "px " + FF; var w = 0; for (var i = 0; i < title.length; i++) w += c.measureText(title[i]).width + gap; return w - gap; }
     tw = twOf(); while (tw > W - 60 && fs > 12) { fs -= 1; gap = Math.max(0.5, gap - 0.1); tw = twOf(); }
-    var tx = (W - tw) / 2, ty = 32;
+    var tx = (W - tw) / 2, ty = 29;
     [[1.6, 1.6, "#9a9a9a"], [0, 0, "#000"]].forEach(function (L) {
       c.fillStyle = L[2]; var x = tx + L[0];
       for (var i = 0; i < title.length; i++) { c.font = "bold " + fs + "px " + FF; c.fillText(title[i], x, ty + L[1]); x += c.measureText(title[i]).width + gap; }
     });
     // info line
     var ifs = 10.5, left = ("TEST:- " + h.test + (h.date ? " (" + h.date + ")" : "")).toUpperCase(),
-        mid = "TIME:-" + h.time, right = "M.M:- " + h.mm, iy = 55;
+        mid = "TIME:-" + h.time, right = "M.M:- " + h.mm, iy = 54;
     function iw(t) { c.font = "bold " + ifs + "px " + FF; return c.measureText(t).width; }
     while (iw(left) + iw(mid) + iw(right) + 40 > W - 40 && ifs > 6) ifs -= 0.5;
     c.fillStyle = "#000"; c.font = "bold " + ifs + "px " + FF;
-    var lx = 22, rx = W - 51 - iw(right), mx = Math.max(233, lx + iw(left) + 14);
+    var lx = 16, rx = W - 24 - iw(right), mx = Math.max(W * 0.52, lx + iw(left) + 14);
     if (mx + iw(mid) + 10 > rx) mx = Math.max(lx + iw(left) + 8, rx - iw(mid) - 10);
     c.fillText(left, lx, iy); c.fillText(mid, mx, iy); c.fillText(right, rx, iy);
     return new Promise(function (res) {
@@ -267,10 +267,10 @@
     });
     var ip = new docx.Paragraph({
       alignment: docx.AlignmentType.CENTER,
-      spacing: { line: 240, lineRule: docx.LineRuleType.EXACT, before: 60, after: 60 },
+      spacing: { line: 240, lineRule: docx.LineRuleType.EXACT, before: 30, after: 40 },
       children: [new docx.TextRun({ text: instr, bold: true, italics: true, size: 17 })]
     });
-    return { children: [box, ip], h: HDR_PX_H * 15 + 80 + il * 240 + 120 + 100 };
+    return { children: [box, ip], h: HDR_PX_H * 15 + 40 + il * 240 + 70 + 60 };
   }
 
   /* ---- distribute MCQ blocks into columns (as many as needed, up to maxCols) --- */
@@ -299,7 +299,7 @@
     return new docx.TableCell({
       width: { size: HALF_W, type: docx.WidthType.DXA },
       verticalAlign: docx.VerticalAlign.TOP,
-      margins: { top: PAD_Y, bottom: PAD_Y, left: PAD_X, right: PAD_X },
+      margins: { top: PAD_TOP, bottom: PAD_Y, left: PAD_X, right: PAD_X },
       children: children
     });
   }
