@@ -50,7 +50,8 @@
   var SAFETY = 1.0;                       // estimate safety margin (1.0 = sabse zyada questions fit; 1.03-1.05 = zyada safe)
   var FIT_GUARD = 100;                    // column ke neeche itni jagah (twips) hamesha khali rakhte hain, kategne se bachne ke liye
   var MAX_PAGES = 40;                     // booklet max: 4, 8, 12 ... 40 pages
-  var CLASS_KEY = "pfwClass";
+  var TAG_H = 280;                        // har page (page 1 ke alawa) ke upar chhote SET tag ki height (twips)
+  var HEAD_H = LH + 140;                  // section heading ki height (twips)
 
   /* ---- collect questions (same source as Booklet Print) --------------- */
   function collectQuestions() {
@@ -286,10 +287,10 @@
   }
 
   /* ---- distribute MCQ blocks into columns (as many as needed, up to maxCols) --- */
-  function distribute(blocks, headerH, maxCols) {
+  function distribute(blocks, headerH, maxCols, tagH) {
     var cols = [[]], usedArr = [0], ci = 0, dropped = 0;
     blocks.forEach(function (b) {
-      var avail = COL_H - (ci < 2 ? headerH : 0);
+      var avail = COL_H - (ci < 2 ? headerH : (tagH || 0));
       // question tab tak isi column me jaata hai jab tak jagah ho (serial order); aakhri question ka trailing gap count nahi hota
       if (usedArr[ci] > 0 && usedArr[ci] + b.h - SPACER * SAFETY > avail - FIT_GUARD) {
         if (ci + 1 >= maxCols) { dropped++; return; }
@@ -301,7 +302,7 @@
     // bhare hue (aakhri ke alawa) columns ko neeche tak stretch karo: bacha hua space questions ke beech baant do
     var extras = cols.map(function (c, i) {
       if (i >= cols.length - 1 || c.length < 2) return 0;
-      var left = (COL_H - (i < 2 ? headerH : 0)) - usedArr[i] - BOTTOM_GUARD;
+      var left = (COL_H - (i < 2 ? headerH : (tagH || 0))) - usedArr[i] - BOTTOM_GUARD;
       return left > 0 ? Math.min(MAX_EXTRA, Math.floor(left / (c.length - 1))) : 0;
     });
     return { cols: cols, extras: extras, dropped: dropped };
@@ -330,20 +331,70 @@
   function val(id) { var el = document.getElementById(id); return el ? el.value || "" : ""; }
 
   /* ---- main ------------------------------------------------------------ */
+  /* ---- har page ka chhota SET tag + section heading ------------------- */
+  function tagPara(label) {
+    var b = { style: docx.BorderStyle.SINGLE, size: 6, color: "000000", space: 0 };
+    return new docx.Paragraph({
+      alignment: docx.AlignmentType.CENTER,
+      indent: { left: INNER_W - 760 },
+      border: { top: b, bottom: b, left: b, right: b },
+      spacing: { line: 200, lineRule: docx.LineRuleType.EXACT, before: 0, after: 40 },
+      children: [new docx.TextRun({ text: label, bold: true, size: 15 })]
+    });
+  }
+  function headingPara(name) {
+    return new docx.Paragraph({
+      alignment: docx.AlignmentType.CENTER,
+      shading: { type: docx.ShadingType.CLEAR, fill: "E7E6E6", color: "auto" },
+      spacing: { line: LH, lineRule: docx.LineRuleType.EXACT, before: 40, after: 60 },
+      children: [new docx.TextRun({ text: name, bold: true, size: SZ + 2 })]
+    });
+  }
+  // section mode me (2+ sections) har question ka section naam; nahi to null
+  function sectionMap(total) {
+    try {
+      if (typeof isSectionMode === "function" && isSectionMode() && typeof sections !== "undefined") {
+        var out = [], used = 0;
+        sections.forEach(function (sc) {
+          var c = (sc.questions || []).length;
+          for (var k = 0; k < c; k++) out.push(String(sc.name || ""));
+          if (c) used++;
+        });
+        if (used >= 2 && out.length === total) return out;
+      }
+    } catch (e) {}
+    return null;
+  }
+  function addHeadings(blocks, names) {    // section badalne par pehle question ke upar heading (usi block me, alag nahi hoti)
+    var prev = null;
+    blocks.forEach(function (b, i) {
+      var nm = names[i];
+      if (nm && nm !== prev) { b.children = [headingPara(nm)].concat(b.children); b.h += HEAD_H * SAFETY; }
+      prev = nm;
+    });
+  }
+
   /* ---- ek set ka Word document banao ---------------------------------- */
   function buildPaperDoc(all, hdrData, png, askDrop) {
-    var mcq = all.filter(function (q) { return q.qType !== "subjective"; });
-    var sub = all.filter(function (q) { return q.qType === "subjective"; });
+    var secMap = sectionMap(all.length), mcq = [], mcqSec = [], sub = [], subSec = [];
+    all.forEach(function (q, i) {
+      if (q.qType === "subjective") { sub.push(q); subSec.push(secMap ? secMap[i] : ""); }
+      else { mcq.push(q); mcqSec.push(secMap ? secMap[i] : ""); }
+    });
+    var tagH = hdrData.setLabel ? TAG_H : 0;
 
     var header = buildHeader(hdrData, png);
 
     var mcqBlocks = mcq.map(function (q, i) { return mcqBlock(i + 1, q); });
+    addHeadings(mcqBlocks, mcqSec);
 
     // subjective pages (single column per page); instruction sirf pehle subjective page par
     var SUB_INSTR_H = 400;
     var subPages = [], cur = [], used = 0;
-    sub.map(function (q, i) { return subBlock(i + 1, q); }).forEach(function (b) {
-      var avail = COL_H - (subPages.length === 0 ? SUB_INSTR_H : 0);
+    var subBlocks = sub.map(function (q, i) { return subBlock(i + 1, q); });
+    addHeadings(subBlocks, subSec);
+    subBlocks.forEach(function (b) {
+      var avail = COL_H - tagH - (subPages.length === 0 ? SUB_INSTR_H : 0);
       if (cur.length && used + b.h > avail) { subPages.push(cur); cur = []; used = 0; }
       cur.push(b); used += b.h;
     });
@@ -352,7 +403,7 @@
     while (subPages.length > MAX_PAGES - 1) subDropped += subPages.pop().length;
     var sp = subPages.length;
 
-    var dist = distribute(mcqBlocks, header.h, (MAX_PAGES - sp) * 2);
+    var dist = distribute(mcqBlocks, header.h, (MAX_PAGES - sp) * 2, tagH);
     var mp = Math.max(1, Math.ceil(dist.cols.length / 2));
     var N = Math.max(4, Math.ceil((mp + sp) / 4) * 4);          // total booklet pages: 4, 8, 12 ... 40
 
@@ -364,7 +415,7 @@
     // half-page content by booklet page number
     var pageKids = {};
     for (var p = 1; p <= N; p++) {
-      var kids = [];
+      var kids = (hdrData.setLabel && p !== 1) ? [tagPara(hdrData.setLabel)] : [];
       if (p <= mp) {
         if (p === 1) kids = kids.concat(header.children);
         kids.push(colsTable(dist.cols[(p - 1) * 2] || [], dist.cols[(p - 1) * 2 + 1] || [], dist.extras[(p - 1) * 2], dist.extras[(p - 1) * 2 + 1]));
