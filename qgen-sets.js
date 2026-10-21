@@ -146,8 +146,6 @@
     if (chk) chk.checked = !!S.optShuffle;
     var rb = document.getElementById("setRegenBtn");
     if (rb) rb.style.display = S.n >= 2 ? "" : "none";
-    var wb = document.getElementById("qgAllSetsWordBtn");
-    if (wb) wb.style.display = S.n >= 2 ? "" : "none";
     var info = document.getElementById("setInfo");
     var warn = "";
     if (S.n >= 2) {
@@ -335,103 +333,7 @@
   }
 
   /* ---------------- Word export (active set ya ALL sets) ---------------- */
-  async function exportWord(all) {
-    var L = flat();
-    if (!L.length) {
-      say("ℹ️ Paper khaali hai!");
-      return;
-    }
-    if (!window.docx && window.__ensureLib) {
-      try {
-        await window.__ensureLib("docx");
-      } catch (e) {}
-    }
-    if (!window.docx || typeof docxQuestionBlock !== "function") {
-      say("❌ Word export library load nahi hui — internet check karke page reload karein.");
-      return;
-    }
-    ensure();
-    var val = function (id) {
-      var el = document.getElementById(id);
-      return (el && el.value) || "";
-    };
-    var t = val("testNo"),
-      s = val("subject"),
-      n = val("timeMin"),
-      i = val("maxMarks"),
-      o = val("instructions");
-    var idxs = [];
-    if (all && S.n >= 2) for (var a = 0; a < S.n; a++) idxs.push(a);
-    else idxs.push(S.n >= 2 ? S.active : 0);
-    var multi = S.n >= 2;
-    var children = [];
-    idxs.forEach(function (idx, pos) {
-      if (pos > 0) children.push(new docx.Paragraph({ children: [new docx.PageBreak()] }));
-      var lab = multi ? " - SET " + LETTERS[idx] : "";
-      children.push(
-        new docx.Paragraph({ text: ("TEST NO. " + t + lab).toUpperCase(), heading: docx.HeadingLevel.HEADING1, alignment: docx.AlignmentType.CENTER }),
-        new docx.Paragraph({ text: s.toUpperCase(), heading: docx.HeadingLevel.HEADING2, alignment: docx.AlignmentType.CENTER }),
-        new docx.Paragraph({ alignment: docx.AlignmentType.CENTER, children: [new docx.TextRun({ text: "Time: " + n + " min    |    MM: " + i })] }),
-        new docx.Paragraph({ border: { bottom: { color: "000000", space: 4, style: docx.BorderStyle.SINGLE, size: 6 } }, text: "" }),
-        new docx.Paragraph({ children: [new docx.TextRun({ text: "Instructions: " + o, italics: true })], spacing: { after: 200 } })
-      );
-      var view = viewFlatFor(idx);
-      if (isSec()) {
-        var c = 1,
-          start = 0;
-        sections.forEach(function (sec) {
-          var len = sec.questions.length;
-          if (len) {
-            children.push(
-              new docx.Paragraph({
-                text: sec.name.toUpperCase(),
-                heading: docx.HeadingLevel.HEADING3,
-                alignment: docx.AlignmentType.CENTER,
-                shading: { fill: "F0E6FF" },
-                spacing: { before: 300, after: 150 },
-              })
-            );
-            view.slice(start, start + len).forEach(function (q) {
-              children.push.apply(children, docxQuestionBlock(c++, q));
-            });
-          }
-          start += len;
-        });
-      } else
-        view.forEach(function (q, k) {
-          children.push.apply(children, docxQuestionBlock(k + 1, q));
-        });
-    });
-    var fname = "Test_" + (t || "Paper") + (multi ? (all ? "_AllSets" : "_Set" + LETTERS[S.active]) : "") + ".docx";
-    try {
-      var doc = new docx.Document({ sections: [{ properties: {}, children: children }] });
-      var blob = await docx.Packer.toBlob(doc);
-      try {
-        var file = new File([blob], fname, { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: fname, text: "Test paper (Word file)" });
-          say("📄 Word (.docx) file share ho gayi!");
-          return;
-        }
-      } catch (e2) {
-        console.warn("Share failed, falling back to direct download:", e2);
-      }
-      var url = URL.createObjectURL(blob),
-        link = document.createElement("a");
-      link.href = url;
-      link.download = fname;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(function () {
-        URL.revokeObjectURL(url);
-      }, 1000);
-      say(all && multi ? "📄 Saare sets ki Word file download shuru ho gayi!" : "📄 Word (.docx) file download shuru ho gayi!");
-    } catch (err) {
-      console.error(err);
-      say("❌ Word file banane mein error: " + (err.message || err));
-    }
-  }
+  
 
   /* ---------------- init ---------------- */
   function init() {
@@ -455,7 +357,6 @@
     afterKey: afterKey,
     savePayload: savePayload,
     restore: restore,
-    exportWord: exportWord,
     state: function () {
       return { n: S.n, active: S.active, optShuffle: S.optShuffle, def: S.def };
     },

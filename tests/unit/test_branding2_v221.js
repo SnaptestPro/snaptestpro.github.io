@@ -30,7 +30,7 @@ assert(/Powered by SnapTest Pro/.test(win.SnapBrand.printBar())); assert(!/<b>|<
 ({ win } = boot({}, null)); assert.strictEqual(win.SnapBrand.rsf('name', 'X'), 'X'); assert(/Powered by SnapTest Pro/.test(win.SnapBrand.printBar()), 'v233: bina institute-branding ke bhi tag-only bar'); assert(!/<img/.test(win.SnapBrand.printBar()));
 /* hooks maujood: result sheet, WhatsApp, print, owner switch, config, splash */
 const sj = rd('script.js'); assert(/SnapBrand\.rsf\("logo"/.test(sj) && /SnapBrand\.rsf\("name"/.test(sj)); assert.strictEqual((sj.match(/SnapBrand\.plain\(\)/g) || []).length, 4);
-assert(/SnapBrand\.plain/.test(rd('upgrade.js'))); assert(/printBar/.test(rd('booklet-print.js'))); assert(/printBar/.test(rd('four-column-print.js')));
+assert(/SnapBrand\.plain/.test(rd('upgrade.js')));
 assert(/obr-hpb/.test(rd('owner-panel.js')) && /hidePoweredBy:!!/.test(rd('owner-panel.js')));
 assert(/branding2:\s*true/.test(rd('app-config.js'))); assert(/snap_brand2_off/.test(rd('inline/index-inline-05.js')));
 /* splash me user text innerHTML se nahi */

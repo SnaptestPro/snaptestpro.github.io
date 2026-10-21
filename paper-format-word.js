@@ -318,28 +318,12 @@
   function val(id) { var el = document.getElementById(id); return el ? el.value || "" : ""; }
 
   /* ---- main ------------------------------------------------------------ */
-  window.exportPaperFormatWord = async function () {
-    var all = collectQuestions();
-    if (!all.length) { alert("Pehle paper mein kam se kam ek question add karein."); return; }
-    if (!window.docx && window.__ensureLib) { try { await window.__ensureLib("docx"); } catch (e) {} }
-    if (!window.docx || typeof htmlToDocxRuns !== "function" || typeof mathToWordHtml !== "function") {
-      alert("Word export library load nahi hui — internet check karke page reload karein.");
-      return;
-    }
-
+  /* ---- ek set ka Word document banao ---------------------------------- */
+  function buildPaperDoc(all, hdrData, png, askDrop) {
     var mcq = all.filter(function (q) { return q.qType !== "subjective"; });
     var sub = all.filter(function (q) { return q.qType === "subjective"; });
 
-    var brand = (window.SnapBrand && SnapBrand.plain) ? SnapBrand.plain("SAVYASACHI COACHING") : "SAVYASACHI COACHING";
-    var hdrData = {
-      title: brand,
-      test: val("subject"),
-      mm: val("maxMarks"),
-      date: fmtDate(val("testDate")),
-      time: fmtTime(val("timeMin")),
-      instr: val("instructions") || "सभी प्रश्न अनिवार्य हैं। प्रत्येक प्रश्न के लिए एक ही सही उत्तर है।"
-    };
-    var header = buildHeader(hdrData, await drawHeaderPng(hdrData));
+    var header = buildHeader(hdrData, png);
 
     var mcqBlocks = mcq.map(function (q, i) { return mcqBlock(i + 1, q); });
 
@@ -362,7 +346,7 @@
 
     var dropped = dist.dropped + subDropped;
     if (dropped > 0) {
-      if (!confirm("⚠️ " + dropped + " question 40 page ki limit me nahi aa rahe.\nBaaki questions ke saath file bana dein?")) return;
+      if (askDrop && !confirm("⚠️ " + dropped + " question 40 page ki limit me nahi aa rahe.\nBaaki questions ke saath file bana dein?")) return null;
     }
 
     // half-page content by booklet page number
@@ -423,23 +407,73 @@
       } } },
       sections: sections
     });
+    return { doc: doc, N: N };
+  }
 
-    var filename = "Paper_" + (val("testNo") || "Test") + ".docx";
+  var DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  function safeName(t) { return String(t || "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim(); }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  /* ---- main: ek click = jitne sets hain, sab ki alag Word file ---------- */
+  window.exportPaperFormatWord = async function () {
+    try { if (window.QGSets && typeof QGSets.ensure === "function") QGSets.ensure(); } catch (e) {}
+    var nSets = 1;
+    try { if (window.QGSets && QGSets.state) nSets = Math.max(1, QGSets.state().n || 1); } catch (e) {}
+    var letters = (window.PaperSets && PaperSets.LETTERS) || ["A", "B", "C", "D", "E"];
+
+    function setQuestions(i) {
+      try { if (window.QGSets && typeof QGSets.flatFor === "function") return QGSets.flatFor(i) || []; } catch (e) {}
+      return i === 0 ? collectQuestions() : [];
+    }
+    if (!setQuestions(0).length) { alert("Pehle paper mein kam se kam ek question add karein."); return; }
+    if (!window.docx && window.__ensureLib) { try { await window.__ensureLib("docx"); } catch (e) {} }
+    if (!window.docx || typeof htmlToDocxRuns !== "function" || typeof mathToWordHtml !== "function") {
+      alert("Word export library load nahi hui — internet check karke page reload karein.");
+      return;
+    }
+
+    var brand = (window.SnapBrand && SnapBrand.plain) ? SnapBrand.plain("SAVYASACHI COACHING") : "SAVYASACHI COACHING";
+    var hdrData = {
+      title: brand,
+      test: val("subject"),
+      mm: val("maxMarks"),
+      date: fmtDate(val("testDate")),
+      time: fmtTime(val("timeMin")),
+      instr: val("instructions") || "सभी प्रश्न अनिवार्य हैं। प्रत्येक प्रश्न के लिए एक ही सही उत्तर है।"
+    };
+    var png = await drawHeaderPng(hdrData);
+    var base = safeName(val("subject")) || ("Test " + (safeName(val("testNo")) || "Paper"));
+
     try {
-      var blob = await docx.Packer.toBlob(doc);
+      if (typeof toast === "function") toast("⏳ " + nSets + " set ki Word file ban rahi hai...");
+      var files = [];
+      for (var i = 0; i < nSets; i++) {
+        var r = buildPaperDoc(setQuestions(i), hdrData, png, i === 0);
+        if (!r) return;                                   // user ne cancel kiya
+        var blob = await docx.Packer.toBlob(r.doc);
+        var name = base + " Set " + (letters[i] || String.fromCharCode(65 + i)) + ".docx";
+        files.push(new File([blob], name, { type: DOCX_MIME }));
+      }
+
+      // mobile/app: sab files ek hi share-sheet me; nahi to ek ke baad ek automatic download
       try {
-        var file = new File([blob], filename, { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: filename, text: "Test paper (Word file)" });
-          if (typeof toast === "function") toast("📄 Paper Format Word share ho gayi!");
+        if (files.length && navigator.canShare && navigator.canShare({ files: files })) {
+          await navigator.share({ files: files, title: base, text: "Test paper — " + files.length + " set" });
+          if (typeof toast === "function") toast("📄 " + files.length + " set ki Word file share ho gayi!");
           return;
         }
-      } catch (shareErr) { console.warn("Share failed, downloading instead:", shareErr); }
-      var url = URL.createObjectURL(blob), a = document.createElement("a");
-      a.href = url; a.download = filename;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-      if (typeof toast === "function") toast("📄 Paper Format Word: " + N + " page (" + (N / 2) + " Word page) — download shuru!");
+      } catch (shareErr) {
+        if (shareErr && shareErr.name === "AbortError") return;
+        console.warn("Share failed, downloading instead:", shareErr);
+      }
+      for (var k = 0; k < files.length; k++) {
+        var url = URL.createObjectURL(files[k]), a = document.createElement("a");
+        a.href = url; a.download = files[k].name;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        (function (u) { setTimeout(function () { URL.revokeObjectURL(u); }, 5000); })(url);
+        if (k < files.length - 1) await sleep(700);       // browser ek saath kai downloads block na kare
+      }
+      if (typeof toast === "function") toast("📄 " + files.length + " Word file download shuru: " + files.map(function (f) { return f.name; }).join(", "));
     } catch (err) {
       console.error(err);
       alert("Paper Format Word banane mein error: " + (err.message || err));
