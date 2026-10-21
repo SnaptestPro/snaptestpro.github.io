@@ -37,7 +37,7 @@
   var COL_W = Math.floor(INNER_W / 2);    // 3809
   var COL_PAD = 60;                       // column cell side margin
   var COL_H = ROW_H - PAD_Y * 2;          // usable height of a column
-  var TXT_W = COL_W - COL_PAD * 2 - 20;   // text width in a column
+  var TXT_W = COL_W - 160;                // text width (right column ki asli width: 100 + 60 margin)
   var OPT_TBL_W = COL_W - COL_PAD * 2;    // 2x2 option table width
   var OPT_W = Math.floor(OPT_TBL_W / 2) - 60 - 20; // text width inside one option cell
   var PT = 9.5;                          // body font size (pt) — yahin se badlo (9 / 9.5 / 10)
@@ -48,7 +48,7 @@
   var BOTTOM_GUARD = 100;                 // columns ke neeche itni jagah chhodte hain (twips)
   var MAX_EXTRA = 0;                      // 0 = questions ke beech koi extra gap NAHI (sab gap barabar). >0 rakhoge to column neeche tak stretch hoga
   var SAFETY = 1.0;                       // estimate safety margin (1.0 = sabse zyada questions fit; 1.03-1.05 = zyada safe)
-  var FIT_GUARD = 200;                    // column ke neeche itni jagah (twips) hamesha khali rakhte hain, kategne se bachne ke liye
+  var FIT_GUARD = 100;                    // column ke neeche itni jagah (twips) hamesha khali rakhte hain, kategne se bachne ke liye
   var MAX_PAGES = 40;                     // booklet max: 4, 8, 12 ... 40 pages
   var CLASS_KEY = "pfwClass";
 
@@ -75,7 +75,7 @@
     var i; for (i = 48; i <= 57; i++) TNR[i] = 500;
     for (i = 0; i < 26; i++) { TNR[65 + i] = +U[i]; TNR[97 + i] = +L[i]; }
   })();
-  var HI_BASE = 0.5;                       // Devanagari akshar (consonant / vowel) width, em  (0.42-0.52 sab same result dete hain)
+  var HI_BASE = 0.40;                      // Devanagari akshar width (em). Aapke Word ke 34 asli stem line-counts se fit: 0.36-0.44 sab 34/34 sahi, beech ka 0.40 liya
   var WRAP_SAFE = 0.99;                    // line width ka 1% kam maante hain (borderline line ko wrap maan lo)
   var MATH_EXTRA = 25;                     // math (fraction/root) wali har line par extra twips (Word ka measured ~23)
 
