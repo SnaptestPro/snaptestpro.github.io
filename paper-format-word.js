@@ -238,12 +238,24 @@
     // title (letter-spaced, grey shadow)
     var title = String(h.title || "").toUpperCase(), fs = 31, gap = 2.2, tw;
     function twOf() { c.font = "bold " + fs + "px " + FF; var w = 0; for (var i = 0; i < title.length; i++) w += c.measureText(title[i]).width + gap; return w - gap; }
-    tw = twOf(); while (tw > W - 60 && fs > 12) { fs -= 1; gap = Math.max(0.5, gap - 0.1); tw = twOf(); }
+    var maxTw = h.setLabel ? W - 160 : W - 60;
+    tw = twOf(); while (tw > maxTw && fs > 12) { fs -= 1; gap = Math.max(0.5, gap - 0.1); tw = twOf(); }
     var tx = (W - tw) / 2, ty = 29;
     [[1.6, 1.6, "#9a9a9a"], [0, 0, "#000"]].forEach(function (L) {
       c.fillStyle = L[2]; var x = tx + L[0];
       for (var i = 0; i < title.length; i++) { c.font = "bold " + fs + "px " + FF; c.fillText(title[i], x, ty + L[1]); x += c.measureText(title[i]).width + gap; }
     });
+    // SET badge (top-right, box ke andar) — sirf jab ek se zyada set hon
+    if (h.setLabel) {
+      var bx = W - 64, by = 9, bw = 52, bh = 17, br = 5;
+      c.beginPath(); c.moveTo(bx + br, by); c.lineTo(bx + bw - br, by); c.quadraticCurveTo(bx + bw, by, bx + bw, by + br);
+      c.lineTo(bx + bw, by + bh - br); c.quadraticCurveTo(bx + bw, by + bh, bx + bw - br, by + bh); c.lineTo(bx + br, by + bh);
+      c.quadraticCurveTo(bx, by + bh, bx, by + bh - br); c.lineTo(bx, by + br); c.quadraticCurveTo(bx, by, bx + br, by); c.closePath();
+      c.fillStyle = "#fff"; c.fill(); c.lineWidth = 1.2; c.strokeStyle = "#000"; c.stroke();
+      c.fillStyle = "#000"; c.font = "bold 11px " + FF; c.textAlign = "center"; c.textBaseline = "middle";
+      c.fillText(h.setLabel, bx + bw / 2, by + bh / 2 + 0.5);
+      c.textAlign = "left"; c.textBaseline = "alphabetic";
+    }
     // info line
     var ifs = 10.5, left = ("TEST:- " + h.test + (h.date ? " (" + h.date + ")" : "")).toUpperCase(),
         mid = "TIME:-" + h.time, right = "M.M:- " + h.mm, iy = 54;
@@ -441,17 +453,18 @@
       time: fmtTime(val("timeMin")),
       instr: val("instructions") || "सभी प्रश्न अनिवार्य हैं। प्रत्येक प्रश्न के लिए एक ही सही उत्तर है।"
     };
-    var png = await drawHeaderPng(hdrData);
     var base = safeName(val("subject")) || ("Test " + (safeName(val("testNo")) || "Paper"));
 
     try {
       if (typeof toast === "function") toast("⏳ " + nSets + " set ki Word file ban rahi hai...");
       var files = [];
       for (var i = 0; i < nSets; i++) {
-        var r = buildPaperDoc(setQuestions(i), hdrData, png, i === 0);
+        var letter = letters[i] || String.fromCharCode(65 + i);
+        var hd = Object.assign({}, hdrData, { setLabel: nSets > 1 ? "SET " + letter : "" });
+        var r = buildPaperDoc(setQuestions(i), hd, await drawHeaderPng(hd), i === 0);
         if (!r) return;                                   // user ne cancel kiya
         var blob = await docx.Packer.toBlob(r.doc);
-        var name = base + " Set " + (letters[i] || String.fromCharCode(65 + i)) + ".docx";
+        var name = base + " Set " + letter + ".docx";
         files.push(new File([blob], name, { type: DOCX_MIME }));
       }
 
