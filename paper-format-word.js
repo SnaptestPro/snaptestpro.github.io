@@ -422,6 +422,26 @@
     return { doc: doc, N: N };
   }
 
+  /* ---- institute ka naam: generator iframe me khulta hai, SnapBrand parent page me hota hai ---- */
+  function instituteName(fallback) {
+    var wins = [window];
+    try { if (window.parent && window.parent !== window) wins.push(window.parent); } catch (e) {}
+    try { if (window.top && window.top !== window) wins.push(window.top); } catch (e) {}
+    for (var i = 0; i < wins.length; i++) {
+      try {
+        var sb = wins[i].SnapBrand;
+        if (sb && typeof sb.plain === "function") { var n = sb.plain(""); if (n) return n; }
+      } catch (e) {}
+    }
+    try {                                   // same-origin cache (branding.js yahi save karta hai)
+      var last = localStorage.getItem("snap_brand_last");
+      var b = last && JSON.parse(localStorage.getItem("snap_brand_" + last) || "null");
+      var nm = b && b.name ? String(b.name).replace(/[*_~`\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 60) : "";
+      if (nm) return nm;
+    } catch (e) {}
+    return fallback;
+  }
+
   var DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   function safeName(t) { return String(t || "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim(); }
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
@@ -444,7 +464,7 @@
       return;
     }
 
-    var brand = (window.SnapBrand && SnapBrand.plain) ? SnapBrand.plain("SnapTest Pro") : "SnapTest Pro";
+    var brand = instituteName("SnapTest Pro");
     var hdrData = {
       title: brand,
       test: val("subject"),
