@@ -444,7 +444,7 @@
       return;
     }
 
-    var brand = (window.SnapBrand && SnapBrand.plain) ? SnapBrand.plain("SAVYASACHI COACHING") : "SAVYASACHI COACHING";
+    var brand = (window.SnapBrand && SnapBrand.plain) ? SnapBrand.plain("SnapTest Pro") : "SnapTest Pro";
     var hdrData = {
       title: brand,
       test: val("subject"),
