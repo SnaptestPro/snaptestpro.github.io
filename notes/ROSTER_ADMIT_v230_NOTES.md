@@ -90,7 +90,3 @@ Institute jo bhi output banaye usme tag: **Admit Card** (canvas footer, isliye P
 - Sab jagah band: `app-config.js` → `brandMark: false`.
 - Abhi tag nahi: ID card (app ke andar ka view), CSV files, OMR sheet par alag footer, exam-manager ki baaki reports.
 - Tests: tests/unit/test_brandmark_v233.js; test_branding2_v221.js me printBar ki expectation badli (ab tag-only bar aata hai).
-
----
-# v234 — Registration se seedha Test (Exam) jodna
-Registration screen me naya section **🔗 4. Test (Exam) se jodein**: Publish ke baad kisi bhi bane hue test ko chunkar jodein; jude tests ki list + 🔄 Sync. Ek registration se kai tests (Paper 1/Paper 2) jud sakte hain, roll wahi. Test ke roll digits alag hon ya test pehle se kisi aur registration/roster se juda ho to confirm poochta hai. Test banate waqt "Registration se jodein" aur Exam → 🎫 Admit Card & Roster → 🔗 wale purane raste bhi chalte hain.

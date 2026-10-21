@@ -219,65 +219,58 @@
     });
   }
 
-  /* ---- header box (page 1) -------------------------------------------- */
-  function buildHeader(h) {
-    var tsz = h.title.length <= 22 ? 40 : h.title.length <= 34 ? 30 : 22;
+  /* ---- header box (page 1) --------------------------------------------
+     Image jaisa: gol corner wala halka-grey box, shadow wala bada title, neeche ek line me
+     TEST (date) | TIME | M.M.  Word table me gol corner nahi ban sakte, isliye box ek
+     high-quality PNG ki tarah (canvas se) banta hai — har paper ke naam/date/time ke saath. */
+  var HDR_PX_W = 508, HDR_PX_H = 71;       // 96dpi px (= INNER_W twips x ~1065 twips)
+  function drawHeaderPng(h) {
+    var S = 4, W = 451, H = Math.round(451 * HDR_PX_H / HDR_PX_W), cv = document.createElement("canvas");
+    cv.width = W * S; cv.height = H * S;
+    var c = cv.getContext("2d"); c.scale(S, S);
+    var FF = "'Times New Roman', Times, 'Noto Serif', 'Mangal', 'Noto Sans Devanagari', serif";
+    // rounded box
+    var x0 = 8, y0 = 6, x1 = W - 8, y1 = H - 3, r = 9;
+    c.beginPath(); c.moveTo(x0 + r, y0); c.lineTo(x1 - r, y0); c.quadraticCurveTo(x1, y0, x1, y0 + r);
+    c.lineTo(x1, y1 - r); c.quadraticCurveTo(x1, y1, x1 - r, y1); c.lineTo(x0 + r, y1);
+    c.quadraticCurveTo(x0, y1, x0, y1 - r); c.lineTo(x0, y0 + r); c.quadraticCurveTo(x0, y0, x0 + r, y0); c.closePath();
+    c.fillStyle = "#E7E6E6"; c.fill(); c.lineWidth = 1.4; c.strokeStyle = "#000"; c.stroke();
+    // title (letter-spaced, grey shadow)
+    var title = String(h.title || "").toUpperCase(), fs = 31, gap = 2.2, tw;
+    function twOf() { c.font = "bold " + fs + "px " + FF; var w = 0; for (var i = 0; i < title.length; i++) w += c.measureText(title[i]).width + gap; return w - gap; }
+    tw = twOf(); while (tw > W - 60 && fs > 12) { fs -= 1; gap = Math.max(0.5, gap - 0.1); tw = twOf(); }
+    var tx = (W - tw) / 2, ty = 32;
+    [[1.6, 1.6, "#9a9a9a"], [0, 0, "#000"]].forEach(function (L) {
+      c.fillStyle = L[2]; var x = tx + L[0];
+      for (var i = 0; i < title.length; i++) { c.font = "bold " + fs + "px " + FF; c.fillText(title[i], x, ty + L[1]); x += c.measureText(title[i]).width + gap; }
+    });
+    // info line
+    var ifs = 10.5, left = ("TEST:- " + h.test + (h.date ? " (" + h.date + ")" : "")).toUpperCase(),
+        mid = "TIME:-" + h.time, right = "M.M:- " + h.mm, iy = 55;
+    function iw(t) { c.font = "bold " + ifs + "px " + FF; return c.measureText(t).width; }
+    while (iw(left) + iw(mid) + iw(right) + 40 > W - 40 && ifs > 6) ifs -= 0.5;
+    c.fillStyle = "#000"; c.font = "bold " + ifs + "px " + FF;
+    var lx = 22, rx = W - 51 - iw(right), mx = Math.max(233, lx + iw(left) + 14);
+    if (mx + iw(mid) + 10 > rx) mx = Math.max(lx + iw(left) + 8, rx - iw(mid) - 10);
+    c.fillText(left, lx, iy); c.fillText(mid, mx, iy); c.fillText(right, rx, iy);
+    return new Promise(function (res) {
+      cv.toBlob(function (bl) { bl.arrayBuffer().then(function (ab) { res(new Uint8Array(ab)); }); }, "image/png");
+    });
+  }
+  function buildHeader(h, png) {
     var instr = "Instructions: " + h.instr;
     var il = est(instr.replace(/&/g, "&amp;").replace(/</g, "&lt;"), "", INNER_W - 40, 8.5).lines;
-    var TAB = INNER_W - 360;                 // right tab (inner box text width se thoda kam)
-    var row = function (l, r) {
-      return new docx.Paragraph({
-        tabStops: [{ type: docx.TabStopType.RIGHT, position: TAB }],
-        spacing: { line: 260, lineRule: docx.LineRuleType.EXACT, before: 0, after: 0 },
-        children: [new docx.TextRun({ children: [l, new docx.Tab(), r], size: 18 })]
-      });
-    };
-    var thick = { style: docx.BorderStyle.SINGLE, size: 24, color: "000000" };   // bahar: moti (3pt)
-    var thin = { style: docx.BorderStyle.SINGLE, size: 6, color: "000000" };     // andar: patli (0.75pt)
-    var IN_W = INNER_W - 100;
-    var inner = new docx.Table({
-      width: { size: IN_W, type: docx.WidthType.DXA },
-      columnWidths: [IN_W], layout: docx.TableLayoutType.FIXED,
-      rows: [new docx.TableRow({
-        cantSplit: true,
-        children: [new docx.TableCell({
-          width: { size: IN_W, type: docx.WidthType.DXA },
-          margins: { top: 60, bottom: 60, left: 120, right: 120 },
-          borders: { top: thin, bottom: thin, left: thin, right: thin },
-          children: [
-            new docx.Paragraph({
-              alignment: docx.AlignmentType.CENTER,
-              spacing: { line: tsz * 12, lineRule: docx.LineRuleType.EXACT, before: 0, after: 0 },
-              children: [new docx.TextRun({ text: h.title.toUpperCase(), bold: true, size: tsz, characterSpacing: 20 })]
-            }),
-            row("Test:- " + h.test, "M.M;- " + h.mm),
-            row("DATE ;- " + h.date, "CLASS;- " + h.cls)
-          ]
-        })]
-      })]
-    });
-    var box = new docx.Table({
-      width: { size: INNER_W, type: docx.WidthType.DXA },
-      columnWidths: [INNER_W], layout: docx.TableLayoutType.FIXED,
-      rows: [new docx.TableRow({
-        cantSplit: true,
-        children: [new docx.TableCell({
-          width: { size: INNER_W, type: docx.WidthType.DXA },
-          margins: { top: 40, bottom: 40, left: 40, right: 40 },
-          borders: { top: thick, bottom: thick, left: thick, right: thick },
-          children: [
-            inner,
-            new docx.Paragraph({ spacing: { line: 20, lineRule: docx.LineRuleType.EXACT, before: 0, after: 0 }, children: [new docx.TextRun({ text: "", size: 2 })] })
-          ]
-        })]
-      })]
+    var box = new docx.Paragraph({
+      alignment: docx.AlignmentType.LEFT,
+      spacing: { line: 240, lineRule: docx.LineRuleType.AUTO, before: 0, after: 0 },
+      children: [new docx.ImageRun({ data: png, type: "png", transformation: { width: HDR_PX_W, height: HDR_PX_H } })]
     });
     var ip = new docx.Paragraph({
       alignment: docx.AlignmentType.CENTER,
       spacing: { line: 240, lineRule: docx.LineRuleType.EXACT, before: 60, after: 60 },
       children: [new docx.TextRun({ text: instr, bold: true, italics: true, size: 17 })]
     });
-    return { children: [box, ip], h: (tsz * 12 + 520 + 120 + 24 + il * 240 + 120 + 260) };   // +260: format 20 (moti + patli border)
+    return { children: [box, ip], h: HDR_PX_H * 15 + 80 + il * 240 + 120 + 100 };
   }
 
   /* ---- distribute MCQ blocks into columns (as many as needed, up to maxCols) --- */
@@ -315,6 +308,13 @@
     var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || "");
     return m ? m[3] + "/" + m[2] + "/" + m[1] : "__/__/____";
   }
+  function fmtTime(v) {                    // minutes -> "2HOURS" / "1.5HOURS" / "45MIN"
+    var m = parseFloat(v);
+    if (!m || m <= 0) return "____";
+    if (m < 60) return Math.round(m) + "MIN";
+    var h = Math.round(m / 60 * 100) / 100;
+    return h + (h === 1 ? "HOUR" : "HOURS");
+  }
   function val(id) { var el = document.getElementById(id); return el ? el.value || "" : ""; }
 
   /* ---- main ------------------------------------------------------------ */
@@ -327,24 +327,19 @@
       return;
     }
 
-    var savedCls = ""; try { savedCls = localStorage.getItem(CLASS_KEY) || ""; } catch (e) {}
-    var cls = prompt("Header me Class kya likhna hai? (e.g. 9TH)", savedCls);
-    if (cls === null) return;
-    cls = cls.trim();
-    try { localStorage.setItem(CLASS_KEY, cls); } catch (e) {}
-
     var mcq = all.filter(function (q) { return q.qType !== "subjective"; });
     var sub = all.filter(function (q) { return q.qType === "subjective"; });
 
     var brand = (window.SnapBrand && SnapBrand.plain) ? SnapBrand.plain("SAVYASACHI COACHING") : "SAVYASACHI COACHING";
-    var header = buildHeader({
+    var hdrData = {
       title: brand,
       test: val("subject"),
       mm: val("maxMarks"),
       date: fmtDate(val("testDate")),
-      cls: cls,
+      time: fmtTime(val("timeMin")),
       instr: val("instructions") || "सभी प्रश्न अनिवार्य हैं। प्रत्येक प्रश्न के लिए एक ही सही उत्तर है।"
-    });
+    };
+    var header = buildHeader(hdrData, await drawHeaderPng(hdrData));
 
     var mcqBlocks = mcq.map(function (q, i) { return mcqBlock(i + 1, q); });
 
