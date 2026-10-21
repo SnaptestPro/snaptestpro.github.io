@@ -37,9 +37,9 @@
   var COL_W = Math.floor(INNER_W / 2);    // 3809
   var COL_PAD = 60;                       // column cell side margin
   var COL_H = ROW_H - PAD_Y * 2;          // usable height of a column
-  var TXT_W = COL_W - COL_PAD * 2 - 40;   // text width in a column (conservative)
+  var TXT_W = COL_W - COL_PAD * 2 - 20;   // text width in a column
   var OPT_TBL_W = COL_W - COL_PAD * 2;    // 2x2 option table width
-  var OPT_W = Math.floor(OPT_TBL_W / 2) - 60 - 40; // text width inside one option cell
+  var OPT_W = Math.floor(OPT_TBL_W / 2) - 60 - 20; // text width inside one option cell
   var PT = 9.5;                          // body font size (pt) — yahin se badlo (9 / 9.5 / 10)
   var SZ = Math.round(PT * 2);            // docx half-points
   var LH_RATIO = 1.625;                   // line height = font x ye ratio (1.5 = aur tight, par Hindi matra kat sakti hai)
@@ -48,7 +48,7 @@
   var BOTTOM_GUARD = 100;                 // columns ke neeche itni jagah chhodte hain (twips)
   var MAX_EXTRA = 0;                      // 0 = questions ke beech koi extra gap NAHI (sab gap barabar). >0 rakhoge to column neeche tak stretch hoga
   var SAFETY = 1.0;                       // estimate safety margin (1.0 = sabse zyada questions fit; 1.03-1.05 = zyada safe)
-  var FIT_GUARD = 80;                     // column ke neeche itni jagah (twips) hamesha khali rakhte hain, kategne se bachne ke liye
+  var FIT_GUARD = 200;                    // column ke neeche itni jagah (twips) hamesha khali rakhte hain, kategne se bachne ke liye
   var MAX_PAGES = 40;                     // booklet max: 4, 8, 12 ... 40 pages
   var CLASS_KEY = "pfwClass";
 
@@ -60,29 +60,81 @@
     return [];
   }
 
-  /* ---- width / height estimation -------------------------------------- */
-  function cw(c) {                         // approx advance width in em
-    if (c === 32) return 0.28;
+  /* ---- width / height estimation --------------------------------------
+     v2: pehle har character ko ~0.5em maan kar sirf "total width / line width" nikalte the.
+     Isse comma, space, '.', '-' (jo asal me bahut patle hain) zyada chaude maane jaate the,
+     aur Hindi + math wali lines ek line zyada ginti thi => har column me jagah bachi reh
+     jaati thi (Q7 col-1 me nahi aata tha jab ki space tha).
+     Ab: (1) Times New Roman ki asli character widths, (2) Hindi (Mangal) ke liye alag widths,
+     (3) sup/sub chhote (0.65), fraction/root atomic, (4) Word jaisa word-by-word wrapping.
+     Screenshot ke 12/12 stem line-counts aur har question ki height se match verify ki gayi.  */
+  var TNR = { 32: 250, 33: 333, 34: 408, 35: 500, 36: 500, 37: 833, 38: 778, 39: 180, 40: 333, 41: 333, 42: 500, 43: 564, 44: 250, 45: 333, 46: 250, 47: 278, 58: 278, 59: 278, 60: 564, 61: 564, 62: 564, 63: 444, 64: 921, 91: 333, 92: 278, 93: 333, 94: 469, 95: 500, 96: 333, 123: 480, 124: 200, 125: 480, 126: 541 };
+  (function () {
+    var U = "722 667 667 722 611 556 722 722 333 389 722 611 889 722 722 556 722 667 556 611 722 722 944 722 722 611".split(" ");
+    var L = "444 500 444 500 444 333 500 500 278 278 500 278 778 500 500 500 500 333 389 278 500 500 722 500 500 444".split(" ");
+    var i; for (i = 48; i <= 57; i++) TNR[i] = 500;
+    for (i = 0; i < 26; i++) { TNR[65 + i] = +U[i]; TNR[97 + i] = +L[i]; }
+  })();
+  var HI_BASE = 0.5;                       // Devanagari akshar (consonant / vowel) width, em  (0.42-0.52 sab same result dete hain)
+  var WRAP_SAFE = 0.99;                    // line width ka 1% kam maante hain (borderline line ko wrap maan lo)
+  var MATH_EXTRA = 25;                     // math (fraction/root) wali har line par extra twips (Word ka measured ~23)
+
+  function cw(c) {                         // advance width in em
     if (c >= 0x900 && c <= 0x97F) {
-      if (c <= 0x902 || c === 0x93C || (c >= 0x941 && c <= 0x948) || c === 0x94D || (c >= 0x951 && c <= 0x957)) return 0;
+      if (c === 0x94D) return -0.15;       // virama: conjunct compress hota hai
+      if (c <= 0x903 || c === 0x93C || (c >= 0x941 && c <= 0x948) || (c >= 0x951 && c <= 0x957)) return 0;
+      if (c === 0x93F) return 0.25;
       if ((c >= 0x93E && c <= 0x940) || (c >= 0x949 && c <= 0x94C)) return 0.3;
-      return 0.5;
+      if (c >= 0x966 && c <= 0x96F) return 0.5;
+      return HI_BASE;
     }
-    if (c >= 48 && c <= 57) return 0.5;
-    if (c >= 65 && c <= 90) return 0.66;
-    if (c < 128) return 0.5;
-    return 0.7;
+    if (TNR[c] !== undefined) return TNR[c] / 1000;
+    if ((c >= 0x2080 && c <= 0x209F) || (c >= 0x2070 && c <= 0x207F) || c === 0xB2 || c === 0xB3) return 0.33;
+    if (c === 0xBC || c === 0xBD || c === 0xBE) return 0.75;
+    if (c === 0x221A) return 0.55;
+    if (c === 0xD7 || c === 0xF7 || c === 0xB1 || c === 0x2212) return 0.564;
+    if (c === 0x2026) return 1.0;
+    if (c === 0xB0) return 0.4;
+    return 0.6;
   }
-  function textW(s, pt) { var w = 0; for (var i = 0; i < s.length; i++) w += cw(s.charCodeAt(i)); return w * pt; }
+  function strW(s, sc) { var w = 0; for (var i = 0; i < s.length; i++) w += cw(s.charCodeAt(i)); return w * (sc || 1); }
 
   function est(html, prefix, widthTw, pt) {
     var d = document.createElement("div");
-    d.innerHTML = html;
-    var frac = d.querySelectorAll("table").length, rad = d.querySelectorAll("radical").length;
-    var w = (textW(prefix, pt) + textW(d.textContent || "", pt)) * 1.03;
-    var n = Math.max(1, Math.ceil(w / (widthTw / 20)));
-    var extra = Math.min(frac, n) * 30 + Math.min(rad, n) * 30;
-    return { lines: n, math: frac + rad > 0, h: n * LH + extra };
+    d.innerHTML = String(prefix || "").replace(/&/g, "&amp;").replace(/</g, "&lt;") + html;
+    var atoms = [], cur = 0, mathN = 0;
+    function flush() { if (cur > 0) { atoms.push({ w: cur }); cur = 0; } }
+    function walk(n, sc) {
+      if (n.nodeType === 3) {
+        n.textContent.split(/(\s+)/).forEach(function (p) {
+          if (!p) return;
+          if (/^\s+$/.test(p)) { flush(); atoms.push({ sp: true, w: 0.25 * sc }); } else cur += strW(p, sc);
+        });
+        return;
+      }
+      if (n.nodeType !== 1) return;
+      var t = n.tagName.toLowerCase();
+      if (t === "sup" || t === "sub") { Array.prototype.forEach.call(n.childNodes, function (c) { walk(c, 0.65); }); return; }
+      if (t === "radical") { mathN++; cur += strW(n.textContent) + 0.7; return; }
+      if (t === "table") {
+        mathN++;
+        var tr = n.querySelectorAll("tr");
+        cur += Math.max(strW(tr[0] ? tr[0].textContent : ""), strW(tr[1] ? tr[1].textContent : "")) * 0.9 + 0.25;
+        return;
+      }
+      Array.prototype.forEach.call(n.childNodes, function (c) { walk(c, sc); });
+    }
+    walk(d, 1); flush();
+    var W = (widthTw / 20 / pt) * WRAP_SAFE, lines = 1, x = 0, pend = 0;
+    atoms.forEach(function (a) {
+      if (a.sp) { pend = a.w; return; }
+      if (x === 0) { x = a.w; pend = 0; }
+      else if (x + pend + a.w <= W) { x += pend + a.w; pend = 0; }
+      else { lines++; x = a.w; pend = 0; }
+      while (x > W) { lines++; x -= W; }          // bahut lamba single word
+    });
+    var extra = Math.min(mathN, lines) * MATH_EXTRA;
+    return { lines: lines, math: mathN > 0, h: lines * LH + extra };
   }
   function sp(math, after) {               // math wali line: AT_LEAST (clip na ho), baaki EXACT
     return { line: LH, lineRule: math ? docx.LineRuleType.AT_LEAST : docx.LineRuleType.EXACT, before: 0, after: after || 0 };
