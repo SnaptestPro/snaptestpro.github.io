@@ -224,23 +224,26 @@
     var tsz = h.title.length <= 22 ? 40 : h.title.length <= 34 ? 30 : 22;
     var instr = "Instructions: " + h.instr;
     var il = est(instr.replace(/&/g, "&amp;").replace(/</g, "&lt;"), "", INNER_W - 40, 8.5).lines;
+    var TAB = INNER_W - 360;                 // right tab (inner box text width se thoda kam)
     var row = function (l, r) {
       return new docx.Paragraph({
-        tabStops: [{ type: docx.TabStopType.RIGHT, position: INNER_W - 260 }],
+        tabStops: [{ type: docx.TabStopType.RIGHT, position: TAB }],
         spacing: { line: 260, lineRule: docx.LineRuleType.EXACT, before: 0, after: 0 },
         children: [new docx.TextRun({ children: [l, new docx.Tab(), r], size: 18 })]
       });
     };
-    var edge = { style: docx.BorderStyle.SINGLE, size: 12, color: "000000" };
-    var box = new docx.Table({
-      width: { size: INNER_W, type: docx.WidthType.DXA },
-      columnWidths: [INNER_W], layout: docx.TableLayoutType.FIXED,
+    var thick = { style: docx.BorderStyle.SINGLE, size: 24, color: "000000" };   // bahar: moti (3pt)
+    var thin = { style: docx.BorderStyle.SINGLE, size: 6, color: "000000" };     // andar: patli (0.75pt)
+    var IN_W = INNER_W - 100;
+    var inner = new docx.Table({
+      width: { size: IN_W, type: docx.WidthType.DXA },
+      columnWidths: [IN_W], layout: docx.TableLayoutType.FIXED,
       rows: [new docx.TableRow({
         cantSplit: true,
         children: [new docx.TableCell({
-          width: { size: INNER_W, type: docx.WidthType.DXA },
+          width: { size: IN_W, type: docx.WidthType.DXA },
           margins: { top: 60, bottom: 60, left: 120, right: 120 },
-          borders: { top: edge, bottom: edge, left: edge, right: edge },
+          borders: { top: thin, bottom: thin, left: thin, right: thin },
           children: [
             new docx.Paragraph({
               alignment: docx.AlignmentType.CENTER,
@@ -253,12 +256,28 @@
         })]
       })]
     });
+    var box = new docx.Table({
+      width: { size: INNER_W, type: docx.WidthType.DXA },
+      columnWidths: [INNER_W], layout: docx.TableLayoutType.FIXED,
+      rows: [new docx.TableRow({
+        cantSplit: true,
+        children: [new docx.TableCell({
+          width: { size: INNER_W, type: docx.WidthType.DXA },
+          margins: { top: 40, bottom: 40, left: 40, right: 40 },
+          borders: { top: thick, bottom: thick, left: thick, right: thick },
+          children: [
+            inner,
+            new docx.Paragraph({ spacing: { line: 20, lineRule: docx.LineRuleType.EXACT, before: 0, after: 0 }, children: [new docx.TextRun({ text: "", size: 2 })] })
+          ]
+        })]
+      })]
+    });
     var ip = new docx.Paragraph({
       alignment: docx.AlignmentType.CENTER,
       spacing: { line: 240, lineRule: docx.LineRuleType.EXACT, before: 60, after: 60 },
       children: [new docx.TextRun({ text: instr, bold: true, italics: true, size: 17 })]
     });
-    return { children: [box, ip], h: (tsz * 12 + 520 + 120 + 24 + il * 240 + 120) };
+    return { children: [box, ip], h: (tsz * 12 + 520 + 120 + 24 + il * 240 + 120 + 260) };   // +260: format 20 (moti + patli border)
   }
 
   /* ---- distribute MCQ blocks into columns (as many as needed, up to maxCols) --- */
