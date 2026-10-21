@@ -31,7 +31,7 @@
   var PAGE_M = 720;                       // Word "Narrow" margins = 0.5" (720 twips) on all sides
   var HF_DIST = 432;                      // Narrow preset: header/footer distance 0.3"
   var HALF_W = 7699;                      // (16838 - 2*720) / 2
-  var ROW_H = 10400;                      // exact row height (page content 10466 - tiny para)
+  var ROW_H = 10340;                      // exact row height (page content 10466 minus section-break paragraph + slack)
   var PAD_X = 160, PAD_Y = 60;            // half-page inner padding
   var INNER_W = HALF_W - PAD_X * 2;       // 7619
   var COL_W = Math.floor(INNER_W / 2);    // 3809
@@ -40,10 +40,13 @@
   var TXT_W = COL_W - COL_PAD * 2 - 40;   // text width in a column (conservative)
   var OPT_TBL_W = COL_W - COL_PAD * 2;    // 2x2 option table width
   var OPT_W = Math.floor(OPT_TBL_W / 2) - 60 - 40; // text width inside one option cell
-  var SZ = 16, PT = 8;                    // body font: 8pt
-  var LH = 260;                           // exact line height (13pt)
-  var SPACER = 60;                        // gap after each question
-  var SAFETY = 1.05;                      // estimate safety margin (kam = zyada fit, zyada = zyada khali jagah)
+  var PT = 9.5;                          // body font size (pt) — yahin se badlo (9 / 9.5 / 10)
+  var SZ = Math.round(PT * 2);            // docx half-points
+  var LH = Math.round(PT * 1.625 * 20);   // exact line height (twips), 1.625 x font
+  var SPACER = 60;                        // base gap between questions
+  var BOTTOM_GUARD = 100;                 // columns ke neeche itni jagah chhodte hain (twips)
+  var MAX_EXTRA = 300;                    // gap me max extra stretch per question (twips)
+  var SAFETY = 1.03;                      // estimate safety margin (kam = zyada fit, zyada = zyada khali jagah)
   var MAX_PAGES = 40;                     // booklet max: 4, 8, 12 ... 40 pages
   var CLASS_KEY = "pfwClass";
 
@@ -76,7 +79,7 @@
     var frac = d.querySelectorAll("table").length, rad = d.querySelectorAll("radical").length;
     var w = (textW(prefix, pt) + textW(d.textContent || "", pt)) * 1.03;
     var n = Math.max(1, Math.ceil(w / (widthTw / 20)));
-    var extra = Math.min(frac, n) * 90 + Math.min(rad, n) * 40;
+    var extra = Math.min(frac, n) * 30 + Math.min(rad, n) * 30;
     return { lines: n, math: frac + rad > 0, h: n * LH + extra };
   }
   function sp(math, after) {               // math wali line: AT_LEAST (clip na ho), baaki EXACT
@@ -88,9 +91,9 @@
     var n = { style: docx.BorderStyle.NONE, size: 0, color: "FFFFFF" };
     return { top: n, bottom: n, left: n, right: n, insideHorizontal: n, insideVertical: n };
   }
-  function spacer() {
+  function spacer(h) {
     return new docx.Paragraph({
-      spacing: { line: SPACER, lineRule: docx.LineRuleType.EXACT, before: 0, after: 0 },
+      spacing: { line: h || SPACER, lineRule: docx.LineRuleType.EXACT, before: 0, after: 0 },
       children: [new docx.TextRun({ text: "", size: 2 })]
     });
   }
@@ -100,7 +103,7 @@
       h: e.h,
       cell: new docx.TableCell({
         width: { size: w, type: docx.WidthType.DXA },
-        margins: { top: 10, bottom: 10, left: 30, right: 30 },
+        margins: { top: 0, bottom: 0, left: 30, right: 30 },
         children: [new docx.Paragraph({
           spacing: sp(e.math, 0),
           children: [new docx.TextRun({ text: "[" + label + "] ", size: SZ })].concat(htmlToDocxRuns(html, { size: SZ }))
@@ -119,14 +122,13 @@
     for (var r = 0; r < 2; r++) {
       var a = optCell(L[r * 2], o[r * 2], w1), b = optCell(L[r * 2 + 1], o[r * 2 + 1], w2);
       rows.push(new docx.TableRow({ cantSplit: true, children: [a.cell, b.cell] }));
-      h += Math.max(a.h, b.h) + 20;
+      h += Math.max(a.h, b.h);
     }
     out.push(new docx.Table({
       width: { size: OPT_TBL_W, type: docx.WidthType.DXA },
       columnWidths: [w1, w2], layout: docx.TableLayoutType.FIXED,
       borders: noBorders(), rows: rows
     }));
-    out.push(spacer());
     return { children: out, h: (h + SPACER) * SAFETY };
   }
   function subBlock(n, q) {
@@ -139,9 +141,12 @@
       })]
     };
   }
-  function colCell(blocks, w, isRight) {
+  function colCell(blocks, w, isRight, extra) {
     var kids = [];
-    blocks.forEach(function (b) { kids = kids.concat(b.children); });
+    blocks.forEach(function (b, i) {
+      kids = kids.concat(b.children);
+      kids.push(spacer(SPACER + (i < blocks.length - 1 ? (extra || 0) : 0)));   // gap (stretch se column neeche tak bharta hai)
+    });
     if (!kids.length) kids.push(spacer());
     var cfg = {
       width: { size: w, type: docx.WidthType.DXA },
@@ -152,12 +157,12 @@
     if (isRight) cfg.borders = { left: { style: docx.BorderStyle.SINGLE, size: 4, color: "888888" } };
     return new docx.TableCell(cfg);
   }
-  function colsTable(left, right) {
+  function colsTable(left, right, exL, exR) {
     return new docx.Table({
       width: { size: INNER_W, type: docx.WidthType.DXA },
       columnWidths: [COL_W, INNER_W - COL_W], layout: docx.TableLayoutType.FIXED,
       borders: noBorders(),
-      rows: [new docx.TableRow({ children: [colCell(left, COL_W, false), colCell(right, INNER_W - COL_W, true)] })]
+      rows: [new docx.TableRow({ children: [colCell(left, COL_W, false, exL), colCell(right, INNER_W - COL_W, true, exR)] })]
     });
   }
 
@@ -205,17 +210,23 @@
 
   /* ---- distribute MCQ blocks into columns (as many as needed, up to maxCols) --- */
   function distribute(blocks, headerH, maxCols) {
-    var cols = [[]], ci = 0, used = 0, dropped = 0;
+    var cols = [[]], usedArr = [0], ci = 0, dropped = 0;
     blocks.forEach(function (b) {
       var avail = COL_H - (ci < 2 ? headerH : 0);
-      if (used > 0 && used + b.h > avail) {
+      if (usedArr[ci] > 0 && usedArr[ci] + b.h > avail) {
         if (ci + 1 >= maxCols) { dropped++; return; }
-        ci++; used = 0; cols.push([]);
+        ci++; cols.push([]); usedArr.push(0);
       }
       cols[ci].push(b);
-      used += b.h;
+      usedArr[ci] += b.h;
     });
-    return { cols: cols, dropped: dropped };
+    // bhare hue (aakhri ke alawa) columns ko neeche tak stretch karo: bacha hua space questions ke beech baant do
+    var extras = cols.map(function (c, i) {
+      if (i >= cols.length - 1 || c.length < 2) return 0;
+      var left = (COL_H - (i < 2 ? headerH : 0)) - usedArr[i] - BOTTOM_GUARD;
+      return left > 0 ? Math.min(MAX_EXTRA, Math.floor(left / (c.length - 1))) : 0;
+    });
+    return { cols: cols, extras: extras, dropped: dropped };
   }
 
   function halfCell(children) {
@@ -292,7 +303,7 @@
       var kids = [];
       if (p <= mp) {
         if (p === 1) kids = kids.concat(header.children);
-        kids.push(colsTable(dist.cols[(p - 1) * 2] || [], dist.cols[(p - 1) * 2 + 1] || []));
+        kids.push(colsTable(dist.cols[(p - 1) * 2] || [], dist.cols[(p - 1) * 2 + 1] || [], dist.extras[(p - 1) * 2], dist.extras[(p - 1) * 2 + 1]));
         kids.push(spacer());
       } else if (p > N - sp) {
         var si = p - (N - sp) - 1, blocks = subPages[si];
@@ -310,7 +321,8 @@
     var pairs = [];
     for (var s2 = 0; s2 < N / 4; s2++) { pairs.push([N - 2 * s2, 1 + 2 * s2]); pairs.push([2 + 2 * s2, N - 1 - 2 * s2]); }
 
-    var sections = pairs.map(function (pair) {
+    var sections = pairs.map(function (pair, si2) {
+      var isLast = si2 === pairs.length - 1;
       return {
         properties: { page: {
           size: { width: 11906, height: 16838, orientation: docx.PageOrientation.LANDSCAPE },
@@ -326,17 +338,21 @@
               height: { value: ROW_H, rule: docx.HeightRule.EXACT },
               children: [halfCell(pageKids[pair[0]]), halfCell(pageKids[pair[1]])]
             })]
-          }),
-          new docx.Paragraph({
-            spacing: { line: 20, lineRule: docx.LineRuleType.EXACT, before: 0, after: 0 },
-            children: [new docx.TextRun({ text: "", size: 2 })]
           })
-        ]
+        ].concat(isLast ? [new docx.Paragraph({
+          spacing: { line: 20, lineRule: docx.LineRuleType.EXACT, before: 0, after: 0 },
+          children: [new docx.TextRun({ text: "", size: 2 })]
+        })] : [])
       };
     });
 
     var doc = new docx.Document({
-      styles: { default: { document: { run: { size: SZ } } } },   // math bhi 8pt me aaye
+      // math bhi body size me aaye; default paragraph 1pt exact => docx.js ka section-break paragraph page ke neeche
+      // extra jagah nahi leta (yehi "blank page" ka reason tha)
+      styles: { default: { document: {
+        run: { size: SZ },
+        paragraph: { spacing: { line: 20, lineRule: docx.LineRuleType.EXACT, before: 0, after: 0 } }
+      } } },
       sections: sections
     });
 

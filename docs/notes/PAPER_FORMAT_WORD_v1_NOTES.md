@@ -36,3 +36,15 @@ aata hai ("N question nahi aa rahe"). Constants file ke upar: `SAFETY`, `LH`, `S
 
 ## Deploy
 Replace/add: `paper-format-word.js` (new), `question-generator.html` (2 buttons + 1 script line).
+
+## v1.2 fixes (Word screenshot ke baad)
+1. **Blank pages**: docx.js har section ke baad ek extra paragraph (section break) daalta hai, jiski
+   height Word ki default line jitni hoti hai. Table ki exact height + wo paragraph page se bada ho jaata tha,
+   isliye har sheet ke baad blank page aata tha (LibreOffice ye maaf kar deta hai, Word nahi).
+   Fix: default paragraph 1pt exact kiya, `ROW_H` 10340 kiya, aur extra tiny paragraph sirf aakhri section me.
+2. **Neeche khali jagah**: Word ke real screenshot se height calibrate ki (option rows par extra +20 hataya,
+   fraction extra 140 -> 30, `SAFETY` 1.05 -> 1.03). Upar se bhare hue columns ko neeche tak stretch bhi karte hain:
+   bacha hua space questions ke beech baant dete hain (`BOTTOM_GUARD`, `MAX_EXTRA`).
+
+## v1.3
+Body text size 8pt -> **9.5pt** (`PT` constant, file ke upar). Line-height aur page-fit apne aap us hisaab se adjust hoti hai.
