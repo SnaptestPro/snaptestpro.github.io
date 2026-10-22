@@ -5,6 +5,8 @@
   var C = function () { return window.SNAP_CONFIG || {}; };
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
+  function bi() { var S = window.SnapBrand; return S && S.ident ? S.ident({ name: "SnapTestPro" }) : { brand: false, name: "SnapTestPro", sub: "", powered: false }; }
+  function bl(sz) { var S = window.SnapBrand; return S && S.logoHtml ? S.logoHtml(sz) : '<img src="icon-512-maskable.png" alt="" style="width:' + sz + 'px;height:' + sz + 'px">'; }
   var digits = function (s) { return String(s || "").replace(/\D/g, "").slice(-10); };
 
   var IC = {
@@ -135,7 +137,7 @@
     about: function (done) {
       var c = C();
       done("About App", "App ki jaankari",
-        '<div class="asp-card" style="text-align:center"><img src="icon-512-maskable.png" alt="" style="width:76px;height:76px;border-radius:18px"><div style="font-weight:800;font-size:1.2rem;margin-top:8px">' + esc(c.appName || "SnapTestPro") + '</div><p>' + esc(c.tagline || "") + '</p></div>' +
+        '<div class="asp-card" style="text-align:center"><div style="display:flex;justify-content:center">' + bl(76) + '</div><div style="font-weight:800;font-size:1.2rem;margin-top:8px">' + esc(bi().name) + '</div><p>' + esc(bi().brand ? bi().sub : (c.tagline || "")) + '</p></div>' +
         '<div class="asp-card">' + kv("Version", esc((c.version || "") + (c.build ? " (build " + esc(c.build) + ")" : ""))) + (c.ownerName ? kv("Developer / Owner", esc(c.ownerName)) : "") + (c.website ? kv("Website", esc(c.website)) : "") + '</div>' +
         legal());
     },
@@ -143,7 +145,7 @@
       var c = C();
       done("App & Data", "Update, cache aur question bank",
         apkCard() +
-        '<div class="asp-card"><div class="asp-ver"><img src="icon-512-maskable.png" alt=""><div><b style="font-size:1rem">' + esc(c.appName || "SnapTest Pro") + '</b><div style="font-size:.76rem;color:#64748b;margin-top:2px">' + esc(c.tagline || "") + '</div><span class="asp-pill"><i></i>Version ' + esc((c.version || "") + (c.build ? " (" + c.build + ")" : "")) + '</span></div></div></div>' +
+        '<div class="asp-card"><div class="asp-ver">' + bl(52) + '<div><b style="font-size:1rem">' + esc(bi().name) + '</b><div style="font-size:.76rem;color:#64748b;margin-top:2px">' + esc(bi().brand ? bi().sub : (c.tagline || "")) + '</div><span class="asp-pill"><i></i>Version ' + esc((c.version || "") + (c.build ? " (" + c.build + ")" : "")) + '</span></div></div></div>' +
         '<div class="asp-card"><div class="asp-line"><div class="asp-ic" style="background:' + TILE.ind + '">' + ico("dl") + '</div><div class="asp-tx"><b>Update check</b><p>Latest version laga hai ya nahi dekhein.</p></div></div><div class="asp-act"><button type="button" class="asp-btn" data-go="update">' + ico("refresh") + ' Update check karein</button></div>' +
         '<div class="asp-sep"></div><div class="asp-line"><div class="asp-ic" style="background:' + TILE.tea + '">' + ico("trash") + '</div><div class="asp-tx"><b>Cache saaf karke refresh</b><p>Kuch purana ya adhura dikhe to ye karein. Aapka login bana rahega.</p></div></div><div class="asp-act"><button type="button" class="asp-btn o" data-go="cache">' + ico("trash") + ' Cache saaf karein</button></div></div>' +
         '<div class="asp-card"><h4>' + ico("db") + ' Question Bank</h4>' +

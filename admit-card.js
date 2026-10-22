@@ -56,7 +56,7 @@
       /* header */
       c.fillStyle = NAVY; c.fillRect(10, 10, W - 20, 118);
       c.textAlign = "center"; c.fillStyle = "#fff";
-      var inst = String(card.instituteName || "SnapTest Pro").toUpperCase();
+      var inst = String(card.instituteName || (window.SnapBrand && SnapBrand.plain ? SnapBrand.plain("SnapTest Pro") : "SnapTest Pro")).toUpperCase();
       fit(c, inst, W - 120, 44, "bold"); c.fillText(inst, W / 2, 72);
       c.fillStyle = GOLD; c.font = "bold 24px Arial, 'Noto Sans Devanagari', 'Nirmala UI', Mangal, sans-serif"; c.fillText("ADMIT CARD  •  प्रवेश पत्र", W / 2, 110);
       /* exam band */

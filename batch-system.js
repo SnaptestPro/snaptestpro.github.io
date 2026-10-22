@@ -245,7 +245,7 @@
   function buildAdmin() {
     var o = $("#bm-admin"); o && o.remove();
     o = document.createElement("div"); o.id = "bm-admin";
-    o.innerHTML = '<aside class="bm-side"><div class="bm-logo"><img src="icon-512-maskable.png" alt="">SnapTest Pro</div>' +
+    o.innerHTML = '<aside class="bm-side"><div class="bm-logo">' + (window.SnapBrand && SnapBrand.logoHtml ? SnapBrand.logoHtml(30) : '<img src="icon-512-maskable.png" alt="">') + (window.SnapBrand && SnapBrand.ident ? SnapBrand.esc(SnapBrand.ident({ name: "SnapTest Pro" }).name) : "SnapTest Pro") + '</div>' +
       navAll().map(function (n) { return '<button class="bm-nav" data-v="' + n[0] + '"><span>' + n[1] + '</span>' + n[2] + '</button>'; }).join("") +
       '<button class="bm-nav" data-v="exit"><span>⬅️</span>Admin Home</button><div class="bm-me">' + esc(adminEmail()) + '<br>Admin</div></aside>' +
       '<main class="bm-main"><div class="bm-top"><button class="bm-burger" id="bm-burger">☰</button><h2 id="bm-title"></h2><span id="bm-topact"></span></div><div id="bm-drivebn"></div><div id="bm-main"></div></main>';
@@ -635,7 +635,7 @@ function vPay(m) {
     }).catch(function (e) { m.innerHTML = '<div class="bm-empty">Load nahi hua (' + esc(e.code || e.message) + ')</div>'; });
   }
   function vTests(m) {
-    m.innerHTML = '<div class="bm-card"><h3>Tests & Assignments</h3><p style="font-size:.86rem;color:#475569">Tests aapke maujooda SnapTest Pro test engine se hi chalte hain (duplicate nahi banaya gaya). Test banakar publish karein — students use Tests tab me dekhte hain.</p><button class="bm-btn" id="bm-gt">Existing Tests kholein</button><p class="bm-note">Batch-wise test assignment aur assignment submissions agle phase me.</p></div>';
+    m.innerHTML = '<div class="bm-card"><h3>Tests & Assignments</h3><p style="font-size:.86rem;color:#475569">Tests aapke maujooda Tests section se hi chalte hain (duplicate nahi banaya gaya). Test banakar publish karein — students use Tests tab me dekhte hain.</p><button class="bm-btn" id="bm-gt">Existing Tests kholein</button><p class="bm-note">Batch-wise test assignment aur assignment submissions agle phase me.</p></div>';
     $("#bm-gt").onclick = function () { $("#bm-admin").remove(); typeof goAdmin === "function" && goAdmin("tests"); };
   }
 
@@ -788,7 +788,7 @@ function vPay(m) {
       '<div class="bm-qa">' + [["class", "🔴", "Live"], ["recording", "🎬", "Recorded"], ["note", "📄", "Notes"], ["ppt", "📊", "PPT"]].map(function (q) { return '<button data-t="' + q[0] + '"><span>' + q[1] + '</span>' + q[2] + ' (' + its.filter(function (i) { return i.kind === q[0]; }).length + ')</button>'; }).join("") + '</div>' +
       (b.teachers && b.teachers.length ? '<div class="bm-list" style="margin-top:12px"><b style="font-size:.9rem">Batch Teachers</b><div style="margin-top:6px">' + b.teachers.map(function (t) { return '<span class="bm-badge b" style="margin:0 6px 6px 0;font-size:.78rem">👨‍🏫 ' + esc(t) + '</span>'; }).join("") + '</div></div>' : "");
     else if (xt) body = '<div id="bm-xtab"><div class="bm-empty">Loading…</div></div>';
-    else if (tab === "tests") body = '<div class="bm-list"><div class="bm-item"><div class="ic">📝</div><div class="g"><b>Tests</b><small>Aapke tests SnapTest Pro ke Tests section me hain</small></div><button class="go" data-tests>Open</button></div></div>';
+    else if (tab === "tests") body = '<div class="bm-list"><div class="bm-item"><div class="ic">📝</div><div class="g"><b>Tests</b><small>Aapke tests app ke Tests section me hain</small></div><button class="go" data-tests>Open</button></div></div>';
     else {
       var list = its.filter(function (i) { return tab === "note" ? i.kind === "note" : i.kind === tab; }).sort(function (a, c) { return (ms(c.scheduledAt) || ms(c.createdAt)) - (ms(a.scheduledAt) || ms(a.createdAt)); });
       body = '<div class="bm-list">' + (list.length ? list.map(function (i) { var ic = { class: "🔴", recording: "🎬", note: "📄", material: "📚", ppt: "📊", announcement: "📢" }[i.kind];

@@ -5,6 +5,8 @@
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
+  function bi() { var S = window.SnapBrand; return S && S.ident ? S.ident({ name: "SnapTest Pro" }) : { brand: false, name: "SnapTest Pro", sub: "", powered: false }; }
+  function bl(sz) { var S = window.SnapBrand; return S && S.logoHtml ? S.logoHtml(sz) : '<img src="icon-512-maskable.png" alt="" style="width:' + sz + 'px;height:' + sz + 'px">'; }
   var C = function () { return window.SNAP_CONFIG || {}; };
   var IC = {
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
@@ -130,7 +132,7 @@
   var pages = {
     about: function (done) {
       var c = C();
-      done("About SnapTest Pro", esc(c.version || "1.0"), '<div class="ssp-card"><h4>' + ico("info") + ' SnapTest Pro</h4><p>Practice tests, exam results aur institute features ek jagah.</p><div class="ssp-act"><a class="ssp-btn o" href="' + esc(c.privacyUrl || "/privacy.html") + '" target="_blank" rel="noopener">Privacy Policy</a><a class="ssp-btn o" href="' + esc(c.termsUrl || "/terms.html") + '" target="_blank" rel="noopener">Terms &amp; Conditions</a></div><p><a href="/delete-account.html">Account/data delete karne ki jankari</a></p></div>');
+      var B = bi(); done("About App", esc(c.version || "1.0"), '<div class="ssp-card"><h4>' + ico("info") + ' ' + esc(B.name) + '</h4><p>Practice tests, exam results aur institute features ek jagah.</p>' + (B.powered ? '<p style="font-size:.78rem;color:#64748b">' + esc(B.sub) + '</p>' : '') + '<div class="ssp-act"><a class="ssp-btn o" href="' + esc(c.privacyUrl || "/privacy.html") + '" target="_blank" rel="noopener">Privacy Policy</a><a class="ssp-btn o" href="' + esc(c.termsUrl || "/terms.html") + '" target="_blank" rel="noopener">Terms &amp; Conditions</a></div><p><a href="/delete-account.html">Account/data delete karne ki jankari</a></p></div>');
     },
     delete: function (done) {
       var s = typeof window.getStudentSession === "function" ? window.getStudentSession() : null, mobile = s && s.mobile ? String(s.mobile) : "";
@@ -166,7 +168,7 @@
       var c = C();
       done("App & Data", "Update, cache aur offline sync",
         apkCard() +
-        '<div class="ssp-card"><div class="ssp-ver"><img src="icon-512-maskable.png" alt=""><div><b style="font-size:1rem">' + esc(c.appName || "SnapTest Pro") + '</b><div style="font-size:.76rem;color:#64748b;margin-top:2px">' + esc(c.tagline || "") + '</div><span class="ssp-pill"><i></i>Version ' + esc((c.version || "1.0") + (c.build ? " (" + c.build + ")" : "")) + "</span></div></div></div>" +
+        '<div class="ssp-card"><div class="ssp-ver">' + bl(52) + '<div><b style="font-size:1rem">' + esc(bi().name) + '</b><div style="font-size:.76rem;color:#64748b;margin-top:2px">' + esc(bi().brand ? bi().sub : (c.tagline || "")) + '</div><span class="ssp-pill"><i></i>Version ' + esc((c.version || "1.0") + (c.build ? " (" + c.build + ")" : "")) + "</span></div></div></div>" +
         '<div class="ssp-card"><div class="ssp-line"><div class="ssp-ic" style="background:' + TILE.ind + '">' + ico("dl") + '</div><div class="ssp-tx"><b>Update check</b><p>Naya version / APK aaya hai ya nahi dekhein.</p></div></div><div class="ssp-act"><button type="button" class="ssp-btn" data-sgo="update">' + ico("refresh") + ' Update check karein</button></div>' +
         '<div class="ssp-sep"></div><div class="ssp-line"><div class="ssp-ic" style="background:' + TILE.tea + '">' + ico("trash") + '</div><div class="ssp-tx"><b>Cache saaf karke refresh</b><p>Kuch purana ya adhura dikhe to ye karein. Aapka login bana rahega.</p></div></div><div class="ssp-act"><button type="button" class="ssp-btn o" data-sgo="cache">' + ico("trash") + ' Cache saaf karein</button></div></div>' +
         '<div class="ssp-card"><h4>' + ico("cloud") + ' Offline &amp; Sync</h4><div class="ssp-stat wait" id="ssp-sync-box"><div class="l"><span class="ssp-ping"></span>Data status</div><span class="ssp-pill" id="ssp-sync-pill" style="margin:0"><i></i><span id="ssp-sync-txt">…</span></span></div>' +

@@ -44,6 +44,7 @@
     if (b.logoDataUrl) { var li = q(".logo-img"); if (li) li.src = b.logoDataUrl; }
     applyManifest(b);
     try { deep(b); } catch (e) {}
+    try { paintHeader(); } catch (e) {}
   }
 
   /* ---- v221 Phase 4A: gehri branding (login card, "Powered by" footer, result sheet/print/WhatsApp ke liye helper) ----
@@ -75,6 +76,35 @@
       (okLogo(x.logoDataUrl) ? '<img src="' + x.logoDataUrl + '" alt="" style="width:26px;height:26px;object-fit:contain;">' : "") +
       '<div style="font-weight:800;font-size:13px;color:' + col + ';flex:1;line-height:1.2;">' + escH(x.name) + (x.tagline ? ' <span style="font-weight:500;font-size:10px;color:#4b5563;">• ' + escH(x.tagline) + "</span>" : "") + "</div>" +
       (x.hidePoweredBy ? "" : '<div style="font-size:9px;color:#6b7280;white-space:nowrap;">Powered by SnapTest Pro</div>') + "</div>";
+  }
+
+  /* ---- v234: "mera apna app" — institute ka naam/logo har jagah, saath me chhota "Powered by SnapTest Pro" tag.
+     Sab kuch localStorage ke cached branding se (naya Firestore read nahi, turant). Institute/branding na ho to purana look. ---- */
+  function ident(fb) {
+    fb = fb || {};
+    var x = on() && cur ? jget(PFX + cur) : null;
+    if (!(x && x.name)) return { brand: false, name: fb.name || "SnapTest Pro", logo: "", sub: fb.sub || "", powered: false };
+    var p = markOn();
+    return { brand: true, name: String(x.name), logo: okLogo(x.logoDataUrl) ? x.logoDataUrl : "", sub: p ? MARK_TXT : (x.tagline || ""), powered: p };
+  }
+  /* institute ka logo (img) ya logo na ho to naam ka pehla akshar (brand rang me); branding na ho to fbSrc (purana icon) */
+  function logoHtml(sz, fbSrc) {
+    var d = ident(), s = "width:" + sz + "px;height:" + sz + "px;border-radius:" + Math.round(sz * 0.26) + "px;flex:none;";
+    if (d.brand && d.logo) return '<img src="' + d.logo + '" alt="" style="' + s + 'object-fit:contain;background:#fff;border:1px solid rgba(0,0,0,.08)">';
+    if (d.brand) {
+      var x = jget(PFX + cur) || {}, col = okColor(x.brandColor) ? x.brandColor : "#1d4ed8";
+      return '<div style="' + s + "background:" + col + ';color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:' + Math.round(sz * 0.5) + 'px">' + escH(d.name.trim().charAt(0).toUpperCase()) + "</div>";
+    }
+    return '<img src="' + (fbSrc || "icon-512-maskable.png") + '" alt="" style="' + s + '">';
+  }
+  /* student header (#sn-top .lg): logo + institute naam + "Powered by SnapTest Pro". Key se idempotent — baar-baar chalne par DOM nahi chhedta */
+  function paintHeader() {
+    var lg = document.querySelector("#sn-top .lg"); if (!lg) return;
+    var d = ident({ name: "SnapTestPro", sub: "Smart Practice \u2022 Better Result" });
+    var key = d.brand ? cur + "|" + d.name + "|" + d.sub + "|" + d.logo.length : "def";
+    if (lg.getAttribute("data-bk") === key) return;
+    lg.setAttribute("data-bk", key);
+    lg.innerHTML = logoHtml(34) + "<div><b>" + escH(d.name) + "</b><small>" + escH(d.sub) + "</small></div>";
   }
   function deep(b) {
     var ok = on2() && b && b.name;
@@ -174,6 +204,7 @@
   }
 
   window.SnapBrand = { refresh: refresh, load: load, cached: function (id) { return jget(PFX + id); } };
+  window.SnapBrand.ident = ident; window.SnapBrand.logoHtml = logoHtml; window.SnapBrand.paintHeader = paintHeader; window.SnapBrand.esc = escH;
   window.SnapBrand.plain = plain; window.SnapBrand.rsf = rsf; window.SnapBrand.printBar = printBar; window.SnapBrand.mark = { on: markOn, text: MARK_TXT, html: markHtml };
   window.SnapQuota = { check: check, add: function (id, b) { return bump(id, b, 1); }, sub: function (id, b) { return bump(id, -Math.abs(b || 0), -1); } };
 

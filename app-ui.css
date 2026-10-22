@@ -140,3 +140,6 @@ a.sn-row{text-decoration:none;color:inherit}
 /* v154: bell unread dot */
 #sn-top .sn-dot{display:none;position:absolute;top:4px;right:5px;width:9px;height:9px;border-radius:50%;background:#ef4444;border:2px solid #fff}
 #sn-page .ph button[data-a=clear]{margin-left:auto}
+
+/* v234 institute header: lamba naam kate nahi, ... se kate */
+#sn-top .lg>div{min-width:0;flex:1}#sn-top .lg b,#sn-top .lg small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}#sn-top .lg small{display:block;font-size:.6rem}

@@ -85,7 +85,8 @@
         '<div class="sn-h">Aksar poochhe jaane wale sawaal</div>' + faq.map(function (x) { return '<div class="sn-faq"><b>' + x[0] + "</b><p>" + x[1] + "</p></div>"; }).join("");
     },
     about: function () {
-      return '<div class="ph"><button type="button" data-a="back">' + svg("back") + '</button><b>About App</b></div><div class="sn-about"><img src="icon-512-maskable.png" alt=""><b>SnapTestPro</b><small>Smart Practice • Better Result</small><span>Version ' + APP_VER + '</span></div>' +
+      var SB = window.SnapBrand, B = SB && SB.ident ? SB.ident({ name: "SnapTestPro", sub: "Smart Practice • Better Result" }) : { name: "SnapTestPro", sub: "Smart Practice • Better Result" };
+      return '<div class="ph"><button type="button" data-a="back">' + svg("back") + '</button><b>About App</b></div><div class="sn-about">' + (SB && SB.logoHtml ? SB.logoHtml(72) : '<img src="icon-512-maskable.png" alt="">') + '<b>' + esc(B.name) + '</b><small>' + esc(B.sub) + '</small><span>Version ' + APP_VER + '</span></div>' +
         '<div class="sn-faq"><b>Ye app kya karta hai?</b><p>Online tests, practice mode, result &amp; rank, galat sawaalon ki revision aur 3D Solids Lab — sab ek jagah.</p></div>' +
         '<a class="sn-row" href="mailto:' + SUPPORT_EMAIL + '"><div class="i" style="background:#dbeafe">' + E("🎧") + "</div><div>Help & Support<small>" + SUPPORT_PHONE + " • " + SUPPORT_EMAIL + "</small></div></a>";
     }
@@ -209,6 +210,7 @@
     var top = document.createElement("div"); top.id = "sn-top";
     top.innerHTML = '<button type="button" class="ic" data-a="m" aria-label="Menu">' + svg("menu") + '</button><div class="lg"><img src="icon-512-maskable.png" alt=""><div><b>SnapTestPro</b><small>Smart Practice • Better Result</small></div></div><button type="button" class="ic" data-a="b" aria-label="Notifications" style="color:#f59e0b">' + svg("bell") + '</button><button type="button" class="av" data-a="u" aria-label="Profile and settings">' + svg("user") + '</button>';
     home.insertBefore(top, home.firstChild);
+    try { window.SnapBrand && SnapBrand.paintHeader && SnapBrand.paintHeader(); } catch (e) {}
     top.querySelector('[data-a="m"]').onclick = function (ev) { ev.preventDefault(); showPage("more"); };
     top.querySelector('[data-a="b"]').onclick = function (ev) { ev.preventDefault(); showPage("notifs", "home"); nRefresh(true).then(function () { curPage === "notifs" && showPage("notifs", "home"); }); };
     var bell = top.querySelector('[data-a="b"]'); bell.style.position = "relative"; bell.insertAdjacentHTML("beforeend", '<i class="sn-dot"></i>'); nDot();
