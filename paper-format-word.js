@@ -89,6 +89,7 @@
       if (c >= 0x966 && c <= 0x96F) return 0.5;
       return HI_BASE;
     }
+    if (c >= 0x300 && c <= 0x36F) return 0;   // combining bar/dot (recurring decimal) ki width nahi
     if (TNR[c] !== undefined) return TNR[c] / 1000;
     if ((c >= 0x2080 && c <= 0x209F) || (c >= 0x2070 && c <= 0x207F) || c === 0xB2 || c === 0xB3) return 0.33;
     if (c === 0xBC || c === 0xBD || c === 0xBE) return 0.75;
