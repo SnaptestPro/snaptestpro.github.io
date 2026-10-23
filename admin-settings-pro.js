@@ -151,6 +151,7 @@
         '<div class="asp-card"><h4>' + ico("db") + ' Question Bank</h4>' +
         '<div class="asp-line" style="margin-top:12px"><div class="asp-tx"><b>Bank dobara load karein</b><p>Doosre admin ne questions jode hon aur yahan na dikhein to dabayein.</p><span class="asp-tag">Firestore reads lagenge</span></div><button type="button" class="asp-mini" data-go="bank">Refresh</button></div>' +
         '<div class="asp-sep"></div><div class="asp-line"><div class="asp-tx"><b>Bank students ke liye publish</b><p>Students ko bank Cloudflare se milta hai (reads 0). Normally ye apne-aap hota hai; kabhi na ho to yahan dabayein.</p><span class="asp-tag">Reads: 0</span></div><button type="button" class="asp-mini g" data-go="pub">Publish</button></div>' +
+        '<div class="asp-sep"></div><div class="asp-line"><div class="asp-tx"><b>Bank backup (export)</b><p>Poora question bank ek JSON file me download hota hai — backup ke liye.</p><span class="asp-tag">Reads: 0</span></div><button type="button" class="asp-mini" data-go="bankexp">Export</button></div>' +
         '<div class="asp-sep"></div><div><b style="font-size:.88rem">Seed All Questions</b><p>Pehli baar click karo — sare subjects (Math &amp; History) ke questions Firebase mein save/update ho jayenge.</p><span class="asp-tag">Sirf pehli baar</span><div data-borrow="seed-questions-btn"></div></div></div>');
     },
     joincode: function (done) {
@@ -241,6 +242,7 @@
     else if (g === "cache") { toast("⏳ Cache saaf ho raha hai..."); var keep = {}; try { Object.keys(localStorage).forEach(function (k2) { if (/session|auth|firebase|savya_student|admin/i.test(k2)) keep[k2] = localStorage.getItem(k2); }); } catch (e) {}
       Promise.resolve(window.caches && caches.keys ? caches.keys().then(function (ks) { return Promise.all(ks.map(function (k2) { return caches.delete(k2); })); }) : 0).then(function () { return navigator.serviceWorker && navigator.serviceWorker.getRegistrations ? navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.update(); })); }) : 0; }).catch(function () {}).then(function () { try { localStorage.removeItem("savya_bank_cache"); localStorage.removeItem("snap_bank_sync_ts"); } catch (e) {} setTimeout(function () { location.reload(); }, 600); }); }
     else if (g === "pub") { toast("⏳ Publish ho raha hai..."); if (window.publishBankManual) window.publishBankManual().then(function (m) { toast(m); }); else toast("Available nahi"); }
+    else if (g === "bankexp") { if (window.exportBankJson) window.exportBankJson(); else toast("Export available nahi"); }
     else if (g === "bank") { if (window.refreshBankNow) { window.refreshBankNow(); toast("🔄 Bank refresh chalu ho gaya"); } else toast("Bank refresh available nahi"); }
   });
 
