@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths-ignore: ['*.zip']
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - name: Version sync
+        run: node scripts/stamp-version.js --check
+      - name: Precache files maujood hain
+        run: node scripts/check-precache.js
+      - name: Unit tests
+        run: node scripts/run-unit-tests.js
