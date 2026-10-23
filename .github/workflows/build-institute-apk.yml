@@ -1,0 +1,129 @@
+# Institute ka apna APK (Owner Panel -> "APK banao" yahi workflow chalata hai).
+# Worker (push-worker/worker.js) isse inputs bhejta hai: institute_id, app_name, live_mode.
+# run-name ka format (APK <institute_id> ...) badalna mat — Owner Panel isi se status dhundta hai.
+name: Build Institute APK
+run-name: APK ${{ inputs.institute_id }} ${{ inputs.app_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      institute_id:
+        description: "Institute ID (Owner Panel me dikhti hai)"
+        required: true
+        type: string
+      app_name:
+        description: "App ka naam (khaali = institute ka naam khud aayega)"
+        required: false
+        default: ""
+        type: string
+      live_mode:
+        description: "true = website update apne-aap app me aayega"
+        required: false
+        default: "true"
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ inputs.institute_id }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      INSTITUTE_ID: ${{ inputs.institute_id }}
+      INPUT_APP_NAME: ${{ inputs.app_name }}
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+      KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Institute ki details (naam, logo, rang)
+        id: inst
+        run: node scripts/fetch-institute.js
+
+      - name: Dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Web files (is institute se lock)
+        run: node scripts/build-www.js
+
+      - name: Android project banao
+        env:
+          APP_ID: ${{ steps.inst.outputs.package }}
+          APP_NAME: ${{ steps.inst.outputs.app_name }}
+          APP_URL: ${{ inputs.live_mode != 'false' && format('{0}?inst={1}', vars.APP_URL || 'https://snaptestpro.github.io/', inputs.institute_id) || '' }}
+        run: npx cap add android
+
+      - name: Firebase (push) config
+        env:
+          APP_ID: ${{ steps.inst.outputs.package }}
+          GS_B64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          if [ -n "$GS_B64" ]; then
+            echo "$GS_B64" | base64 -d > android/app/google-services.json
+            node scripts/patch-google-services.js
+          else
+            echo "GOOGLE_SERVICES_JSON_BASE64 secret nahi hai — push ke bina build hoga"
+          fi
+
+      - name: Version + icon + signing
+        id: ver
+        env:
+          ICON_FILE: ${{ steps.inst.outputs.has_icon == 'true' && 'institute-icon.img' || '' }}
+        run: |
+          VC=$(( $(date +%s) / 60 ))
+          echo "code=$VC" >> "$GITHUB_OUTPUT"
+          export VERSION_CODE=$VC VERSION_NAME="1.0.$VC"
+          if [ "$HAS_KEYSTORE" = "true" ]; then
+            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            export KEYSTORE_FILE="$RUNNER_TEMP/release.keystore"
+            echo "KEYSTORE_FILE=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+          fi
+          node scripts/android-prepare.js
+
+      - name: Gradle build
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          if [ "$HAS_KEYSTORE" = "true" ]; then ./gradlew assembleRelease --no-daemon; else ./gradlew assembleDebug --no-daemon; fi
+
+      - name: APK dhundo
+        id: apk
+        run: |
+          F=$(find android/app/build/outputs/apk -name '*.apk' | grep -v unaligned | head -n1)
+          [ -n "$F" ] || { echo "APK nahi bana"; exit 1; }
+          OUT="${{ steps.inst.outputs.slug }}.apk"
+          cp "$F" "$OUT"
+          echo "file=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Release me daalo (signed APK ho tabhi)
+        if: env.HAS_KEYSTORE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="inst-${{ steps.inst.outputs.slug }}-b${{ steps.ver.outputs.code }}"
+          gh release create "$TAG" "${{ steps.apk.outputs.file }}" \
+            --title "${{ steps.inst.outputs.app_name }} (b${{ steps.ver.outputs.code }})" \
+            --notes "Institute: ${{ inputs.institute_id }}" --latest=false
+
+      - name: APK artifact (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.inst.outputs.slug }}-apk
+          path: ${{ steps.apk.outputs.file }}
+          retention-days: 14
