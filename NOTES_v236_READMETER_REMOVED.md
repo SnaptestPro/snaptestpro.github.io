@@ -15,3 +15,8 @@ index.html, sw.js, admin-settings-pro.js, version.json, app-config.js (+ read-me
 
 ## Check
 node --check OK, check-precache OK (99 entries), unit tests 44/46 (2 purane fail same: test_apk_brand_v222, test_branding2_v221).
+
+## v237 (sirf packaging)
+- Zip me ab `.github/workflows/` ki 6 files hain (build-institute-apk, build-owner-apk, build-android, announce-update, ci, auto-extract).
+- auto-extract.yml naya: repo secret `WORKFLOW_PAT` ho to zip ke saath workflows bhi extract+push hote hain; na ho to pehle jaisa (.github skip).
+- DELETE_THESE.txt me read-meter.js joda (zip se file delete nahi hoti, GitHub par haath se delete karo).
