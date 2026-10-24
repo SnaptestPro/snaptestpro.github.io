@@ -11,11 +11,11 @@ const { initializeTestEnvironment, assertSucceeds, assertFails } = require("@fir
 /* v240b: ek context par firestore() sirf EK baar (dobara useEmulator => "already started") */
 const fsOf = (ctx) => ctx.__fs || (ctx.__fs = ctx.firestore());
 const A = "inst_A", B = "inst_B", PA = `institutes/${A}`, PB = `institutes/${B}`;
-let env, passed = 0, failed = 0;
-async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", name); } catch (e) { failed++; console.log("  ❌", name, "\n     ", (e && e.message || e).toString().split("\n")[0]); } }
+let env, passed = 0, failed = 0; const failedNames = [];
+async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", name); } catch (e) { failed++; failedNames.push(name); console.log("  ❌", name, "\n     ", (e && e.message || e).toString().split("\n")[0]); } }
 
 (async () => {
-  console.log("RULES-TEST VERSION v240b (firestore/storage ek baar per context)");
+  console.log("RULES-TEST VERSION v240c (firestore/storage ek baar per context)");
   env = await initializeTestEnvironment({
     projectId: "demo-snaptest",
     firestore: { rules: fs.readFileSync("firestore.rules", "utf8") },
@@ -213,5 +213,5 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await t("Student upload NAHI kar sakta", () => assertFails(stor(stuAs).ref(`batches/${A}/b1/s.pdf`).putString("x")));
 
   await env.cleanup();
-  console.log(`\n${passed} passed, ${failed} failed`); process.exit(failed ? 1 : 0);
+  console.log(`\n${passed} passed, ${failed} failed`); if (failedNames.length) console.log("FAILED TESTS:\n  - " + failedNames.join("\n  - ")); process.exit(failed ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(2); });
