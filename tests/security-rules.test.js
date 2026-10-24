@@ -97,7 +97,13 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await env.withSecurityRulesDisabled(async (c) => { const db = fsOf(c); /* ek context par firestore() sirf EK baar (dobara useEmulator => "already started") */ await db.doc("institutes/demo_sample").set({ name: "Demo", isDemo: true }); await db.doc("tests/demo-test-x").set({ isDemo: true, title: "d" }); await db.doc("tests/real-test-x").set({ title: "r", instituteId: A }); });
   await t("v220: Owner demo student bana sakta hai (isDemo:true)", () => assertSucceeds(d(claimOwner, "students/0000000001").set({ name: "D", isDemo: true, instituteId: "demo_sample" })));
   await t("v220: Owner bina isDemo ke student NAHI bana sakta", () => assertFails(d(claimOwner, "students/9999999999").set({ name: "Real", instituteId: A })));
-  await t("v220: Owner demo result bana sakta hai, asli result NAHI", () => Promise.all([assertSucceeds(d(claimOwner, "studentRecords/demo_rec_1_01").set({ isDemo: true, mobile: "0000000001" })), assertFails(d(claimOwner, "studentRecords/real1").set({ mobile: "9999999999" }))]));
+  /* NOTE (v240c): studentRecords me generic `allow create: if isSignedIn()` hai (v178 design: student apna result khud submit karta hai).
+     Isliye koi bhi signed-in (Owner bhi) NAYA record bana sakta hai — "Owner asli result create NAHI kar sakta" kabhi sach tha hi nahi;
+     purana assertion rules ke asli behaviour se mel nahi khata tha. Owner ka demo-only restriction MAUJOODA asli record ko BADALNE/MITANE par hai: */
+  await env.withSecurityRulesDisabled(async (c) => { await fsOf(c).doc("studentRecords/real_existing").set({ mobile: "9999999999", instituteId: A, score: 10 }); });
+  await t("v220: Owner demo result bana sakta hai", () => assertSucceeds(d(claimOwner, "studentRecords/demo_rec_1_01").set({ isDemo: true, mobile: "0000000001" })));
+  await t("v220: Owner MAUJOODA asli result ko UPDATE nahi kar sakta", () => assertFails(d(claimOwner, "studentRecords/real_existing").update({ score: 99 })));
+  await t("v220: Owner MAUJOODA asli result ko DELETE nahi kar sakta", () => assertFails(d(claimOwner, "studentRecords/real_existing").delete()));
   await t("v220: Owner demo test delete kar sakta hai, asli test NAHI", () => Promise.all([assertSucceeds(d(claimOwner, "tests/demo-test-x").delete()), assertFails(d(claimOwner, "tests/real-test-x").delete())]));
   await t("v220: Owner demo institute ke batch me likh sakta hai", () => assertSucceeds(d(claimOwner, "institutes/demo_sample/batches/demo_b1/items/i1").set({ isDemo: true, kind: "recording" })));
   await t("v220: Owner asli institute ke batch me NAHI likh sakta", () => assertFails(d(claimOwner, `institutes/${A}/batches/bx/items/i1`).set({ kind: "recording" })));
@@ -211,6 +217,13 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await t("Enrolled student (strict) file padh sakta hai", () => assertSucceeds(stor(stuAs).ref(`batches/${A}/b1/file.pdf`).getMetadata()));
   await t("Doosre institute ka student A ki file NAHI padh sakta", () => assertFails(stor(stuBs).ref(`batches/${A}/b1/file.pdf`).getMetadata()));
   await t("Student upload NAHI kar sakta", () => assertFails(stor(stuAs).ref(`batches/${A}/b1/s.pdf`).putString("x")));
+
+  /* KNOWN-RISK probe (fail nahi gina jata): email-login hai par admins/{email} doc hi nahi — kya Storage me likh sakta hai?
+     storage.rules me `!firestore.exists(admins/email)` ki wajah se haan ho sakta hai. Result sirf report hota hai; rules badalne ka faisla Owner ka. */
+  try {
+    await assertFails(stor(env.authenticatedContext("noadmindoc", { email: "nobody@x.com" })).ref(`batches/${A}/b1/probe.pdf`).putString("x"));
+    console.log("  ✅ [probe] admin-doc ke bina email user Storage me NAHI likh sakta");
+  } catch (e) { console.log("  ⚠️  [probe] KNOWN RISK: admin-doc ke bina email user Storage me LIKH SAKTA hai (storage.rules !exists branch)"); }
 
   await env.cleanup();
   console.log(`\n${passed} passed, ${failed} failed`); if (failedNames.length) console.log("FAILED TESTS:\n  - " + failedNames.join("\n  - ")); process.exit(failed ? 1 : 0);
