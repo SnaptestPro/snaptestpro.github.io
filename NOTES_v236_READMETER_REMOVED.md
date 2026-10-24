@@ -32,3 +32,6 @@ node --check OK, check-precache OK (99 entries), unit tests 44/46 (2 purane fail
 - Display brand "SmarTest Pro" (technical IDs untouched): docs/BRAND_NAME_INVENTORY.md
 - A11y: axe-core scan, serious=0 (owner-app boot contrast, index heading order, offline main landmark)
 - Tests 48/48 (naye: test_worker_appcheck, test_appcheck_fetch; 5 brand tests ki naam-expectation naye naam par)
+
+## v240 — rules CI job fix
+tests/security-rules.test.js: ek context par firestore() 3 baar (line ~94) => "Firestore has already been started". Ab ek baar; storage() bhi memoized. Koi assertion nahi badli/hataayi.

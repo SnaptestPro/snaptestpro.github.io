@@ -3,7 +3,7 @@
      npm i -D firebase-tools @firebase/rules-unit-testing firebase
      npx firebase emulators:exec --only firestore,storage "node tests/security-rules.test.js"
    (firebase.json me emulators port optional; default 8080/9199 chalte hain)
-   NOTE: ye file mere sandbox me CHALAYI NAHI GAYI (emulator download network se blocked tha) — pehli baar aap chalake dekhein. */
+   NOTE: sandbox me emulator download blocked hai; ye file GitHub Actions (CI / rules) me chalti hai. v240: ek context par firestore()/storage() dobara bulane wali test-bug theek ki. */
 const fs = require("fs");
 const assert = require("assert");
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require("@firebase/rules-unit-testing");
@@ -91,7 +91,7 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await t("v219: Admin A, Institute B ka Drive status NAHI badal sakta", () => assertFails(d(adminA, `institutes/${B}`).update({ driveConnected: true, driveEmail: "a@b.co" })));
   await t("v219: driveConnected=false ke saath email NAHI rakh sakte (token/email leftover nahi)", () => assertFails(d(adminA, `institutes/${A}`).update({ driveConnected: false, driveEmail: "a@b.co" })));
   /* v220 Demo institute: Owner sirf isDemo data par */
-  await env.withSecurityRulesDisabled(async (c) => { await c.firestore().doc("institutes/demo_sample").set({ name: "Demo", isDemo: true }); await c.firestore().doc("tests/demo-test-x").set({ isDemo: true, title: "d" }); await c.firestore().doc("tests/real-test-x").set({ title: "r", instituteId: A }); });
+  await env.withSecurityRulesDisabled(async (c) => { const db = c.firestore(); /* ek context par firestore() sirf EK baar (dobara useEmulator => "already started") */ await db.doc("institutes/demo_sample").set({ name: "Demo", isDemo: true }); await db.doc("tests/demo-test-x").set({ isDemo: true, title: "d" }); await db.doc("tests/real-test-x").set({ title: "r", instituteId: A }); });
   await t("v220: Owner demo student bana sakta hai (isDemo:true)", () => assertSucceeds(d(claimOwner, "students/0000000001").set({ name: "D", isDemo: true, instituteId: "demo_sample" })));
   await t("v220: Owner bina isDemo ke student NAHI bana sakta", () => assertFails(d(claimOwner, "students/9999999999").set({ name: "Real", instituteId: A })));
   await t("v220: Owner demo result bana sakta hai, asli result NAHI", () => Promise.all([assertSucceeds(d(claimOwner, "studentRecords/demo_rec_1_01").set({ isDemo: true, mobile: "0000000001" })), assertFails(d(claimOwner, "studentRecords/real1").set({ mobile: "9999999999" }))]));
@@ -200,7 +200,7 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await env.withSecurityRulesDisabled(async (c) => { await c.firestore().doc("config/privacy").set({ recordsLockdown: false, secretsLockdown: false }); });
 
   console.log("\nStorage");
-  const stor = (ctx) => ctx.storage();
+  const stor = (ctx) => ctx.__stor || (ctx.__stor = ctx.storage());   /* context par storage() bhi ek hi baar */
   const adminAs = env.authenticatedContext("ua", { email: "adminA@x.com" }), stuAs = env.authenticatedContext("uid9999"), stuBs = env.authenticatedContext("uid8888");
   await env.withSecurityRulesDisabled(async (c) => { await c.storage().ref(`batches/${A}/b1/file.pdf`).putString("hello"); });
   await t("Admin A apne path me upload kar sakta hai", () => assertSucceeds(stor(adminAs).ref(`batches/${A}/b1/new.pdf`).putString("x")));
