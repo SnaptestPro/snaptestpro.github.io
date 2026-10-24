@@ -137,6 +137,7 @@ function ownerBrandingEdit(id){
     <input id="obr-tag" type="text" maxlength="60" value="${ownerEscAttr(a.tagline||"")}" placeholder="jaise: Success Starts Here" style="width:100%;padding:8px;margin:4px 0 10px;box-sizing:border-box;">
     <label style="font-size:.8rem;font-weight:600;">Logo (square, chhota)</label>
     <div style="display:flex;gap:10px;align-items:center;margin:4px 0 10px;"><img id="obr-prev" src="${a.logoDataUrl||""}" style="width:52px;height:52px;object-fit:contain;border:1px solid #ddd;border-radius:8px;background:#fafafa;${a.logoDataUrl?"":"visibility:hidden;"}"><input id="obr-logo" type="file" accept="image/*"></div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:.82rem;margin:0 0 10px;cursor:pointer;"><input id="obr-hpb" type="checkbox" ${a.hidePoweredBy?"checked":""}> "Powered by SmarTest Pro" chhupayein (admit card, result, print me)</label>
     <label style="font-size:.8rem;font-weight:600;">Plan</label>
     <select id="obr-plan" style="width:100%;padding:8px;margin:4px 0 10px;">${plans.map(p=>`<option ${p===(a.plan||"Free")?"selected":""}>${p}</option>`).join("")}</select>
     <label style="font-size:.8rem;font-weight:600;">Drive storage limit (MB) — 0 = bina limit</label>
@@ -162,7 +163,7 @@ function ownerBrandingEdit(id){
   };
   m.querySelector("#obr-msg").onclick=()=>{
     const v=m.querySelector("#obr-exp").value,ds=v?new Date(Date.parse(v+"T00:00:00+05:30")).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric",timeZone:"Asia/Kolkata"}):"jald hi";
-    const t=`Namaste! ${a.name||"Aapke institute"} ka SnapTest Pro (${m.querySelector("#obr-plan").value} plan) ${ds} ko khatam ho raha hai. Students ka access na ruke, isliye kripya renew kara lein. Renew ke liye mujhe reply karein. Dhanyavaad!`;
+    const t=`Namaste! ${a.name||"Aapke institute"} ka SmarTest Pro (${m.querySelector("#obr-plan").value} plan) ${ds} ko khatam ho raha hai. Students ka access na ruke, isliye kripya renew kara lein. Renew ke liye mujhe reply karein. Dhanyavaad!`;
     (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>{alert("✅ Message copy ho gaya — WhatsApp me paste karke bhej dein.")},()=>{prompt("Copy karein:",t)});
   };
   m.querySelector("#obr-reset").onclick=async()=>{
@@ -170,7 +171,7 @@ function ownerBrandingEdit(id){
     try{await ownerRetryOnPermissionDenied(()=>ownerGetDb().collection("institutes").doc(id).update({storageUsedBytes:0,storageFiles:0}));try{localStorage.removeItem("snap_brand_"+id)}catch(e){}alert("Usage reset ho gaya.");m.remove();}catch(e){alert("Nahi hua: "+(e.message||e));}
   };
   m.querySelector("#obr-ok").onclick=async()=>{
-    const d={brandColor:m.querySelector("#obr-color").value,tagline:m.querySelector("#obr-tag").value.trim(),plan:m.querySelector("#obr-plan").value,storageLimitMB:Math.max(0,+m.querySelector("#obr-lim").value||0),studentLimit:Math.max(0,Math.floor(+m.querySelector("#obr-slim").value||0)),planExpiresAt:(()=>{const v=m.querySelector("#obr-exp").value;const t=v?Date.parse(v+"T23:59:59+05:30"):0;return t>0?t:0})()};
+    const d={brandColor:m.querySelector("#obr-color").value,tagline:m.querySelector("#obr-tag").value.trim(),plan:m.querySelector("#obr-plan").value,storageLimitMB:Math.max(0,+m.querySelector("#obr-lim").value||0),studentLimit:Math.max(0,Math.floor(+m.querySelector("#obr-slim").value||0)),planExpiresAt:(()=>{const v=m.querySelector("#obr-exp").value;const t=v?Date.parse(v+"T23:59:59+05:30"):0;return t>0?t:0})(),hidePoweredBy:!!m.querySelector("#obr-hpb").checked};
     if(logo)d.logoDataUrl=logo;
     try{await ownerRetryOnPermissionDenied(()=>ownerGetDb().collection("institutes").doc(id).update(d));try{localStorage.removeItem("snap_brand_"+id)}catch(e){}m.remove();alert("✅ Save ho gaya. Is institute ke admin/students ko agli baar app khulne par naya look dikhega.");}catch(e){alert("Save nahi hua: "+(e.message||e));}
   };

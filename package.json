@@ -2,7 +2,7 @@
   "name": "snaptestpro-app",
   "version": "1.4.21",
   "private": true,
-  "description": "SnapTest Pro - web (Firebase Hosting) + Android app (Capacitor, built on GitHub Actions)",
+  "description": "SmarTest Pro - web (Firebase Hosting) + Android app (Capacitor, built on GitHub Actions)",
   "scripts": {
     "stamp": "node scripts/stamp-version.js",
     "stamp:check": "node scripts/stamp-version.js --check",

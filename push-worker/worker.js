@@ -1,4 +1,4 @@
-/* SnapTest Pro — FREE push relay (Cloudflare Workers, free plan, card nahi chahiye).
+/* SmarTest Pro — FREE push relay (Cloudflare Workers, free plan, card nahi chahiye).
    Admin app notification Firestore me likhta hai -> phir ye Worker ko bulata hai ->
    Worker FCM se us institute ke sabhi students ke phone par push bhejta hai (app band ho tab bhi).
 
@@ -9,12 +9,49 @@
 const te = new TextEncoder(), td = new TextDecoder();
 const RS = { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' };
 const JWK_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
-const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Bank-Count, Range' };
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET, HEAD, POST, PUT, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Bank-Count, Range, X-Firebase-AppCheck' };
 
 const b64u = (buf) => { let s = ''; for (const c of new Uint8Array(buf)) s += String.fromCharCode(c); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
 const unb64u = (s) => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; const b = atob(s), o = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) o[i] = b.charCodeAt(i); return o; };
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', ...CORS } });
 class HttpErr extends Error { constructor(status, msg) { super(msg); this.status = status; } }
+
+/* v239: Firebase App Check token verify (Admin SDK ki jagah seedha JWKS se — Workers me SDK nahi chalta).
+   APPCHECK_MODE (Cloudflare Text var): off (default, pehle jaisa) | monitor (sirf log) | enforce (token nahi to 401).
+   Pehle monitor chalao, logs me 'ok' dikhe tab hi enforce. Docs: docs/APP_CHECK.md */
+const APPCHECK_JWK_URL = 'https://firebaseappcheck.googleapis.com/v1/jwks';
+async function verifyAppCheck(token, projectId, projectNumber) {
+  const p = String(token || '').split('.');
+  if (p.length !== 3) return 'malformed';
+  let header, payload;
+  try { header = JSON.parse(td.decode(unb64u(p[0]))); payload = JSON.parse(td.decode(unb64u(p[1]))); } catch (e) { return 'malformed'; }
+  if (header.alg !== 'RS256') return 'bad-alg';
+  let jwks;
+  try { jwks = await (await fetch(APPCHECK_JWK_URL, { cf: { cacheTtl: 3600, cacheEverything: true } })).json(); } catch (e) { return 'jwks-unavailable'; }
+  const jwk = (jwks.keys || []).find((k) => k.kid === header.kid);
+  if (!jwk) return 'unknown-key';
+  let ok = false;
+  try { const key = await crypto.subtle.importKey('jwk', jwk, RS, false, ['verify']); ok = await crypto.subtle.verify(RS.name, key, unb64u(p[2]), te.encode(p[0] + '.' + p[1])); } catch (e) { return 'bad-signature'; }
+  if (!ok) return 'bad-signature';
+  const aud = [].concat(payload.aud || []);
+  if (aud.indexOf('projects/' + projectId) < 0) return 'wrong-project';
+  if (typeof payload.iss !== 'string' || payload.iss.indexOf('https://firebaseappcheck.googleapis.com/') !== 0) return 'bad-iss';
+  if (projectNumber && payload.iss !== 'https://firebaseappcheck.googleapis.com/' + projectNumber) return 'bad-iss';
+  if (!payload.sub) return 'no-sub';
+  if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000) - 60) return 'expired';
+  return 'ok';
+}
+async function appCheckResult(request, env, pathname) {
+  const mode = String(env.APPCHECK_MODE || 'off').toLowerCase();
+  if (mode !== 'monitor' && mode !== 'enforce') return null;
+  const m = request.method;
+  if (m === 'GET' || m === 'HEAD' || m === 'OPTIONS' || pathname === '/broadcast') return null;   // /broadcast: GitHub Action, apna secret
+  let pid = env.PROJECT_ID;
+  if (!pid && env.SERVICE_ACCOUNT_JSON) { try { pid = JSON.parse(env.SERVICE_ACCOUNT_JSON).project_id; } catch (e) {} }
+  if (!pid) return 'no-project';
+  const tok = request.headers.get('X-Firebase-AppCheck');
+  return tok ? await verifyAppCheck(tok, pid, env.PROJECT_NUMBER) : 'missing';
+}
 
 async function verifyIdToken(token, projectId) {
   const p = String(token || '').split('.');
@@ -100,7 +137,7 @@ async function handle(request, env) {
     method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: {
       topic,
-      notification: { title: s('title').slice(0, 100) || 'SnapTest Pro', body: s('body').slice(0, 300) },
+      notification: { title: s('title').slice(0, 100) || 'SmarTest Pro', body: s('body').slice(0, 300) },
       data: { instituteId, notifId, type: s('type') || 'admin', ...(batchId ? { batchId } : {}) },
       android: { priority: 'HIGH', ttl: '86400s', notification: { sound: 'default', channel_id: 'snap_updates' } }
     } })
@@ -199,7 +236,7 @@ async function handleBroadcast(request, env) {
   if (diff !== 0) throw new HttpErr(403, 'Secret galat hai');
   const aud = String(req.audience || 'both').toLowerCase();
   const topics = aud === 'admin' ? ['app_admin'] : aud === 'student' ? ['app_student'] : ['app_admin', 'app_student'];
-  const title = String(req.title || 'SnapTest Pro').slice(0, 100), body = String(req.body || 'App me naya update aaya hai.').slice(0, 300);
+  const title = String(req.title || 'SmarTest Pro').slice(0, 100), body = String(req.body || 'App me naya update aaya hai.').slice(0, 300);
   const kind = req.kind === 'apk' ? 'apk' : 'web';
   const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), projectId = env.PROJECT_ID || sa.project_id, at = await googleAccessToken(sa);
   for (const topic of topics) {
@@ -331,7 +368,7 @@ async function pushDirect(env, sa, projectId, email, instituteId, notifId, req) 
   const topic = batchId ? batchTopic(instituteId, batchId) : 'inst_' + topicSafe(instituteId), at = await googleAccessToken(sa);
   const fr = await fetch('https://fcm.googleapis.com/v1/projects/' + projectId + '/messages:send', {
     method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: { topic, notification: { title: String(req.title).slice(0, 100) || 'SnapTest Pro', body: String(req.body || '').slice(0, 300) },
+    body: JSON.stringify({ message: { topic, notification: { title: String(req.title).slice(0, 100) || 'SmarTest Pro', body: String(req.body || '').slice(0, 300) },
       data: { instituteId, notifId, type, ...(batchId ? { batchId } : {}) }, android: { priority: 'HIGH', ttl: '86400s', notification: { sound: 'default', channel_id: 'snap_updates' } } } })
   });
   if (!fr.ok) { pushSeen.delete(dk); throw new HttpErr(502, 'FCM fail ' + fr.status + ' ' + (await fr.text()).slice(0, 200)); }
@@ -721,7 +758,7 @@ async function dailyExpiryDigest(env) {
   soon.sort((a, b) => a.d - b.d);
   const body = [soon.length ? '⏳ Jaldi khatam (' + soon.length + '): ' + soon.slice(0, 8).map((x) => x.nm + (x.d <= 0 ? ' (aaj)' : ' (' + x.d + ' din)')).join(', ') : '',
     gone.length ? '❌ Expired (' + gone.length + '): ' + gone.slice(0, 8).map((x) => x.nm + ' (' + (-x.d) + ' din pehle)').join(', ') : ''].filter(Boolean).join('\n').slice(0, 400);
-  const title = '📅 SnapTest Pro — Renewal reminder';
+  const title = '📅 SmarTest Pro — Renewal reminder';
   try {
     await fetch('https://fcm.googleapis.com/v1/projects/' + projectId + '/messages:send', { method: 'POST', headers: { Authorization: 'Bearer ' + at, 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: { topic: 'owner_alerts', notification: { title, body }, data: { type: 'owner_digest' }, android: { priority: 'HIGH', ttl: '43200s', notification: { sound: 'default', channel_id: 'snap_updates' } } } }) });
@@ -1017,13 +1054,25 @@ async function handleStudentAuth(request, env, pathname) {
   } catch (e) { return out({ ok: false, error: e.message || String(e), ...(e.retryAfter ? { retryAfter: e.retryAfter } : {}) }, e.status || 500); }
 }
 
-export default {
+const worker = {
   async scheduled(event, env, ctx) { ctx.waitUntil(sendReminders(env).catch((e) => console.log('reminder fail', e && e.message))); ctx.waitUntil(nightlyRecount(env).catch((e) => console.log('recount fail', e && e.message))); ctx.waitUntil(dailyExpiryDigest(env).catch((e) => console.log('digest fail', e && e.message))); },
   // v176: roz ek baar student-count sahi karo (limit wale institutes)
   // (upar wali line ke saath hi chalta hai)
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const pathname = new URL(request.url).pathname.replace(/\/+$/, '') || '/';
+    let ac = null;
+    try { ac = await appCheckResult(request, env, pathname); } catch (e) { ac = 'check-error'; }
+    if (ac && ac !== 'ok') {
+      console.log(JSON.stringify({ appcheck: ac, path: pathname, mode: String(env.APPCHECK_MODE || '').toLowerCase() }));
+      const hard = ac !== 'jwks-unavailable' && ac !== 'no-project' && ac !== 'check-error' && pathname !== '/alert';
+      if (hard && String(env.APPCHECK_MODE || '').toLowerCase() === 'enforce') return json({ ok: false, error: 'App Check token chahiye (app update karein)' }, 401);
+    }
+    const res = await worker.route(request, env, ctx, pathname);
+    if (!ac) return res;
+    const out = new Response(res.body, res); out.headers.set('X-AppCheck', ac); return out;
+  },
+  async route(request, env, ctx, pathname) {
     try {
       if (pathname.indexOf('/student/') === 0) return await handleStudentAuth(request, env, pathname);
       if (pathname === '/bank' || pathname === '/bank/meta' || pathname === '/bank/chunk') return await handleBank(request, env, pathname);
@@ -1038,3 +1087,4 @@ export default {
     catch (e) { return json({ ok: false, error: e.message || String(e) }, e.status || 500); }
   }
 };
+export default worker;

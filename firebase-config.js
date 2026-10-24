@@ -105,3 +105,48 @@ try {
     window.vishnuFirebase.enabled = true;
   }
 } catch (error) { console.warn("Firebase unavailable", error); }
+
+/* v239: App Check token Worker ko bhejna. Sirf apne Worker URL par, sirf POST/PUT/DELETE; baaki har fetch bina chhede nikalti hai.
+   Token 1.5 sec me na mile (ya App Check band ho) to request bina header ke chali jaati hai — app kabhi atakta nahi.
+   Worker ka APPCHECK_MODE (off/monitor/enforce) decide karta hai ki header na hone par kya ho. Docs: docs/APP_CHECK.md */
+(function () {
+  var W = String((window.SNAP_CONFIG || {}).workerUrl || "").replace(/\/+$/, "");
+  if (!W || typeof window.fetch !== "function" || window.__snapAcFetch) return;
+  window.__snapAcFetch = true;
+  var origFetch = window.fetch.bind(window), cached = "", cachedUntil = 0;
+
+  function getAppCheckToken() {
+    var vf = window.vishnuFirebase || {}, st = String(vf.appCheckState || "");
+    if (st.indexOf("initialized:") !== 0) return Promise.resolve("");
+    if (cached && Date.now() < cachedUntil) return Promise.resolve(cached);
+    var p;
+    try {
+      if (st.indexOf("android") >= 0) {
+        p = window.Capacitor.nativePromise("FirebaseAppCheck", "getToken", { forceRefresh: false }).then(function (r) { return r && r.token || ""; });
+      } else {
+        p = Promise.resolve(firebase.appCheck().getToken(false)).then(function (r) { return r && r.token || ""; });
+      }
+    } catch (e) { return Promise.resolve(""); }
+    var timeout = new Promise(function (res) { setTimeout(function () { res(""); }, 1500); });
+    return Promise.race([p.catch(function () { return ""; }), timeout]).then(function (t) {
+      if (t) { cached = t; cachedUntil = Date.now() + 5 * 60 * 1000; }
+      return t;
+    });
+  }
+
+  window.fetch = function (input, init) {
+    try {
+      var url = typeof input === "string" ? input : (input && input.url) || "";
+      var method = String((init && init.method) || (input && input.method) || "GET").toUpperCase();
+      if (url.indexOf(W) === 0 && method !== "GET" && method !== "HEAD" && !(typeof input === "object" && input && input.url)) {
+        return getAppCheckToken().then(function (t) {
+          if (!t) return origFetch(input, init);
+          var h = new Headers((init && init.headers) || {});
+          h.set("X-Firebase-AppCheck", t);
+          return origFetch(input, Object.assign({}, init, { headers: h }));
+        });
+      }
+    } catch (e) {}
+    return origFetch(input, init);
+  };
+})();

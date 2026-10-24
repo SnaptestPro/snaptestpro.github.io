@@ -8,8 +8,8 @@
 <script src="app-bridge.js"></script>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>SnapTest Pro — Owner Panel</title>
-<meta name="description" content="SnapTest Pro Owner Panel — saare institutes aur unke admins manage karein." />
+<title>SmarTest Pro — Owner Panel</title>
+<meta name="description" content="SmarTest Pro Owner Panel — saare institutes aur unke admins manage karein." />
 
 <!-- ══════════════════════════════════════════════════════════════════
      OWNER APP — poori tarah ALAG, self-contained PWA
@@ -40,7 +40,7 @@
 
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="SnapTest Pro Owner" />
+<meta name="apple-mobile-web-app-title" content="SmarTest Pro Owner" />
 <link rel="apple-touch-icon" sizes="192x192" href="icon-192-owner.png" />
 <link rel="apple-touch-icon" sizes="512x512" href="icon-512-owner.png" />
 <meta name="mobile-web-app-capable" content="yes" />
@@ -176,12 +176,12 @@
     <button id="install-btn" type="button">Install Karein</button>
   </div>
 
-  <div id="oa-boot" style="text-align:center;color:#64748b;font-size:.8rem;padding-top:40vh">Load ho raha hai...</div>
+  <div id="oa-boot" style="text-align:center;color:#475569;font-size:.8rem;padding-top:40vh">Load ho raha hai...</div>
 
   <!-- Owner Login -->
   <form id="owner-login-box" class="oa-login hidden" onsubmit="return ownerLogin(event)">
     <div class="oa-lg">S</div>
-    <h2>SnapTest Pro Owner</h2>
+    <h2>SmarTest Pro Owner</h2>
     <p class="s">Sirf product owner ke liye</p>
     <div class="box">
       <label>Owner Email</label>
@@ -199,7 +199,7 @@
     <section id="oa-v-home" class="oa-view">
       <header class="oa-top">
         <div class="oa-lg">S</div>
-        <div><h1>SnapTest Pro Owner</h1><p id="owner-logged-in-as"></p></div>
+        <div><h1>SmarTest Pro Owner</h1><p id="owner-logged-in-as"></p></div>
         <button type="button" class="oa-av" onclick="ouiTab('set')" aria-label="Settings"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></button>
       </header>
       <div class="oa-hero" id="oa-hero"></div>
@@ -325,7 +325,7 @@
     window.addEventListener('beforeinstallprompt', function (e) {
       e.preventDefault();
       deferredPrompt = e;
-      showBanner('SnapTest Pro Owner ko home screen par install karein — Admin/Student se bilkul alag icon.', true);
+      showBanner('SmarTest Pro Owner ko home screen par install karein — Admin/Student se bilkul alag icon.', true);
       installBtn.onclick = function () {
         installBtn.disabled = true;
         deferredPrompt.prompt();

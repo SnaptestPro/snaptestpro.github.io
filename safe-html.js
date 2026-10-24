@@ -1,4 +1,4 @@
-/* SnapTest Pro — safe-html.js (Phase 5). Sabse PEHLE load hota hai.
+/* SmarTest Pro — safe-html.js (Phase 5). Sabse PEHLE load hota hai.
    1) Helpers: __sx (text/attribute escape), __sj (inline-handler JS string), SnapSafe.esc/escAttr/safeUrl/html/sanitizeRich
    2) Guard: innerHTML / outerHTML / insertAdjacentHTML me auto-execute hone wale hisse (script, onerror, javascript: ...) hata deta hai. */
 (function (root) {

@@ -1,4 +1,4 @@
-// v233 — "Powered by SnapTest Pro" tag har output par (admit card, result sheet, paper print). Plain Node.
+// v233 — "Powered by SmarTest Pro" tag har output par (admit card, result sheet, paper print). Plain Node.
 const fs = require('fs'), path = require('path'), assert = require('assert'), vm = require('vm');
 const R = p => fs.readFileSync(path.join(__dirname, '..', '..', p), 'utf8');
 let n = 0; const T = (name, fn) => { try { fn(); n++; console.log('  PASS ' + name); } catch (e) { console.log('  FAIL ' + name + '\n   ' + (e.stack || e)); process.exitCode = 1; } };
@@ -12,8 +12,8 @@ function boot(cfg, brand) {
   win.window = win; win.self = win; vm.createContext(win); vm.runInContext(R('branding.js'), win); return win;
 }
 T('mark API: default ON, text sahi, html tag', () => {
-  const w = boot({}); assert.strictEqual(w.SnapBrand.mark.on(), true); assert.strictEqual(w.SnapBrand.mark.text, 'Powered by SnapTest Pro');
-  assert.ok(/Powered by SnapTest Pro/.test(w.SnapBrand.mark.html()));
+  const w = boot({}); assert.strictEqual(w.SnapBrand.mark.on(), true); assert.strictEqual(w.SnapBrand.mark.text, 'Powered by SmarTest Pro');
+  assert.ok(/Powered by SmarTest Pro/.test(w.SnapBrand.mark.html()));
 });
 T('institute branded + hidePoweredBy=true => tag nahi', () => {
   const w = boot({}, { name: 'Gyan Academy', hidePoweredBy: true }); assert.strictEqual(w.SnapBrand.mark.on(), false); assert.strictEqual(w.SnapBrand.mark.html(), '');
@@ -23,7 +23,7 @@ T('institute branded, hidePoweredBy nahi => tag', () => {
 });
 T('kill-switch brandMark=false => nahi', () => { const w = boot({ brandMark: false }); assert.strictEqual(w.SnapBrand.mark.on(), false); assert.strictEqual(w.SnapBrand.mark.html(), ''); });
 T('printBar: bina institute-branding ke bhi tag-only bar; hide par khali; branding2=false par khali', () => {
-  assert.ok(/Powered by SnapTest Pro/.test(boot({}).SnapBrand.printBar()));
+  assert.ok(/Powered by SmarTest Pro/.test(boot({}).SnapBrand.printBar()));
   assert.strictEqual(boot({}, { name: 'G', hidePoweredBy: true }).SnapBrand.printBar().includes('Powered by'), false);
   assert.strictEqual(boot({ branding2: false }).SnapBrand.printBar(), '');
 });
@@ -36,6 +36,6 @@ T('admit card: tag footer me aata hai (canvas stub), hide par nahi', () => {
   const calls = []; const ctx = new Proxy({}, { get: (t, k) => k === 'measureText' ? () => ({ width: 10 }) : k === 'fillText' ? (...a) => calls.push(String(a[0])) : (typeof t[k] === 'undefined' ? () => {} : t[k]), set: (t, k, v) => { t[k] = v; return true; } });
   const mkWin = cfg => { const w = { SNAP_CONFIG: cfg, document: { createElement: () => ({ getContext: () => ctx, width: 0, height: 0, toDataURL: () => '' }), getElementById: () => null, addEventListener() {}, readyState: 'loading', body: {} }, localStorage: { getItem() { return null; }, setItem() {} }, Image: function () {}, console }; w.window = w; w.globalThis = w; return w; };
   const run = cfg => { calls.length = 0; const w = mkWin(cfg); vm.createContext(w); vm.runInContext(R('admit-card.js'), w); return w.SnapAdmit.render({ examId: 'abc', name: 'A', roll: '01', date: '2026-11-08' }, null, 1).then(() => calls.slice()); };
-  return run({}).then(a => run({ brandMark: false }).then(b => [a, b])).then(r => { assert.ok(r[0].includes('Powered by SnapTest Pro'), 'tag missing'); assert.ok(!r[1].includes('Powered by SnapTest Pro')); n++; console.log('  PASS admit card canvas tag on/off'); }).catch(e => { console.log('  FAIL admit card canvas\n   ' + (e.stack || e)); process.exitCode = 1; });
+  return run({}).then(a => run({ brandMark: false }).then(b => [a, b])).then(r => { assert.ok(r[0].includes('Powered by SmarTest Pro'), 'tag missing'); assert.ok(!r[1].includes('Powered by SmarTest Pro')); n++; console.log('  PASS admit card canvas tag on/off'); }).catch(e => { console.log('  FAIL admit card canvas\n   ' + (e.stack || e)); process.exitCode = 1; });
 });
 console.log('brandmark v233 tests passed: ' + n);

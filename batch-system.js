@@ -1,4 +1,4 @@
-/* SnapTest Pro — Batch Management System v1
+/* SmarTest Pro — Batch Management System v1
    Admin Panel (batches, live classes, recordings, notes, PPT, students, announcements) + Student "Batch" section.
    Data: institutes/{instituteId}/batches/{batchId}  +  .../items/{itemId}  +  .../members/{mobile}
    Free-tier safe: koi Firebase Storage / Cloud Functions nahi — files ke liye link (Drive/YouTube/URL). */
@@ -245,7 +245,7 @@
   function buildAdmin() {
     var o = $("#bm-admin"); o && o.remove();
     o = document.createElement("div"); o.id = "bm-admin";
-    o.innerHTML = '<aside class="bm-side"><div class="bm-logo">' + (window.SnapBrand && SnapBrand.logoHtml ? SnapBrand.logoHtml(30) : '<img src="icon-512-maskable.png" alt="">') + (window.SnapBrand && SnapBrand.ident ? SnapBrand.esc(SnapBrand.ident({ name: "SnapTest Pro" }).name) : "SnapTest Pro") + '</div>' +
+    o.innerHTML = '<aside class="bm-side"><div class="bm-logo">' + (window.SnapBrand && SnapBrand.logoHtml ? SnapBrand.logoHtml(30) : '<img src="icon-512-maskable.png" alt="">') + (window.SnapBrand && SnapBrand.ident ? SnapBrand.esc(SnapBrand.ident({ name: "SmarTest Pro" }).name) : "SmarTest Pro") + '</div>' +
       navAll().map(function (n) { return '<button class="bm-nav" data-v="' + n[0] + '"><span>' + n[1] + '</span>' + n[2] + '</button>'; }).join("") +
       '<button class="bm-nav" data-v="exit"><span>⬅️</span>Admin Home</button><div class="bm-me">' + esc(adminEmail()) + '<br>Admin</div></aside>' +
       '<main class="bm-main"><div class="bm-top"><button class="bm-burger" id="bm-burger">☰</button><h2 id="bm-title"></h2><span id="bm-topact"></span></div><div id="bm-drivebn"></div><div id="bm-main"></div></main>';

@@ -17,17 +17,17 @@ let { win, store } = boot({}, B);
 assert(!/<b>|<i>/.test(win.SnapBrand.rsf('name', 'x') + win.SnapBrand.rsf('tag', 'x')), 'rsf escape');
 assert.strictEqual(win.SnapBrand.rsf('logo', 'fb.png'), LOGO); assert.strictEqual(win.SnapBrand.rsf('sub', 'COACHING'), '');
 /* WhatsApp naam me markdown chars/tags hata ke plain */
-assert(!/[*_~`\n]/.test(win.SnapBrand.plain('SnapTest Pro')), 'plain markdown-free');
+assert(!/[*_~`\n]/.test(win.SnapBrand.plain('SmarTest Pro')), 'plain markdown-free');
 /* print bar: escaped, Powered by dikhe; hidePoweredBy par na dikhe */
-assert(/Powered by SnapTest Pro/.test(win.SnapBrand.printBar())); assert(!/<b>|<i>/.test(win.SnapBrand.printBar()));
+assert(/Powered by SmarTest Pro/.test(win.SnapBrand.printBar())); assert(!/<b>|<i>/.test(win.SnapBrand.printBar()));
 ({ win } = boot({}, Object.assign({}, B, { hidePoweredBy: true }))); assert(!/Powered by/.test(win.SnapBrand.printBar()));
 /* galat logo (svg / javascript:) kabhi nahi chalta */
 ({ win } = boot({}, Object.assign({}, B, { logoDataUrl: 'javascript:alert(1)' }))); assert.strictEqual(win.SnapBrand.rsf('logo', 'fb.png'), 'fb.png'); assert(!/<img src="javascript/.test(win.SnapBrand.printBar()));
 /* kill-switch: branding2=false -> purana (fallback), koi bar nahi, splash flag off */
-({ win, store } = boot({ branding2: false }, B)); assert.strictEqual(win.SnapBrand.rsf('name', 'सव्यसाची'), 'सव्यसाची'); assert.strictEqual(win.SnapBrand.plain(), 'SnapTest Pro'); assert.strictEqual(win.SnapBrand.printBar(), ''); assert.strictEqual(store.snap_brand2_off, '1');
+({ win, store } = boot({ branding2: false }, B)); assert.strictEqual(win.SnapBrand.rsf('name', 'सव्यसाची'), 'सव्यसाची'); assert.strictEqual(win.SnapBrand.plain(), 'SmarTest Pro'); assert.strictEqual(win.SnapBrand.printBar(), ''); assert.strictEqual(store.snap_brand2_off, '1');
 ({ win, store } = boot({}, B)); assert.strictEqual(store.snap_brand2_off, undefined);
 /* cache na ho -> sab purana */
-({ win } = boot({}, null)); assert.strictEqual(win.SnapBrand.rsf('name', 'X'), 'X'); assert(/Powered by SnapTest Pro/.test(win.SnapBrand.printBar()), 'v233: bina institute-branding ke bhi tag-only bar'); assert(!/<img/.test(win.SnapBrand.printBar()));
+({ win } = boot({}, null)); assert.strictEqual(win.SnapBrand.rsf('name', 'X'), 'X'); assert(/Powered by SmarTest Pro/.test(win.SnapBrand.printBar()), 'v233: bina institute-branding ke bhi tag-only bar'); assert(!/<img/.test(win.SnapBrand.printBar()));
 /* hooks maujood: result sheet, WhatsApp, print, owner switch, config, splash */
 const sj = rd('script.js'); assert(/SnapBrand\.rsf\("logo"/.test(sj) && /SnapBrand\.rsf\("name"/.test(sj)); assert.strictEqual((sj.match(/SnapBrand\.plain\(\)/g) || []).length, 4);
 assert(/SnapBrand\.plain/.test(rd('upgrade.js')));

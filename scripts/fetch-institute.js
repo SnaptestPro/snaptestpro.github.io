@@ -22,7 +22,7 @@ const val = f => f == null ? undefined : (f.stringValue !== undefined ? f.string
     console.log('institute mila:', d.name, '| active:', d.active);
   } catch (e) { console.warn('WARN: Firestore se institute nahi mila —', e.message, '\n      Workflow input (app_name) aur default icon use honge.'); }
 
-  const name = (manualName || d.name || 'SnapTest Pro').replace(/[<>&"'\\]/g, '').trim().slice(0, 40) || 'SnapTest Pro';
+  const name = (manualName || d.name || 'SmarTest Pro').replace(/[<>&"'\\]/g, '').trim().slice(0, 40) || 'SmarTest Pro';
   const slug = id.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40) || 'inst';
   const pkg = 'com.snaptestpro.i' + slug;
   let hasIcon = false;

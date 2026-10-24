@@ -9,11 +9,11 @@
   var NAVY = "#1e1b4b", GOLD = "#fbbf24", INK = "#111827", GRAY = "#6b7280", LINE = "#c7d2fe", SOFT = "#eef2ff";
 
   function admitId(examId, roll) { return String(examId || "").slice(0, 5).toUpperCase() + "-" + String(roll || ""); }
-  /* "Powered by SnapTest Pro" tag (Owner Panel hidePoweredBy ya SNAP_CONFIG.brandMark=false par nahi) */
+  /* "Powered by SmarTest Pro" tag (Owner Panel hidePoweredBy ya SNAP_CONFIG.brandMark=false par nahi) */
   function markText() {
     if (root.SNAP_CONFIG && root.SNAP_CONFIG.brandMark === false) return "";
     var B = root.SnapBrand; if (B && B.mark) return B.mark.on() ? B.mark.text : "";
-    return "Powered by SnapTest Pro";
+    return "Powered by SmarTest Pro";
   }
   function maskMobile(m) { m = String(m || "").replace(/\D/g, "").slice(-10); return m.length === 10 ? "XXXXXX" + m.slice(6) : ""; }
   function prettyDate(s) {
@@ -56,7 +56,7 @@
       /* header */
       c.fillStyle = NAVY; c.fillRect(10, 10, W - 20, 118);
       c.textAlign = "center"; c.fillStyle = "#fff";
-      var inst = String(card.instituteName || (window.SnapBrand && SnapBrand.plain ? SnapBrand.plain("SnapTest Pro") : "SnapTest Pro")).toUpperCase();
+      var inst = String(card.instituteName || (window.SnapBrand && SnapBrand.plain ? SnapBrand.plain("SmarTest Pro") : "SmarTest Pro")).toUpperCase();
       fit(c, inst, W - 120, 44, "bold"); c.fillText(inst, W / 2, 72);
       c.fillStyle = GOLD; c.font = "bold 24px Arial, 'Noto Sans Devanagari', 'Nirmala UI', Mangal, sans-serif"; c.fillText("ADMIT CARD  •  प्रवेश पत्र", W / 2, 110);
       /* exam band */

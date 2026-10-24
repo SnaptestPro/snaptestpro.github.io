@@ -40,7 +40,7 @@
       var t = q(".site-title"); if (t) t.textContent = b.name;
       document.title = b.name + " — Online Tests & Classes";
     }
-    var sub = q(".site-sub"); if (sub && b.name) sub.textContent = b.tagline || (on2() ? "" : "Powered by SnapTest Pro");
+    var sub = q(".site-sub"); if (sub && b.name) sub.textContent = b.tagline || (on2() ? "" : "Powered by SmarTest Pro");
     if (b.logoDataUrl) { var li = q(".logo-img"); if (li) li.src = b.logoDataUrl; }
     applyManifest(b);
     try { deep(b); } catch (e) {}
@@ -54,7 +54,7 @@
   function escH(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function curB() { if (!on2() || !cur) return null; var x = jget(PFX + cur); return x && x.name ? x : null; }
   /* WhatsApp / plain text ke liye institute ka naam (markdown ke * _ ~ hata kar); institute na ho to fb */
-  function plain(fb) { var x = curB(), n = x ? String(x.name).replace(/[*_~`\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 60) : ""; return n || fb || "SnapTest Pro"; }
+  function plain(fb) { var x = curB(), n = x ? String(x.name).replace(/[*_~`\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 60) : ""; return n || fb || "SmarTest Pro"; }
   /* result sheet ka brand block: institute ho to uska (escaped), warna fb (purana hard-coded) */
   function rsf(key, fb) {
     var x = curB(); if (!x) return fb;
@@ -64,9 +64,9 @@
     return "";
   }
   /* print (booklet / 4-column) ke upar ek patli brand patti; "Powered by" usi me chhoti, taaki page layout na chhede */
-  /* v233: "Powered by SnapTest Pro" tag -- institute ke generate kiye outputs (admit card, result sheet, paper print) par.
+  /* v233: "Powered by SmarTest Pro" tag -- institute ke generate kiye outputs (admit card, result sheet, paper print) par.
      Institute-wise chhupana: Owner Panel -> "Powered by chhupayein" (hidePoweredBy). Kill-switch: SNAP_CONFIG.brandMark=false */
-  var MARK_TXT = "Powered by SnapTest Pro";
+  var MARK_TXT = "Powered by SmarTest Pro";
   function markOn() { if (window.SNAP_CONFIG && window.SNAP_CONFIG.brandMark === false) return false; var x = cur && jget(PFX + cur); return !(x && x.hidePoweredBy); }
   function markHtml(style) { return markOn() ? '<div class="snap-mark" style="' + (style || "text-align:center;font-size:10px;color:#6b7280;padding:4px 0;") + '">' + MARK_TXT + "</div>" : ""; }
   function printBar() {
@@ -75,15 +75,15 @@
     return '<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;margin-bottom:6px;border-bottom:2px solid ' + col + ';-webkit-print-color-adjust:exact;print-color-adjust:exact;">' +
       (okLogo(x.logoDataUrl) ? '<img src="' + x.logoDataUrl + '" alt="" style="width:26px;height:26px;object-fit:contain;">' : "") +
       '<div style="font-weight:800;font-size:13px;color:' + col + ';flex:1;line-height:1.2;">' + escH(x.name) + (x.tagline ? ' <span style="font-weight:500;font-size:10px;color:#4b5563;">• ' + escH(x.tagline) + "</span>" : "") + "</div>" +
-      (x.hidePoweredBy ? "" : '<div style="font-size:9px;color:#6b7280;white-space:nowrap;">Powered by SnapTest Pro</div>') + "</div>";
+      (x.hidePoweredBy ? "" : '<div style="font-size:9px;color:#6b7280;white-space:nowrap;">Powered by SmarTest Pro</div>') + "</div>";
   }
 
-  /* ---- v234: "mera apna app" — institute ka naam/logo har jagah, saath me chhota "Powered by SnapTest Pro" tag.
+  /* ---- v234: "mera apna app" — institute ka naam/logo har jagah, saath me chhota "Powered by SmarTest Pro" tag.
      Sab kuch localStorage ke cached branding se (naya Firestore read nahi, turant). Institute/branding na ho to purana look. ---- */
   function ident(fb) {
     fb = fb || {};
     var x = on() && cur ? jget(PFX + cur) : null;
-    if (!(x && x.name)) return { brand: false, name: fb.name || "SnapTest Pro", logo: "", sub: fb.sub || "", powered: false };
+    if (!(x && x.name)) return { brand: false, name: fb.name || "SmarTest Pro", logo: "", sub: fb.sub || "", powered: false };
     var p = markOn();
     return { brand: true, name: String(x.name), logo: okLogo(x.logoDataUrl) ? x.logoDataUrl : "", sub: p ? MARK_TXT : (x.tagline || ""), powered: p };
   }
@@ -97,10 +97,10 @@
     }
     return '<img src="' + (fbSrc || "icon-512-maskable.png") + '" alt="" style="' + s + '">';
   }
-  /* student header (#sn-top .lg): logo + institute naam + "Powered by SnapTest Pro". Key se idempotent — baar-baar chalne par DOM nahi chhedta */
+  /* student header (#sn-top .lg): logo + institute naam + "Powered by SmarTest Pro". Key se idempotent — baar-baar chalne par DOM nahi chhedta */
   function paintHeader() {
     var lg = document.querySelector("#sn-top .lg"); if (!lg) return;
-    var d = ident({ name: "SnapTestPro", sub: "Smart Practice \u2022 Better Result" });
+    var d = ident({ name: "SmarTest Pro", sub: "Smart Practice \u2022 Better Result" });
     var key = d.brand ? cur + "|" + d.name + "|" + d.sub + "|" + d.logo.length : "def";
     if (lg.getAttribute("data-bk") === key) return;
     lg.setAttribute("data-bk", key);
@@ -112,7 +112,7 @@
     var f = document.getElementById("snap-powered-by");
     if (!(ok && !b.hidePoweredBy)) { if (f) f.style.display = "none"; }
     else {
-      if (!f) { f = document.createElement("div"); f.id = "snap-powered-by"; f.style.cssText = "text-align:center;font-size:.7rem;opacity:.65;padding:14px 10px 22px;"; f.textContent = "Powered by SnapTest Pro"; (document.getElementById("home-screen") || document.body).appendChild(f); }
+      if (!f) { f = document.createElement("div"); f.id = "snap-powered-by"; f.style.cssText = "text-align:center;font-size:.7rem;opacity:.65;padding:14px 10px 22px;"; f.textContent = "Powered by SmarTest Pro"; (document.getElementById("home-screen") || document.body).appendChild(f); }
       f.style.display = "";
     }
     /* login card ke upar institute ka logo + naam + tagline (student aur admin) */

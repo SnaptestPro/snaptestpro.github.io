@@ -1,7 +1,7 @@
 {
   "id": "/owner-app.html",
-  "name": "SnapTest Pro Owner Panel",
-  "short_name": "SnapTest Pro Owner",
+  "name": "SmarTest Pro Owner Panel",
+  "short_name": "SmarTest Pro Owner",
   "description": "Owner Panel — saare institutes aur unke admins manage karein.",
   "start_url": "/owner-app.html",
   "scope": "/",

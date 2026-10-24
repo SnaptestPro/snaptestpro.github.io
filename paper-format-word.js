@@ -516,7 +516,7 @@
       return;
     }
 
-    var brand = instituteName("SnapTest Pro");
+    var brand = instituteName("SmarTest Pro");
     var hdrData = {
       title: brand,
       test: val("subject"),

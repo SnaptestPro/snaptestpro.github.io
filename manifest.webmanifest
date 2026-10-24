@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "SnapTest Pro — Smart Tests • Better Preparation • Better Results",
-  "short_name": "SnapTest Pro",
-  "description": "Practice tests, track your rank on the leaderboard, and prepare smarter with SnapTest Pro.",
+  "name": "SmarTest Pro — Smart Tests • Better Preparation • Better Results",
+  "short_name": "SmarTest Pro",
+  "description": "Practice tests, track your rank on the leaderboard, and prepare smarter with SmarTest Pro.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -70,14 +70,14 @@
       "sizes": "1024x1024",
       "type": "image/jpeg",
       "form_factor": "wide",
-      "label": "SnapTest Pro Dashboard - Desktop View"
+      "label": "SmarTest Pro Dashboard - Desktop View"
     },
     {
       "src": "screenshot-narrow.jpg",
       "sizes": "1024x1024",
       "type": "image/jpeg",
       "form_factor": "narrow",
-      "label": "SnapTest Pro - Mobile View"
+      "label": "SmarTest Pro - Mobile View"
     }
   ],
   "shortcuts": [

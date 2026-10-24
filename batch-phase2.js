@@ -1,4 +1,4 @@
-/* SnapTest Pro — Batch Management Phase 2 (v168)
+/* SmarTest Pro — Batch Management Phase 2 (v168)
    batch-system.js ke andar plug hota hai (SnapBatch.ext). Naya kya:
    Admin  : Subjects & Chapters | Doubt Solving | Tests & Assignments | Reports & Attendance | Teachers | Institute Settings (Strict Security Mode)
    Student: Subjects (batch dashboard -> subject -> chapter -> content) | Doubts | Assignments | Progress | live attendance

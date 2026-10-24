@@ -8,7 +8,7 @@ let bg = '#060513';
 try { const j = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, 'institute-brand.json'), 'utf8')); if (/^#[0-9a-f]{6}$/i.test(j.brandColor || '') && !/branding2\s*:\s*false/.test(require('fs').readFileSync(require('path').join(__dirname, 'app-config.js'), 'utf8'))) bg = j.brandColor; } catch (e) {}
 module.exports = {
   appId: process.env.APP_ID || 'com.snaptestpro.app',
-  appName: process.env.APP_NAME || 'SnapTest Pro',
+  appName: process.env.APP_NAME || 'SmarTest Pro',
   webDir: 'www',
   backgroundColor: bg,
   android: { allowMixedContent: false },

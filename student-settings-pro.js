@@ -5,7 +5,7 @@
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
-  function bi() { var S = window.SnapBrand; return S && S.ident ? S.ident({ name: "SnapTest Pro" }) : { brand: false, name: "SnapTest Pro", sub: "", powered: false }; }
+  function bi() { var S = window.SnapBrand; return S && S.ident ? S.ident({ name: "SmarTest Pro" }) : { brand: false, name: "SmarTest Pro", sub: "", powered: false }; }
   function bl(sz) { var S = window.SnapBrand; return S && S.logoHtml ? S.logoHtml(sz) : '<img src="icon-512-maskable.png" alt="" style="width:' + sz + 'px;height:' + sz + 'px">'; }
   var C = function () { return window.SNAP_CONFIG || {}; };
   var IC = {
@@ -154,7 +154,7 @@
       done("Notifications", "Naye test aur updates ke alert",
         '<div class="ssp-card ssp-ctr" style="padding:20px 15px"><div class="ssp-bell">' + ico("bell") + '</div><div id="ssp-pn-t" style="font-size:1rem;font-weight:800;margin-top:14px">' + (on ? "Notifications ON hain" : "Notifications OFF hain") + '</div><p>Naya test, result ya app update aate hi aapke phone par alert aayega — app band ho tab bhi.</p><span class="ssp-pill' + (on ? "" : " r") + '" id="ssp-pn-p"><i></i>' + (on ? "Chalu hai" : "Band hai") + '</span><div data-borrow="push-notify-toggle-btn,push-notify-status"></div></div>' +
         '<div class="ssp-card"><h4>' + ico("info") + ' Aapko kya milega</h4><div style="height:10px"></div>' + kv("Naya test", "Publish hote hi", "book", 1) + kv("Exam result", "Result publish hote hi", "pulse") + kv("App update", "Naya version aane par", "dl") + "</div>" +
-        '<div class="ssp-note">' + ico("alert") + '<div>Alert na aaye to phone Settings → Apps → SnapTest Pro → Notifications → Allow karein.</div></div>');
+        '<div class="ssp-note">' + ico("alert") + '<div>Alert na aaye to phone Settings → Apps → SmarTest Pro → Notifications → Allow karein.</div></div>');
     },
     display: function (done) {
       var ts = localStorage.getItem("sn_textsize") || "100", wakeOK = !!navigator.wakeLock, wake = localStorage.getItem("sn_wake") === "1";

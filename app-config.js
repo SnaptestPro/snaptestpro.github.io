@@ -1,11 +1,11 @@
 /* ============================================================
-   SnapTest Pro — APP CONFIG (Owner/Developer ek hi jagah se badle)
+   SmarTest Pro — APP CONFIG (Owner/Developer ek hi jagah se badle)
    Yahan jo likhoge wahi Student app aur Admin app dono ke
    Help & Support / About me dikhega. Khaali ("") chhodne par wo
    option apne-aap chhup jata hai.
    ============================================================ */
 window.SNAP_CONFIG = {
-  appName: "SnapTestPro",
+  appName: "SmarTest Pro",
   bankAutoFix: false,  // v226 READS FIX: true karne par admin login par question-bank ki auto class-tag / chapter-merge / ID-migration chalti hai (har question par 2 reads+write+delete — bahut mehngi). Default false. Ek baar chalane ke liye console me: runBankAutoFixNow()
   serverAuth: false,   // Phase 4: true karne par login/register/PIN Worker se (salted hash + rate limit). Pehle docs/PHASE4_AUTH.md padhein.
   appCheck: {
@@ -26,7 +26,7 @@ window.SNAP_CONFIG = {
   catalog: true,                                                      // v218: batch ki list chhote catalog se (reads kam). false = purana tareeka (poore items padhna)
   youtubeLive: true,                                                  // v217: live class = YouTube embed (ytId). false = Phase 0 wala purana link-prompt (kill-switch)
   driveUpload: true,
-  brandMark: true,                                                    // v233: har output (admit card, result sheet, paper print) par "Powered by SnapTest Pro" tag. Institute-wise chhupana: Owner Panel hidePoweredBy. false = sab jagah band
+  brandMark: true,                                                    // v233: har output (admit card, result sheet, paper print) par "Powered by SmarTest Pro" tag. Institute-wise chhupana: Owner Panel hidePoweredBy. false = sab jagah band
   registration: true,                                                 // v231: Test se pehle "Registration" (students + shuffled roll + admit card). false = band
   roster: true,                                                       // v230: Exam Manager me "Admit Card & Roster" + scan par roll-match/anomaly check. false = purana scan flow (kill-switch)
   admitCard: true,                                                    // v230: student dashboard par "Admit Card" card. false = card nahi dikhta (kill-switch)
@@ -49,7 +49,7 @@ window.SNAP_CONFIG = {
   },
   appLock: true,                                                      // institute-APK / ?inst= link lock + "app band hai" screen (kill-switch)
   ownerAlertEmail: "vishnu1234stm@gmail.com",                         // is email se login par owner app me alerts ka push aata hai
-  build: "232",
+  build: "234",
   ownerName: "Vishnu Sharma",
   supportPhone: "9525208263",
   supportWhatsapp: "9525208263",          // WhatsApp number (khaali = phone wala use hoga)

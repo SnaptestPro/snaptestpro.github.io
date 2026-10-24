@@ -8,7 +8,7 @@ const pitch = rd('pitch.html'), priv = rd('privacy.html'), terms = rd('terms.htm
 /* pitch: teeno hisse maujood */
 assert(pitch.includes('2 minute demo script'), 'demo script');
 assert(pitch.includes('Pehle din ki checklist'), 'first-day checklist');
-assert(pitch.includes('Kya SnapTest Pro abhi nahi karta'), 'limitations section (overclaim se bachav)');
+assert(pitch.includes('Kya SmarTest Pro abhi nahi karta'), 'limitations section (overclaim se bachav)');
 assert(/robots" content="noindex"/.test(pitch), 'pitch search par na aaye');
 
 /* pitch: legal advice nahi wali chetavani */

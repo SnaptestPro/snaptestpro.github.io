@@ -1,4 +1,4 @@
-/* SnapTest Pro — SMOOTH UI helper (v1.4.7)
+/* SmarTest Pro — SMOOTH UI helper (v1.4.7)
    1) Koi bhi full-screen overlay (Batch, Analysis/More, Settings, Admin panel) khulte hi <html> par `sn-ovl` class lagti hai
       -> peeche ka home page scroll/paint band (smooth-ui.css dekhein). Band hote hi class hat jaati hai.
    2) Sirf class/style badalne par chalta hai — koi timer/polling nahi, isliye CPU par bojh nahi.

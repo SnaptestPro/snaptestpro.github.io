@@ -5,7 +5,7 @@
   var C = function () { return window.SNAP_CONFIG || {}; };
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
-  function bi() { var S = window.SnapBrand; return S && S.ident ? S.ident({ name: "SnapTestPro" }) : { brand: false, name: "SnapTestPro", sub: "", powered: false }; }
+  function bi() { var S = window.SnapBrand; return S && S.ident ? S.ident({ name: "SnapTestPro" }) : { brand: false, name: "SmarTest Pro", sub: "", powered: false }; }
   function bl(sz) { var S = window.SnapBrand; return S && S.logoHtml ? S.logoHtml(sz) : '<img src="icon-512-maskable.png" alt="" style="width:' + sz + 'px;height:' + sz + 'px">'; }
   var digits = function (s) { return String(s || "").replace(/\D/g, "").slice(-10); };
 

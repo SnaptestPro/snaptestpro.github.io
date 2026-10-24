@@ -1,5 +1,5 @@
 /* ============================================================
-   SnapTest Pro — PAPER SETS (v229)  ·  Multiple Sets A–E
+   SmarTest Pro — PAPER SETS (v229)  ·  Multiple Sets A–E
    ------------------------------------------------------------
    Ek hi jagah ka "pure logic" (koi DOM / Firebase nahi):
      • Paper Generator (qgen-sets.js)  -> sets banata, preview/print me dikhata
