@@ -15,7 +15,7 @@ let env, passed = 0, failed = 0; const failedNames = [];
 async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", name); } catch (e) { failed++; failedNames.push(name); console.log("  ❌", name, "\n     ", (e && e.message || e).toString().split("\n")[0]); } }
 
 (async () => {
-  console.log("RULES-TEST VERSION v240c (firestore/storage ek baar per context)");
+  console.log("RULES-TEST VERSION v241 (firestore/storage ek baar per context)");
   env = await initializeTestEnvironment({
     projectId: "demo-snaptest",
     firestore: { rules: fs.readFileSync("firestore.rules", "utf8") },
@@ -218,12 +218,20 @@ async function t(name, fn) { try { await fn(); passed++; console.log("  ✅", na
   await t("Doosre institute ka student A ki file NAHI padh sakta", () => assertFails(stor(stuBs).ref(`batches/${A}/b1/file.pdf`).getMetadata()));
   await t("Student upload NAHI kar sakta", () => assertFails(stor(stuAs).ref(`batches/${A}/b1/s.pdf`).putString("x")));
 
-  /* KNOWN-RISK probe (fail nahi gina jata): email-login hai par admins/{email} doc hi nahi — kya Storage me likh sakta hai?
-     storage.rules me `!firestore.exists(admins/email)` ki wajah se haan ho sakta hai. Result sirf report hota hai; rules badalne ka faisla Owner ka. */
-  try {
-    await assertFails(stor(env.authenticatedContext("noadmindoc", { email: "nobody@x.com" })).ref(`batches/${A}/b1/probe.pdf`).putString("x"));
-    console.log("  ✅ [probe] admin-doc ke bina email user Storage me NAHI likh sakta");
-  } catch (e) { console.log("  ⚠️  [probe] KNOWN RISK: admin-doc ke bina email user Storage me LIKH SAKTA hai (storage.rules !exists branch)"); }
+  /* v241: storage.rules tight — pehle ye teen cases (doc-na-wala email, disabled admin) allowed the. */
+  const wr = (ctx, path) => stor(ctx).ref(path).putString("x");
+  const noDoc = env.authenticatedContext("noadmindoc", { email: "nobody@x.com" });
+  const disabledAdmin = env.authenticatedContext("udis", { email: "claims-admin@x.com" });      /* admins/claims-admin@x.com => active:false (upar set) */
+  const legacyAdmin = env.authenticatedContext("uleg", { email: "vishnu1234stmp@gmail.com" });  /* hardcoded legacy admin, doc nahi */
+  const ownerSt = env.authenticatedContext("uown", { email: "claims-owner@x.com", snapRole: "owner" });
+  const adminBs = env.authenticatedContext("ub", { email: "adminB@x.com" });
+  await t("Storage: admin-doc ke bina email user NAHI likh sakta", () => assertFails(wr(noDoc, `batches/${A}/b1/n1.pdf`)));
+  await t("Storage: disabled (active:false) admin NAHI likh sakta", () => assertFails(wr(disabledAdmin, `batches/${A}/b1/n2.pdf`)));
+  await t("Storage: legacy admin email likh sakta hai", () => assertSucceeds(wr(legacyAdmin, `batches/${A}/b1/n3.pdf`)));
+  await t("Storage: Owner likh sakta hai", () => assertSucceeds(wr(ownerSt, `batches/${B}/b1/n4.pdf`)));
+  await t("Storage: Admin B apne path me likh sakta hai", () => assertSucceeds(wr(adminBs, `batches/${B}/b1/n5.pdf`)));
+  await t("Storage: Admin B, Institute A ke path me NAHI likh sakta", () => assertFails(wr(adminBs, `batches/${A}/b1/n6.pdf`)));
+  await t("Storage: admin-doc ke bina email user DELETE bhi NAHI kar sakta", () => assertFails(stor(noDoc).ref(`batches/${A}/b1/file.pdf`).delete()));
 
   await env.cleanup();
   console.log(`\n${passed} passed, ${failed} failed`); if (failedNames.length) console.log("FAILED TESTS:\n  - " + failedNames.join("\n  - ")); process.exit(failed ? 1 : 0);
