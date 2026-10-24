@@ -1,5 +1,10 @@
 name: Auto Extract Zip
 
+# Repo ke root me koi *.zip upload karo -> ye khud extract karke files adjust kar deta hai.
+# .github/workflows wali files bhi tabhi jaati hain jab repo secret WORKFLOW_PAT set ho
+# (GitHub ka default token workflow files push nahi kar sakta). PAT nahi hai to pehle jaisa:
+# .github zip se hata diya jaata hai, baaki sab normal extract hota hai.
+
 on:
   push:
     paths:
@@ -12,8 +17,12 @@ permissions:
 jobs:
   extract:
     runs-on: ubuntu-latest
+    env:
+      HAS_PAT: ${{ secrets.WORKFLOW_PAT != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          token: ${{ secrets.WORKFLOW_PAT || github.token }}
 
       - name: Extract all zip files
         run: |
@@ -32,7 +41,8 @@ jobs:
               src=/tmp/x
             fi
 
-            rm -rf "$src/.git" "$src/.github"
+            rm -rf "$src/.git"
+            if [ "$HAS_PAT" != "true" ]; then rm -rf "$src/.github"; fi
             cp -a "$src"/. .
             rm -f "$z"
           done
