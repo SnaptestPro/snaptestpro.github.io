@@ -32,3 +32,6 @@ Browser/phone me chalakar nahi dekha.
 Reads Monitor ke data se (1 ghante, admin): studentRecords 102 (loadFakeMobileGroups@script.js:496 = 71, count-chunks 24), students 40 (fetchInstituteScopedStudents).
 - "Fix mobile" tool ab bina button dabaye poora studentRecords scan nahi karta (pehle sub-tab kholte hi scan).
 - Students directory ki list 5 minute tak dobara Firestore se nahi padhi jaati (record delete/fix par turant naya padhta hai). Naya student 5 minute tak list me na dikhe to ye wajah hai.
+
+## Charts (v240 ke saath)
+- docs/diagrams/SYSTEM_MAP.png + DATA_MAP.png (+PDF), generator scripts/make-diagrams.py. build-www.js me `diagrams` folder APK se bahar.

@@ -1,5 +1,7 @@
 # Architecture
 
+**Chart (image):** `docs/diagrams/SYSTEM_MAP.png` (kaun si app kis service se judti hai) aur `docs/diagrams/DATA_MAP.png` (kaun sa data kahan). PDF bhi wahin. Dobara banane ke liye: `python3 scripts/make-diagrams.py` (matplotlib chahiye).
+
 SnapTest Pro is a vanilla JavaScript PWA served from GitHub Pages and packaged for Android with Capacitor. Firebase provides Auth, Firestore and Storage; `push-worker/worker.js` is the canonical Cloudflare Worker for bank publishing, push, owner alerts and account deletion.
 
 ## Main app loading order
