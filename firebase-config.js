@@ -69,6 +69,9 @@ try {
     if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
     window.vishnuFirebase.appCheckReady = startFirebaseAppCheck();
     window.vishnuFirebase.db = firebase.firestore();
+    /* HYBRID MODE (own-backend.js): SNAP_CONFIG.ownBackend me jo collections likhi hain sirf wahi apne backend par jati hain,
+       baaki sab Firebase par. enabled:false (default) ho to ye line kuch nahi badalti. */
+    try { if (window.SnapOwnBackend) window.vishnuFirebase.db = window.SnapOwnBackend.wrap(window.vishnuFirebase.db); } catch (e) { console.warn('own-backend wrap fail:', e); }
     /* v200: kuch mobile network/WebView me Firestore ka normal connection atak jaata hai ("Backend didn't respond within 10 seconds").
        Auto-detect ON: atakne par SDK khud long-polling par chala jaata hai. Fail ho to app pehle jaisa chalta hai. */
     try { window.vishnuFirebase.db.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (error) { console.warn("Firestore long-polling setting skip", error && error.message); }
