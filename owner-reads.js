@@ -7,7 +7,7 @@
   var $ = function (i) { return document.getElementById(i); };
   function esc(x) { return (window.ownerEsc ? window.ownerEsc(x) : String(x == null ? "" : x).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; })); }
   var RANGES = [[60, "1 ghanta"], [360, "6 ghante"], [1440, "24 ghante"], [10080, "7 din"]];
-  var st = { minutes: 60, sum: null, act: null, actErr: "", err: "", busy: false, sel: null, detail: null };
+  var st = { user: null, minutes: 60, sum: null, act: null, actErr: "", err: "", busy: false, sel: null, detail: null };
   var ROLE = { student: "👨‍🎓 Student", admin: "🧑‍🏫 Admin", owner: "👑 Owner", worker: "☁️ Worker" };
   var KIND = { get: "query get", doc: "doc get", listen: "listener (pehla)", "listen+": "listener (badlav)", count: "count query" };
   var fmt = function (n) { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e4 ? (n / 1e3).toFixed(1) + "K" : n.toLocaleString("en-IN"); };
@@ -23,6 +23,35 @@
     var v = series.map(function (x) { return +x.n || 0; }).filter(function (n) { return n > 0; }).sort(function (a, b) { return a - b; });
     var med = v.length ? v[Math.floor(v.length / 2)] : 0, thr = Math.max(500, med * 4);
     return series.filter(function (x) { return x.n >= thr; }).sort(function (a, b) { return b.n - a.n; }).slice(0, 8);
+  }
+
+
+  /* ---------- "kyu aaya" — saral bhasha me karan ---------- */
+  var SITE_HINT = { syncbank: "Admin login par question bank ka sync. Bank ki local copy 12 ghante se purani ho ya update ke baad saaf ho gayi ho, aur /bank (Worker) fail ho, to ye poora bank Firestore se padhta hai." };
+  var COLL_HINT = { questionBank: "Question bank (poora bank ~7,550 docs)", students: "Students ki list/profile", institutes: "Institutes ke docs", admins: "Admins ke docs", tests: "Tests", notifications: "Notifications", results: "Results" };
+  var KIND_HINT = { listen: "Listener hai: screen/page khulte hi poori collection ek saath padhta hai, aur jab tak khula rahe har badlav par bhi padhta rehta hai.", "listen+": "Listener ke baad ke badlav: har badle doc par 1 read.", get: "Ek baar ki query (get) — jitne docs aaye utne reads.", doc: "Ek-ek doc ka get. Loop me ho to bahut ho jata hai.", count: "Count query." };
+  function uLabel(u) { return (ROLE[u.role] || u.role) + " " + u.usr + (u.uname ? " (" + u.uname + ")" : ""); }
+  function explain(rows, users) {
+    var out = [], tot = rows.reduce(function (a, r) { return a + r.n; }, 0); if (!rows.length || !tot) return out;
+    var t = rows[0], pct = Math.round((t.n / tot) * 100), avg = t.calls ? Math.round(t.n / t.calls) : t.n;
+    out.push("<b>Sabse bada hissa (" + pct + "%)</b>: " + esc(ROLE[t.role] || t.role) + " ne <code>" + esc(t.coll || "?") + "</code> par " + esc(KIND[t.kind] || t.kind) + ", <code>" + esc(t.site) + "</code> se — " + fmt(t.n) + " reads, " + fmt(t.calls) + " request me.");
+    if (KIND_HINT[t.kind]) out.push(esc(KIND_HINT[t.kind]));
+    if (COLL_HINT[t.coll]) out.push("Collection: " + esc(COLL_HINT[t.coll]) + ".");
+    Object.keys(SITE_HINT).forEach(function (k) { if (String(t.site).toLowerCase().indexOf(k) >= 0) out.push("<b>Is function ka kaam:</b> " + esc(SITE_HINT[k])); });
+    if (avg >= 300) out.push("Har request ne ~" + fmt(avg) + " docs ek saath padhe — yaani poori collection ek baar me (bulk read). Aisi ek hi request jhatka bana deti hai.");
+    else if (t.calls >= 40 && avg <= 5) out.push("Bahut saari chhoti requests (" + fmt(t.calls) + ", har ek ~" + avg + " docs) — loop, bar-bar refresh ya timer lagta hai.");
+    if (t.role === "worker") out.push("Ye Worker ka apna kaam hai (route ya cron), kisi user ne seedha nahi padha.");
+    var cur = +((window.SNAP_CONFIG || {}).build) || 0, old = rows.filter(function (r) { return r.build !== "w" && +r.build > 0 && cur && +r.build < cur; });
+    if (old.length) out.push("⚠️ " + fmt(old.reduce(function (a, r) { return a + r.n; }, 0)) + " reads <b>purane build</b> (" + esc(old[0].build) + ") se aaye. Us phone/APK ko update karwayein, naye build me ye theek ho chuka ho sakta hai.");
+    if (users && users.length) {
+      var ut = users.reduce(function (a, u) { return a + u.n; }, 0), u0 = users[0], up = ut ? Math.round((u0.n / ut) * 100) : 0;
+      if (users.length === 1 || up >= 60) out.push("<b>Kis ne:</b> zyada tar ek hi user — " + esc(uLabel(u0)) + ", " + fmt(u0.n) + " reads (" + up + "%).");
+      else out.push("<b>Kis ne:</b> kai users me bata hua — sabse zyada " + esc(uLabel(u0)) + " (" + fmt(u0.n) + "). " + users.length + "+ users ne padha; ek saath bahut log app khol dein to bhi aisa hota hai.");
+    }
+    return out;
+  }
+  function userTable(users) {
+    return table(users, [function (u) { return '<a href="#" data-u="' + esc(u.usr) + '" data-ur="' + esc(u.role) + '" style="color:#4f46e5;text-decoration:none">' + esc(ROLE[u.role] || u.role) + " <b>" + esc(u.usr) + "</b>" + (u.uname ? " · " + esc(u.uname) : "") + "</a>" + (u.inst ? ' <span style="color:#64748b">· ' + esc(u.inst) + "</span>" : "") + ' <span style="color:#64748b">· ' + fmt(u.c) + " req</span>"; }, function (u) { return fmt(u.n); }]);
   }
 
   function chart(sum, act) {
@@ -82,6 +111,7 @@
         return '<button type="button" data-sp="' + x.t + '" class="owner-mini-btn" style="margin:2px 4px 2px 0;' + (st.sel && st.sel.t === x.t ? "background:#dc2626;color:#fff" : "") + '">' + esc(ist(x.t, s.step >= 60)) + " · " + fmt(x.n) + "</button>";
       }).join("") : '<div style="font-size:.75rem;color:#16a34a;padding:6px 0">Is range me koi jhatka nahi ✅</div>') + '<div id="oa-reads-detail">' + detailHtml() + "</div></div>";
       h += '<div class="oa-card" style="margin:0 0 10px"><h3>Kaun padh raha hai</h3>' + table(s.byRole, [function (r) { return esc(ROLE[r.role] || r.role); }, function (r) { return fmt(r.c) + " req"; }, function (r) { return fmt(r.n); }]) + "</div>";
+      h += '<div class="oa-card" style="margin:0 0 10px"><h3>👤 Kaun kaun (ID wise)</h3><div style="font-size:.66rem;color:#64748b;margin:2px 0 4px">Admin = email, Student = mobile. Kisi par dabayein — usne kis collection se kitna padha.</div>' + userTable(s.byUser || []) + '<div id="oa-reads-user">' + userDetailHtml() + '</div></div>';
       h += '<div class="oa-card" style="margin:0 0 10px"><h3>Kis collection se</h3>' + table(s.byColl, [collCell, function (r) { return fmt(r.n); }]) + "</div>";
       h += '<div class="oa-card" style="margin:0 0 10px"><h3>Kis wajah se (function@file:line)</h3>' + table(s.bySite, [function (r) { return (ROLE[r.role] || r.role) + "<br>" + siteCell(r) + "<br>" + collCell(r); }, function (r) { return fmt(r.n); }]) + "</div>";
       h += '<div class="oa-card" style="margin:0 0 10px"><h3>Institute-wise</h3>' + table(s.byInst, [function (r) { return esc(r.inst); }, function (r) { return fmt(r.n); }]) + '<div style="font-size:.66rem;color:#64748b;margin-top:4px">Sirf wahi reads jinke path me institute hai.</div></div>';
@@ -89,21 +119,35 @@
     } else h += '<div style="font-size:.78rem;color:#64748b;padding:14px 0">Load ho raha hai…</div>';
     box.innerHTML = h;
   }
+  function userDetailHtml() {
+    if (!st.user) return "";
+    if (st.user.error) return '<div style="font-size:.75rem;color:#991b1b;padding:8px 0">' + esc(st.user.error) + "</div>";
+    var d = st.user; if (!d.colls) return '<div style="font-size:.75rem;color:#64748b;padding:8px 0">Dekh raha hoon…</div>';
+    return '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #eef0f4"><b style="font-size:.76rem">' + esc(ROLE[d.role] || d.role) + " " + esc(d.usr) + (d.total.uname ? " · " + esc(d.total.uname) : "") + " — " + fmt(d.total.n) + " reads, " + fmt(d.total.c) + " request</b>" +
+      table(d.colls, [function (r) { return esc(r.coll) + (r.inst ? ' <span style="color:#64748b">· ' + esc(r.inst) + "</span>" : "") + ' <span style="color:#64748b">· ' + fmt(r.c) + " req</span>"; }, function (r) { return fmt(r.n); }]) + "</div>";
+  }
   function detailHtml() {
     if (!st.sel) return "";
     if (!st.detail) return '<div style="font-size:.75rem;color:#64748b;padding:8px 0">Dekh raha hoon…</div>';
     if (st.detail.error) return '<div style="font-size:.75rem;color:#991b1b;padding:8px 0">' + esc(st.detail.error) + "</div>";
-    var d = st.detail, tot = d.rows.reduce(function (s, r) { return s + r.n; }, 0);
+    var d = st.detail; d.rows = d.rows || []; var tot = d.rows.reduce(function (s, r) { return s + r.n; }, 0), ex = explain(d.rows, d.users);
     return '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #eef0f4"><b style="font-size:.76rem">' + esc(ist(d.from, true)) + " – " + esc(ist(d.to + 1, true)) + " IST · " + fmt(tot) + " reads</b>" +
+      (ex.length ? '<div style="background:#eef2ff;border-radius:12px;padding:10px;margin:8px 0;font-size:.74rem;line-height:1.5"><b>🔎 Kyu aaya?</b>' + ex.map(function (x) { return '<div style="margin-top:5px">• ' + x + "</div>"; }).join("") + "</div>" : "") +
+      (d.users && d.users.length ? '<div style="font-size:.74rem;margin-top:6px"><b>👤 Kis ID se</b> <span style="color:#64748b;font-size:.64rem">(5 minute ke andar)</span></div>' + userTable(d.users) : "") +
+      '<div style="font-size:.74rem;margin-top:8px"><b>Poori list</b></div>' +
       table(d.rows, [function (r) { return esc(ist(r.bucket)) + " · " + (ROLE[r.role] || r.role) + (r.build !== "w" ? " · b" + esc(r.build) : "") + "<br>" + siteCell(r) + "<br>" + collCell(r) + (r.inst ? ' <span style="color:#64748b">· ' + esc(r.inst) + "</span>" : ""); }, function (r) { return fmt(r.n); }]) + "</div>";
   }
 
   function load() {
     if (st.busy) return; st.busy = true; st.err = ""; st.actErr = ""; st.act = null; render();
     var m = st.minutes;
-    call("/owner/reads/summary?minutes=" + m).then(function (s) { st.sum = s; st.sel = null; st.detail = null; }).catch(function (e) { st.err = e.message || String(e); st.sum = null; })
+    call("/owner/reads/summary?minutes=" + m).then(function (s) { st.sum = s; st.sel = null; st.detail = null; st.user = null; }).catch(function (e) { st.err = e.message || String(e); st.sum = null; })
       .then(function () { render(); return st.err ? null : call("/owner/reads/actual?minutes=" + m).then(function (a) { st.act = a; }).catch(function (e) { st.actErr = e.message || String(e); }); })
-      .then(function () { st.busy = false; render(); });
+      .then(function () { st.busy = false; render(); var sp = st.sum && spikes(st.sum.series)[0]; if (sp) pickSpike(sp.t); });   // sabse bada jhatka apne-aap khul jata hai
+  }
+  function pickUser(usr, role) {
+    st.user = { usr: usr, role: role }; render();
+    call("/owner/reads/user?usr=" + encodeURIComponent(usr) + "&role=" + encodeURIComponent(role) + "&minutes=" + st.minutes).then(function (d) { st.user = d; }).catch(function (e) { st.user = { error: e.message || String(e) }; }).then(render);
   }
   function pickSpike(t) {
     if (!st.sum) return;
@@ -113,6 +157,7 @@
   function wire() {
     var v = $("oa-v-reads"); if (!v || v.__w) return; v.__w = 1;
     v.addEventListener("click", function (e) {
+      var ua = e.target.closest("[data-u]"); if (ua) { e.preventDefault(); pickUser(ua.getAttribute("data-u"), ua.getAttribute("data-ur")); return; }
       var b = e.target.closest("[data-r],[data-act],[data-sp]"); if (!b) { var rc = e.target.closest("rect[data-t]"); if (rc && st.sum) { var t = +rc.getAttribute("data-t"); if (st.sum.series.some(function (x) { return x.t === t; })) pickSpike(t); } return; }
       if (b.hasAttribute("data-r")) { st.minutes = +b.getAttribute("data-r"); load(); }
       else if (b.getAttribute("data-act") === "refresh") load();
@@ -121,5 +166,5 @@
   }
   /* tab khulne par ek baar load */
   window.ouiReadsOpen = function () { wire(); if (!st.sum && !st.busy) load(); else render(); };
-  window.__readsMonitor = { spikes: spikes, state: st };
+  window.__readsMonitor = { spikes: spikes, state: st, explain: explain };
 })();

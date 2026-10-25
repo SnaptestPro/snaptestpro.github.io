@@ -11,7 +11,7 @@ function mkSandbox() {
     firebase: { firestore: { Query, DocumentReference }, apps: [] }, vishnuFirebase: { auth: { currentUser: { isAnonymous: true, getIdToken: () => Promise.resolve('TOK') } } },
     addEventListener() {} };
   win.window = win;
-  const ctx = vm.createContext(Object.assign(win, { document: { addEventListener() {}, visibilityState: 'visible' }, localStorage: { getItem: () => null, setItem() {} },
+  const ctx = vm.createContext(Object.assign(win, { document: { addEventListener() {}, visibilityState: 'visible' }, localStorage: { getItem: (k) => k === 'savya_student_session' ? JSON.stringify({ mobile: '9876543210', name: 'Ravi' }) : null, setItem() {} },
     setInterval: (f, ms) => { timers.push(f); return timers.length; }, clearInterval() {}, setTimeout, Date, Math, JSON, Promise, Error, Object, Array, String, console,
     fetch: (u, o) => { sent.push({ u, o }); return Promise.resolve({ ok: true, status: 200 }); } }));
   vm.runInContext(src, ctx, { filename: 'https://app.example/read-tracker.js?v=1' });
@@ -42,7 +42,8 @@ function mkSandbox() {
   assert.strictEqual(nx, 1);
   // key me data nahi: template path, student id {id}
   const keys = Object.keys(R.buf).join('\n');
-  assert(!/9876543210/.test(keys), 'doc id/mobile payload me nahi jaana chahiye');
+  assert(!/students\/9876543210/.test(keys), 'doc id path me nahi jaana chahiye (sirf user column me mobile)');
+  assert(/\|9876543210\|Ravi/.test(keys), 'user ki pehchan (mobile+naam) key me honi chahiye');
   assert(/students\/\{id\}/.test(keys) && /institutes\/\{id\}\/tests/.test(keys), 'template path: ' + keys);
   assert(/instA/.test(keys), 'institute alag column me');
   assert(/getFromTestSite@/.test(keys), 'function ka naam site me: ' + keys);
@@ -55,8 +56,9 @@ function mkSandbox() {
   assert.strictEqual(sent[0].u, 'https://w.example/readlog');
   assert.strictEqual(sent[0].o.headers.Authorization, 'Bearer TOK');
   const body = JSON.parse(sent[0].o.body);
-  assert.strictEqual(body.build, '236'); assert(body.rows.every(r => r.length === 8 && r[1] === 'student'));
+  assert.strictEqual(body.build, '236'); assert(body.rows.every(r => r.length === 10 && r[1] === 'student'));
   assert.strictEqual(body.rows.reduce((s, r) => s + r[6], 0), 111 + 3, 'bheji gayi ginti = total');
-  assert(!/9876543210/.test(sent[0].o.body));
+  assert(body.rows.every(r => r[8] === '9876543210' && r[9] === 'Ravi'), 'har row me user');
+  assert(!/students\/9876543210/.test(sent[0].o.body), 'doc path me id nahi');
   console.log('test_read_tracker_v236 OK');
 })().catch(e => { console.error(e); process.exit(1); });

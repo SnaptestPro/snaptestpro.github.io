@@ -1117,6 +1117,7 @@ try {
 async function rdEnsure(env) {
   if (RD.ready || !env.READS_DB) return !!RD.ready;
   await env.READS_DB.exec('CREATE TABLE IF NOT EXISTS reads_min (bucket INTEGER NOT NULL, role TEXT NOT NULL, inst TEXT NOT NULL, coll TEXT NOT NULL, kind TEXT NOT NULL, site TEXT NOT NULL, build TEXT NOT NULL, n INTEGER NOT NULL, calls INTEGER NOT NULL, PRIMARY KEY (bucket, role, inst, coll, kind, site, build))');
+  await env.READS_DB.exec('CREATE TABLE IF NOT EXISTS reads_user (b5 INTEGER NOT NULL, role TEXT NOT NULL, usr TEXT NOT NULL, uname TEXT NOT NULL, inst TEXT NOT NULL, coll TEXT NOT NULL, n INTEGER NOT NULL, calls INTEGER NOT NULL, PRIMARY KEY (b5, role, usr, coll))');
   RD.ready = true; return true;
 }
 const RD_UPSERT = 'INSERT INTO reads_min (bucket, role, inst, coll, kind, site, build, n, calls) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(bucket, role, inst, coll, kind, site, build) DO UPDATE SET n = n + excluded.n, calls = calls + excluded.calls';
@@ -1124,6 +1125,13 @@ async function rdStore(env, list) {
   if (!env.READS_DB || !list.length) return false;
   await rdEnsure(env);
   for (let i = 0; i < list.length; i += 50) await env.READS_DB.batch(list.slice(i, i + 50).map((r) => env.READS_DB.prepare(RD_UPSERT).bind(...r)));
+  return true;
+}
+const RD_UPSERT_U = 'INSERT INTO reads_user (b5, role, usr, uname, inst, coll, n, calls) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(b5, role, usr, coll) DO UPDATE SET n = n + excluded.n, calls = calls + excluded.calls, uname = excluded.uname, inst = excluded.inst';
+async function rdStoreUser(env, list) {   // list: [b5, role, usr, uname, inst, coll, n, calls]
+  if (!env.READS_DB || !list.length) return false;
+  await rdEnsure(env);
+  for (let i = 0; i < list.length; i += 50) await env.READS_DB.batch(list.slice(i, i + 50).map((r) => env.READS_DB.prepare(RD_UPSERT_U).bind(...r)));
   return true;
 }
 async function rdFlush(env) {
@@ -1144,14 +1152,18 @@ async function handleReadLog(request, env) {
   const txt = await request.text(); if (txt.length > 24000) throw new HttpErr(413, 'Bahut bada');
   let b; try { b = JSON.parse(txt); } catch (e) { throw new HttpErr(400, 'Bad JSON'); }
   const nowMin = Math.floor(Date.now() / 60000), build = rdStr(b.build, 8).replace(/[^0-9a-z.]/gi, '') || '?';
-  const out = [];
+  const out = [], um = new Map();
   for (const r of (Array.isArray(b.rows) ? b.rows : []).slice(0, 60)) {
-    if (!Array.isArray(r) || r.length < 8) continue;
+    if (!Array.isArray(r) || r.length < 8) continue;   // 8 = purani app, 10 = user ke saath
     const min = Math.floor(+r[0]), role = String(r[1]), n = Math.floor(+r[6]), c = Math.floor(+r[7]);
     if (!(Math.abs(min - nowMin) <= 2880) || !RD_ROLES[role] || role === 'worker' || !(n >= 0 && n <= 500000) || !(c >= 1 && c <= 500000)) continue;
     out.push([min, role, rdStr(r[2], 60), rdStr(r[3], 80), rdStr(r[4], 12), rdStr(r[5], 80), build, n, c]);
+    if (r.length >= 10 && r[8] && n > 0) {   // user-wise: 5 minute ke bucket me jodkar (D1 writes kam)
+      const b5 = Math.floor(min / 5) * 5, key = [b5, role, rdStr(r[8], 60), rdStr(r[3], 80)].join('|'), cur = um.get(key);
+      if (cur) { cur[6] += n; cur[7] += c; if (r[9]) cur[3] = rdStr(r[9], 40); } else um.set(key, [b5, role, rdStr(r[8], 60), rdStr(r[9], 40), rdStr(r[2], 60), rdStr(r[3], 80), n, c]);
+    }
   }
-  await rdStore(env, out);
+  await rdStore(env, out); await rdStoreUser(env, Array.from(um.values()));
   return { ok: true, stored: out.length };
 }
 
@@ -1163,22 +1175,34 @@ async function rdOwner(request, env, o, pathname) {
   if (pathname === '/owner/reads/summary') {
     const mins = Math.min(10080, Math.max(15, Math.floor(+sp.get('minutes') || 60))), from = now - mins + 1;
     const step = mins <= 180 ? 1 : mins <= 1440 ? 5 : 60;
-    const [series, byRole, byColl, bySite, byInst, byBuild, tot] = await Promise.all([
+    const f5 = Math.floor(from / 5) * 5;
+    const [series, byRole, byColl, bySite, byInst, byBuild, tot, byUser] = await Promise.all([
       all('SELECT (bucket / ?1) * ?1 AS t, SUM(n) AS n, SUM(calls) AS c FROM reads_min WHERE bucket >= ?2 GROUP BY t ORDER BY t', step, from),
       all('SELECT role, SUM(n) AS n, SUM(calls) AS c FROM reads_min WHERE bucket >= ?1 GROUP BY role ORDER BY n DESC', from),
       all('SELECT coll, kind, SUM(n) AS n, SUM(calls) AS c FROM reads_min WHERE bucket >= ?1 GROUP BY coll, kind ORDER BY n DESC LIMIT 20', from),
       all('SELECT role, site, coll, kind, SUM(n) AS n, SUM(calls) AS c FROM reads_min WHERE bucket >= ?1 GROUP BY role, site, coll, kind ORDER BY n DESC LIMIT 30', from),
       all("SELECT inst, SUM(n) AS n FROM reads_min WHERE bucket >= ?1 AND inst != '' GROUP BY inst ORDER BY n DESC LIMIT 10", from),
       all('SELECT build, SUM(n) AS n FROM reads_min WHERE bucket >= ?1 GROUP BY build ORDER BY n DESC LIMIT 10', from),
-      all('SELECT COALESCE(SUM(n),0) AS n, COALESCE(SUM(calls),0) AS c FROM reads_min WHERE bucket >= ?1', from)
+      all('SELECT COALESCE(SUM(n),0) AS n, COALESCE(SUM(calls),0) AS c FROM reads_min WHERE bucket >= ?1', from),
+      all('SELECT role, usr, MAX(uname) AS uname, MAX(inst) AS inst, SUM(n) AS n, SUM(calls) AS c FROM reads_user WHERE b5 >= ?1 GROUP BY role, usr ORDER BY n DESC LIMIT 25', f5)
     ]);
-    return { ok: true, from, to: now, step, total: tot[0] || { n: 0, c: 0 }, series, byRole, byColl, bySite, byInst, byBuild };
+    return { ok: true, from, to: now, step, total: tot[0] || { n: 0, c: 0 }, series, byRole, byColl, bySite, byInst, byBuild, byUser };
   }
   if (pathname === '/owner/reads/detail') {
     const a = Math.floor(+sp.get('from')), z = Math.floor(+sp.get('to'));
     if (!(a > 0) || !(z >= a) || z - a > 1440) throw new HttpErr(400, 'from/to galat');
     const rows = await all('SELECT bucket, role, inst, coll, kind, site, build, n, calls FROM reads_min WHERE bucket >= ?1 AND bucket <= ?2 ORDER BY n DESC LIMIT 60', a, z);
-    return { ok: true, from: a, to: z, rows };
+    const users = await all('SELECT role, usr, MAX(uname) AS uname, MAX(inst) AS inst, SUM(n) AS n, SUM(calls) AS c FROM reads_user WHERE b5 >= ?1 AND b5 <= ?2 GROUP BY role, usr ORDER BY n DESC LIMIT 12', Math.floor(a / 5) * 5, Math.floor(z / 5) * 5);
+    return { ok: true, from: a, to: z, rows, users, usersNote: 'User-wise ginti 5 minute ke bucket me hoti hai' };
+  }
+  if (pathname === '/owner/reads/user') {
+    const usr = String(sp.get('usr') || '').slice(0, 60), role = String(sp.get('role') || ''), mins = Math.min(10080, Math.max(15, Math.floor(+sp.get('minutes') || 60))), f5 = Math.floor((now - mins + 1) / 5) * 5;
+    if (!usr || !RD_ROLES[role]) throw new HttpErr(400, 'usr/role galat');
+    const [colls, tot] = await Promise.all([
+      all('SELECT coll, inst, SUM(n) AS n, SUM(calls) AS c FROM reads_user WHERE b5 >= ?1 AND role = ?2 AND usr = ?3 GROUP BY coll, inst ORDER BY n DESC LIMIT 20', f5, role, usr),
+      all('SELECT COALESCE(SUM(n),0) AS n, COALESCE(SUM(calls),0) AS c, MAX(uname) AS uname FROM reads_user WHERE b5 >= ?1 AND role = ?2 AND usr = ?3', f5, role, usr)
+    ]);
+    return { ok: true, usr, role, total: tot[0] || { n: 0, c: 0 }, colls };
   }
   if (pathname === '/owner/reads/actual') {
     const mins = Math.min(10080, Math.max(15, Math.floor(+sp.get('minutes') || 60)));
@@ -1204,7 +1228,7 @@ const worker = {
     ctx.waitUntil((async () => {   // v236: ek ke baad ek, taaki Firestore reads ka label (kaun sa cron) sahi aaye
       const job = async (label, fn) => { RD.label = 'cron:' + label; try { await fn(env); } catch (e) { console.log(label + ' fail', e && e.message); } };
       await job('reminders', sendReminders); await job('recount', nightlyRecount); await job('digest', dailyExpiryDigest);
-      try { if (env.READS_DB) { await rdEnsure(env); await env.READS_DB.prepare('DELETE FROM reads_min WHERE bucket < ?').bind(Math.floor(Date.now() / 60000) - 14 * 1440).run(); } } catch (e) {}
+      try { if (env.READS_DB) { await rdEnsure(env); const old = Math.floor(Date.now() / 60000) - 14 * 1440; await env.READS_DB.prepare('DELETE FROM reads_min WHERE bucket < ?').bind(old).run(); await env.READS_DB.prepare('DELETE FROM reads_user WHERE b5 < ?').bind(old).run(); } } catch (e) {}
       await rdFlush(env);
     })());
   },

@@ -19,3 +19,8 @@ Browser/phone me chalakar nahi dekha.
 
 ## v237 (build 237)
 - read-tracker.js: Owner APK me (page = index.html) owner ke reads "student" ginte the. Ab `ownerGetAuth`/`owner-panel-box` se role "owner" pehchanta hai. Test joda.
+
+## v238 (build 238)
+- Tracker ab user bhi bhejta hai (admin/owner email, student mobile+naam). Worker: nayi table `reads_user` (5 min bucket), `/owner/reads/user`, summary me `byUser`, detail me `users`.
+- Owner panel: "Kaun kaun (ID wise)" list + ID par tap = collection-wise; sabse bada jhatka auto-khulta hai; "Kyu aaya?" box saral bhasha me. Purani app (8-field rows) bhi chalti rahegi.
+- Worker code dobara deploy karna padega (naya table apne-aap banta hai).

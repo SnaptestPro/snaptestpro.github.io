@@ -34,7 +34,7 @@ process.removeAllListeners('warning');
   const ctx = { waitUntil: (p) => { ctx.p.push(p); }, p: [] }, idle = async () => { await Promise.all(ctx.p.splice(0)); };
   const call = async (m, p, o = {}) => { const r = await worker.fetch(new Request('https://w.example' + p, Object.assign({ method: m }, o)), env, ctx); await idle(); return [r.status, await r.json()]; };
   const min = Math.floor(Date.now() / 60000);
-  const rows = [[min, 'student', 'i1', 'institutes/{id}/tests', 'get', 'loadTests@script.js:10', 40, 2], [min, 'admin', '', 'questionBank', 'listen', 'syncBank@script.js:99', 7550, 1],
+  const rows = [[min, 'student', 'i1', 'institutes/{id}/tests', 'get', 'loadTests@script.js:10', 40, 2, '9876543210', 'Ravi'], [min, 'admin', '', 'questionBank', 'listen', 'syncBank@script.js:99', 7550, 1, 'a@x.com', ''],
     [min, 'worker', '', 'x', 'get', 'x', 5, 1] /* worker role client se nahi */, [min - 99999, 'student', '', 'y', 'get', 'y', 5, 1] /* bahut purana */, [min, 'student', '', 'z', 'get', 'z', 9e9, 1] /* absurd */, 'junk'];
 
   // 1. token ke bina / galat token
@@ -59,11 +59,16 @@ process.removeAllListeners('warning');
   assert.strictEqual(by.student, 80, 'student: 40 + 40 (upsert)'); assert.strictEqual(by.admin, 7550); assert.strictEqual(by.worker, 2 + 1 + 3, 'worker reads 2+1+3, write ginti nahi');
   assert.strictEqual(j.total.n, 80 + 7550 + 6); assert(j.series.length >= 1 && j.series[0].t <= min);
   assert.strictEqual(j.bySite[0].site, 'syncBank@script.js:99', 'sabse bada karan upar');
+  assert.strictEqual(j.byUser[0].usr, 'a@x.com'); assert.strictEqual(j.byUser[0].n, 7550, 'admin ID-wise ginti');
+  const stu = j.byUser.find((u) => u.usr === '9876543210'); assert(stu && stu.n === 80 && stu.uname === 'Ravi' && stu.role === 'student', 'student ID-wise ginti (upsert ke baad)');
   assert(j.byBuild.some((b) => b.build === '236') && j.byBuild.some((b) => b.build === 'w'));
-  assert(!JSON.stringify(j).includes('9876543210'), 'doc id summary me nahi');
+  assert(!JSON.stringify(j.bySite).includes('9876543210') && !JSON.stringify(j.byColl).includes('9876543210'), 'collection/site me doc id nahi');
   // 6. detail + owner-only
   [s, j] = await call('GET', '/owner/reads/detail?from=' + (min - 1) + '&to=' + (min + 1), { headers: { Authorization: 'Bearer ' + OT } });
   assert.strictEqual(s, 200); assert(j.rows.length >= 3 && j.rows[0].n >= j.rows[1].n);
+  assert(j.users.some((u) => u.usr === 'a@x.com'), 'detail me users');
+  [s, j] = await call('GET', '/owner/reads/user?role=student&usr=9876543210&minutes=60', { headers: { Authorization: 'Bearer ' + OT } });
+  assert.strictEqual(s, 200, JSON.stringify(j)); assert.strictEqual(j.total.n, 80); assert.strictEqual(j.colls[0].coll, 'institutes/{id}/tests');
   [s] = await call('GET', '/owner/reads/summary', { headers: { Authorization: 'Bearer ' + tok({ email: 'stranger@x.com' }) } }); assert.strictEqual(s, 403, 'owner ke alawa koi nahi');
   // 7. actual (Cloud Monitoring)
   [s, j] = await call('GET', '/owner/reads/actual?minutes=60', { headers: { Authorization: 'Bearer ' + OT } });

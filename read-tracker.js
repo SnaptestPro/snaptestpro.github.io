@@ -7,7 +7,7 @@
      - listener ka pehla server snapshot = poore doc; uske baad har badla hua doc = 1 read
    Ye ek anumaan hai (resume-token / metadata ki wajah se Firebase ke asli number se thoda farak aa sakta hai —
    Owner Panel dono saath dikhata hai).
-   Privacy: sirf collection ka template path ({id} ke saath), function ka naam aur ginti. Doc ka data/ID/naam/mobile kuch nahi jaata.
+   Kis user ne padha (owner ke liye): admin/owner = email, student = mobile + naam. Doc ka data/ID kuch nahi jaata.
    Kill-switch: SNAP_CONFIG.readTracker = false. Ye file na chale to app bilkul pehle jaisa chalta hai. */
 (function () {
   "use strict";
@@ -34,6 +34,21 @@
       return u && !u.isAnonymous && u.email ? "admin" : "student";
     } catch (e) { return "student"; }
   }
+  /* kis user ne padha: admin/owner = email, student = mobile (+naam), warna anonymous uid ka chhota hissa */
+  function who(r) {
+    try {
+      if (r === "owner") {
+        var oa = null; try { oa = W.firebase.app("owner-panel-session").auth().currentUser; } catch (e) {}
+        return [(oa && oa.email) || "owner", ""];
+      }
+      var u = W.vishnuFirebase && W.vishnuFirebase.auth && W.vishnuFirebase.auth.currentUser;
+      if (r === "admin") return [(u && u.email) || "admin", ""];
+      var ss = null; try { ss = JSON.parse(localStorage.getItem("savya_student_session") || "null"); } catch (e) {}
+      if (ss && (ss.mobile || ss.phone)) return [String(ss.mobile || ss.phone), String(ss.name || "")];
+      return ["anon:" + String((u && u.uid) || "?").slice(0, 6), ""];
+    } catch (e) { return ["?", ""]; }
+  }
+  var cl = function (x, n) { return String(x == null ? "" : x).replace(/[|\n\r]/g, "_").slice(0, n); };
   /* path me id ki jagah {id}; 'institutes/<id>/...' se institute alag nikalo */
   function tpl(path) {
     var s = String(path || "").split("/").filter(Boolean), inst = "";
@@ -74,7 +89,7 @@
   function rec(kind, path, n, st) {
     try {
       var t = tpl(path), min = Math.floor(Date.now() / 60000);
-      var key = [min, role(), t.inst, t.coll, kind, st].join("|");
+      var r = role(), w = who(r), key = [min, r, t.inst, t.coll, kind, st, cl(w[0], 60), cl(w[1], 40)].join("|");
       var b = API.buf[key] || (API.buf[key] = { n: 0, c: 0 });
       b.n += n; b.c += 1; API.total += n;
       if (n >= FLUSH_AT) flush(false);
@@ -162,7 +177,7 @@
     var keys = Object.keys(API.buf), now = Math.floor(Date.now() / 60000), rows = [], left = {};
     keys.forEach(function (k) {
       var p = k.split("|"), v = API.buf[k];
-      if (rows.length < MAXROWS) rows.push([+p[0], p[1], p[2], p[3], p[4], p[5], v.n, v.c]); else left[k] = v;
+      if (rows.length < MAXROWS) rows.push([+p[0], p[1], p[2], p[3], p[4], p[5], v.n, v.c, p[6] || "", p[7] || ""]); else left[k] = v;
     });
     API.buf = left; return rows;
   }
@@ -176,7 +191,7 @@
     }).then(function (r) { if (r && r.ok) API.sent += rows.length; else throw new Error("http " + (r && r.status)); })
       .catch(function (e) {
         API.fails++; API.lastErr = String(e && e.message || e);
-        if (API.fails < 5) rows.forEach(function (r) { var k = r.slice(0, 6).join("|"), b = API.buf[k] || (API.buf[k] = { n: 0, c: 0 }); b.n += r[6]; b.c += r[7]; });   // dobara koshish
+        if (API.fails < 5) rows.forEach(function (r) { var k = r.slice(0, 6).concat([r[8], r[9]]).join("|"), b = API.buf[k] || (API.buf[k] = { n: 0, c: 0 }); b.n += r[6]; b.c += r[7]; });   // dobara koshish
       });
   }
   API.flush = function () { flush(false); };

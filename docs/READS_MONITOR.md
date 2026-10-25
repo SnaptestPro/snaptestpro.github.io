@@ -25,8 +25,9 @@ Na ho to Reads tab me peela "Firebase ka asli number nahi aaya" dikhega; baaki s
 - Har 30 sec me (aur app band/background hone par) chhota batch `/readlog` par jaata hai. Sirf valid Firebase token wale users ka data lete hain.
 
 ## Privacy
-Sirf: waqt (minute), role, institute id (path se), collection ka template (`students/{id}`), function@file:line, ginti, app build.
-Doc ka data, doc ID, mobile number, naam — kuch nahi jaata/rakha jaata.
+Owner ke liye user-wise ginti: admin/owner = **email**, student = **mobile + naam** (jo app ke student session me hota hai). Sirf Owner (OWNER_EMAILS) hi dekh sakta hai.
+Baaki: waqt (minute), role, institute id, collection ka template (`students/{id}`), function@file:line, ginti, app build.
+Doc ka data ya doc ID nahi jaata/rakha jaata.
 
 ## "Pura accurate match" — kitna aur kyun thoda farak
 Hamari ginti SDK ke andar se hai, Firebase ki ginti server par. Farak ke karan:
@@ -36,12 +37,18 @@ Hamari ginti SDK ke andar se hai, Firebase ki ginti server par. Farak ke karan:
 4. Cloud Monitoring me 3-5 minute ki der.
 Gap 10% se kam ho to hara, warna laal dikhta hai. Laal gap bhi kaam ka hai: wo batata hai ki reads *hamare tracker ke bahar* se aa rahe hain.
 
+## "Kyu aaya" aur "kis ID se"
+- Sabse bada jhatka Reads tab kholte hi apne-aap khul jata hai: saral bhasha me karan (kaun sa function, bulk read ya loop, purana build, ek user ya kai users).
+- **Kaun kaun (ID wise)** list: admin ka email / student ka mobile, uske kitne reads. ID par dabane se uski collection-wise ginti khulti hai.
+- User-wise ginti 5 minute ke bucket me jama hoti hai (D1 ke free writes bachane ke liye), isliye 1 minute ke jhatke ke saath "5 minute ke andar" likha aata hai.
+- Table: `reads_min` (karan) + `reads_user` (ID). Dono 14 din baad apne-aap saaf.
+
 ## Jhatka kaise pakden
 1. Reads tab > range chuno (1 ghanta / 6 / 24 / 7 din).
 2. "Jhatke" me waqt par dabayein (ya graph ki bar par): us minute ka poora karan khulta hai — role, collection, function@file:line, build.
 3. `syncBank@script.js:NNN` jaisa naam = us function ne padha; wahi line kholkar dekhein.
 
 ## Limits / safai
-D1 free plan: 100K rows write/din. Har minute-key ek row; pura use ~kuch sau row/ghanta. 14 din se purana data roz cron me hat jaata hai.
+D1 free plan: 100K rows write/din. Bahut zyada ek saath users hon (kai sau) to ye limit chhoo sakti hai; tab D1 ka write fail hota hai par app/Worker normal chalta hai. 14 din se purana data roz cron me hat jaata hai.
 Kill-switch (app side): `app-config.js` > `readTracker: false`.
 Worker ke reads ka label ek saath aane wali requests me kabhi-kabhi doosre route ka dikh sakta hai (Workers me request-wise context nahi).
