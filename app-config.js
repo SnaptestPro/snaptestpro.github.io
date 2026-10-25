@@ -6,6 +6,7 @@
    ============================================================ */
 window.SNAP_CONFIG = {
   appName: "SmarTest Pro",
+  readTracker: true,  // v236: Owner Panel > Reads tab ke liye poori site ke Firestore reads ginta hai (sirf collection/function/ginti jaati hai, koi data nahi). false = band (kill-switch)
   bankAutoFix: false,  // v226 READS FIX: true karne par admin login par question-bank ki auto class-tag / chapter-merge / ID-migration chalti hai (har question par 2 reads+write+delete — bahut mehngi). Default false. Ek baar chalane ke liye console me: runBankAutoFixNow()
   serverAuth: false,   // Phase 4: true karne par login/register/PIN Worker se (salted hash + rate limit). Pehle docs/PHASE4_AUTH.md padhein.
   appCheck: {
@@ -15,7 +16,7 @@ window.SNAP_CONFIG = {
     tokenAutoRefresh: true
   },
   tagline: "Smart Practice • Better Result",
-  version: "1.4.21",
+  version: "1.4.22",
   workerUrl: "https://cool-thunder-a280.vishnu1234stm.workers.dev",   // Cloudflare Worker (bank + push + owner alerts)
   ownFiles: false,                                                    // DEPRECATED (v216): Cloudflare R2 "SnapFiles" band hai aur rahega — file upload ab Google Drive se. Code abhi rakha hai, aage hatega.
   googleClientId: "1009250922801-16aubac9rbmnlvpru734phg5c3e8c4rn.apps.googleusercontent.com",                                                 // <-- yahan Google OAuth Web Client ID daalein (DRIVE_SETUP_HINDI.md dekhein). Khaali = Drive upload band
@@ -49,7 +50,7 @@ window.SNAP_CONFIG = {
   },
   appLock: true,                                                      // institute-APK / ?inst= link lock + "app band hai" screen (kill-switch)
   ownerAlertEmail: "vishnu1234stm@gmail.com",                         // is email se login par owner app me alerts ka push aata hai
-  build: "234",
+  build: "236",
   ownerName: "Vishnu Sharma",
   supportPhone: "9525208263",
   supportWhatsapp: "9525208263",          // WhatsApp number (khaali = phone wala use hoga)

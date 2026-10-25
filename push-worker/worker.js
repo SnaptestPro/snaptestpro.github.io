@@ -69,16 +69,17 @@ async function verifyIdToken(token, projectId) {
   return payload;
 }
 
-let cached = { token: '', exp: 0 };
-async function googleAccessToken(sa) {
-  const now = Math.floor(Date.now() / 1000);
-  if (cached.token && cached.exp - 60 > now) return cached.token;
+const cachedTok = {};
+async function googleAccessToken(sa, extraScope) {
+  const now = Math.floor(Date.now() / 1000), ck = extraScope || '';
+  const c = cachedTok[ck];
+  if (c && c.token && c.exp - 60 > now) return c.token;
   const pem = sa.private_key.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
   const key = await crypto.subtle.importKey('pkcs8', unb64u(pem), RS, false, ['sign']);
   const head = b64u(te.encode(JSON.stringify({ alg: 'RS256', typ: 'JWT' })));
   const body = b64u(te.encode(JSON.stringify({
     iss: sa.client_email, aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600,
-    scope: 'https://www.googleapis.com/auth/firebase.messaging https://www.googleapis.com/auth/datastore'
+    scope: extraScope || 'https://www.googleapis.com/auth/firebase.messaging https://www.googleapis.com/auth/datastore'
   })));
   const sig = b64u(await crypto.subtle.sign(RS.name, key, te.encode(head + '.' + body)));
   const r = await fetch('https://oauth2.googleapis.com/token', {
@@ -87,8 +88,8 @@ async function googleAccessToken(sa) {
   });
   const j = await r.json();
   if (!j.access_token) throw new HttpErr(500, 'Service account token fail: ' + (j.error_description || j.error || r.status));
-  cached = { token: j.access_token, exp: now + (j.expires_in || 3600) };
-  return cached.token;
+  cachedTok[ck] = { token: j.access_token, exp: now + (j.expires_in || 3600) };
+  return cachedTok[ck].token;
 }
 
 const topicSafe = (x) => String(x).replace(/[^a-zA-Z0-9\-_.~%]/g, '_');
@@ -648,6 +649,7 @@ function ghHeaders(env) {
 }
 async function handleOwner(request, env, pathname) {
   const o = await ownerOnly(request, env);
+  if (pathname.indexOf('/owner/reads/') === 0 && request.method === 'GET') return await rdOwner(request, env, o, pathname);
   const repo = env.GITHUB_REPO || 'SnaptestPro/snaptestpro.github.io', wf = 'build-institute-apk.yml';
 
   if (pathname === '/owner/apk' && request.method === 'POST') {
@@ -1054,8 +1056,158 @@ async function handleStudentAuth(request, env, pathname) {
   } catch (e) { return out({ ok: false, error: e.message || String(e), ...(e.retryAfter ? { retryAfter: e.retryAfter } : {}) }, e.status || 500); }
 }
 
+/* ================= v236 READS MONITOR =================
+   Poori site ke Firestore reads ka hisaab: (a) app/browser se /readlog par aata hai (read-tracker.js),
+   (b) Worker ke apne Firestore REST reads yahin gine jaate hain. Sab D1 table `reads_min` me minute-wise jama.
+   Setup: Cloudflare > Storage & Databases > D1 > Create (naam: snaptest-reads) > Worker > Settings > Bindings > D1 database,
+          Variable name = READS_DB. Table apne-aap ban jaata hai. (Binding na ho to Worker pehle jaisa chalta hai.)
+   "Firebase ka asli number" ke liye: service account ko IAM me "Monitoring Viewer" role do (docs/READS_MONITOR.md). */
+const RD_ROLES = { student: 1, admin: 1, owner: 1, worker: 1 };
+const RD = { rows: new Map(), pending: [], label: 'worker', ready: false };
+const rdTpl = (path) => {
+  const sg = String(path || '').split('/').filter(Boolean); let inst = '';
+  if (sg[0] === 'institutes' && sg[1]) inst = sg[1];
+  return { coll: sg.map((x, i) => (i % 2 === 1 ? '{id}' : x)).join('/').slice(0, 80), inst: inst.slice(0, 60) };
+};
+function rdAdd(role, inst, coll, kind, site, build, n, calls, min) {
+  const m = min || Math.floor(Date.now() / 60000), k = [m, role, inst, coll, kind, site, build].join('|');
+  const v = RD.rows.get(k) || { n: 0, c: 0 }; v.n += n; v.c += calls; RD.rows.set(k, v);
+}
+function rdCountFetch(u, init, res, text, label) {
+  const i = u.indexOf('/documents'), after = u.slice(i + '/documents'.length).split('?')[0];
+  const method = String((init && init.method) || 'GET').toUpperCase();
+  if (res.status === 429) return;
+  let body = null; try { body = init && typeof init.body === 'string' ? JSON.parse(init.body) : null; } catch (e) {}
+  const q = after.indexOf(':');
+  if (q >= 0) {
+    const op = after.slice(q + 1), parent = decodeURIComponent(after.slice(0, q)).replace(/^\//, '');
+    if (op === 'runQuery' || op === 'runAggregationQuery') {
+      const sq = body && (body.structuredQuery || (body.structuredAggregationQuery && body.structuredAggregationQuery.structuredQuery));
+      const cid = sq && sq.from && sq.from[0] && (sq.from[0].collectionId || ''), t = rdTpl((parent ? parent + '/' : '') + cid);
+      let n = 1;
+      if (op === 'runQuery') { try { const arr = JSON.parse(text); n = Math.max(1, (Array.isArray(arr) ? arr : []).filter((x) => x && x.document).length); } catch (e) {} }
+      rdAdd('worker', t.inst, t.coll, op === 'runQuery' ? 'get' : 'count', label, 'w', n, 1);
+    } else if (op === 'batchGet') {
+      let n = 0; try { n = (JSON.parse(text) || []).length; } catch (e) {}
+      if (n) rdAdd('worker', '', 'batchGet', 'doc', label, 'w', n, 1);
+    }
+    return;
+  }
+  if (method !== 'GET') return;
+  const path = decodeURIComponent(after).replace(/^\//, ''); if (!path) return;
+  const t = rdTpl(path), segs = path.split('/').filter(Boolean);
+  if (segs.length % 2 === 0) { if (res.ok || res.status === 404) rdAdd('worker', t.inst, t.coll, 'doc', label, 'w', 1, 1); }
+  else { let n = 1; try { n = Math.max(1, (JSON.parse(text).documents || []).length); } catch (e) {} rdAdd('worker', t.inst, t.coll, 'get', label, 'w', n, 1); }
+}
+try {
+  const nativeFetch = globalThis.fetch.bind(globalThis);
+  globalThis.fetch = function (input, init) {
+    const p = nativeFetch(input, init);
+    try {
+      const u = typeof input === 'string' ? input : (input && input.url) || '';
+      if (u.indexOf('firestore.googleapis.com') >= 0 && u.indexOf('/documents') >= 0) {
+        const label = RD.label;
+        RD.pending.push(p.then((r) => r.clone().text().then((t) => rdCountFetch(u, init, r, t, label))).catch(() => {}));
+      }
+    } catch (e) {}
+    return p;
+  };
+} catch (e) { /* fetch lapetna na ho paaye to sirf Worker-reads ginti band; baaki sab chalega */ }
+
+async function rdEnsure(env) {
+  if (RD.ready || !env.READS_DB) return !!RD.ready;
+  await env.READS_DB.exec('CREATE TABLE IF NOT EXISTS reads_min (bucket INTEGER NOT NULL, role TEXT NOT NULL, inst TEXT NOT NULL, coll TEXT NOT NULL, kind TEXT NOT NULL, site TEXT NOT NULL, build TEXT NOT NULL, n INTEGER NOT NULL, calls INTEGER NOT NULL, PRIMARY KEY (bucket, role, inst, coll, kind, site, build))');
+  RD.ready = true; return true;
+}
+const RD_UPSERT = 'INSERT INTO reads_min (bucket, role, inst, coll, kind, site, build, n, calls) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(bucket, role, inst, coll, kind, site, build) DO UPDATE SET n = n + excluded.n, calls = calls + excluded.calls';
+async function rdStore(env, list) {
+  if (!env.READS_DB || !list.length) return false;
+  await rdEnsure(env);
+  for (let i = 0; i < list.length; i += 50) await env.READS_DB.batch(list.slice(i, i + 50).map((r) => env.READS_DB.prepare(RD_UPSERT).bind(...r)));
+  return true;
+}
+async function rdFlush(env) {
+  try {
+    if (RD.pending.length) { const p = RD.pending; RD.pending = []; await Promise.allSettled(p); }
+    if (!RD.rows.size) return;
+    const list = []; RD.rows.forEach((v, k) => { const a = k.split('|'); list.push([+a[0], a[1], a[2], a[3], a[4], a[5], a[6], v.n, v.c]); }); RD.rows.clear();
+    await rdStore(env, list);
+  } catch (e) { console.log('readlog flush fail', e && e.message); }
+}
+const rdStr = (x, n) => String(x == null ? '' : x).replace(/[|\n\r]/g, '_').slice(0, n);
+async function handleReadLog(request, env) {
+  if (request.method !== 'POST') throw new HttpErr(405, 'POST chahiye');
+  if (!env.READS_DB) return { ok: true, stored: false, why: 'READS_DB binding nahi hai' };
+  if (!env.SERVICE_ACCOUNT_JSON) throw new HttpErr(500, 'SERVICE_ACCOUNT_JSON secret set nahi hai');
+  const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), projectId = env.PROJECT_ID || sa.project_id;
+  await verifyIdToken((request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, ''), projectId);   // sirf is Firebase project ke (anonymous/student/admin) users
+  const txt = await request.text(); if (txt.length > 24000) throw new HttpErr(413, 'Bahut bada');
+  let b; try { b = JSON.parse(txt); } catch (e) { throw new HttpErr(400, 'Bad JSON'); }
+  const nowMin = Math.floor(Date.now() / 60000), build = rdStr(b.build, 8).replace(/[^0-9a-z.]/gi, '') || '?';
+  const out = [];
+  for (const r of (Array.isArray(b.rows) ? b.rows : []).slice(0, 60)) {
+    if (!Array.isArray(r) || r.length < 8) continue;
+    const min = Math.floor(+r[0]), role = String(r[1]), n = Math.floor(+r[6]), c = Math.floor(+r[7]);
+    if (!(Math.abs(min - nowMin) <= 2880) || !RD_ROLES[role] || role === 'worker' || !(n >= 0 && n <= 500000) || !(c >= 1 && c <= 500000)) continue;
+    out.push([min, role, rdStr(r[2], 60), rdStr(r[3], 80), rdStr(r[4], 12), rdStr(r[5], 80), build, n, c]);
+  }
+  await rdStore(env, out);
+  return { ok: true, stored: out.length };
+}
+
+async function rdOwner(request, env, o, pathname) {
+  if (!env.READS_DB) throw new HttpErr(501, 'READS_DB (D1) binding Worker me nahi hai — docs/READS_MONITOR.md dekhein');
+  await rdEnsure(env); await rdFlush(env);
+  const sp = new URL(request.url).searchParams, now = Math.floor(Date.now() / 60000), DB = env.READS_DB;
+  const all = async (sql, ...a) => ((await DB.prepare(sql).bind(...a).all()).results || []);
+  if (pathname === '/owner/reads/summary') {
+    const mins = Math.min(10080, Math.max(15, Math.floor(+sp.get('minutes') || 60))), from = now - mins + 1;
+    const step = mins <= 180 ? 1 : mins <= 1440 ? 5 : 60;
+    const [series, byRole, byColl, bySite, byInst, byBuild, tot] = await Promise.all([
+      all('SELECT (bucket / ?1) * ?1 AS t, SUM(n) AS n, SUM(calls) AS c FROM reads_min WHERE bucket >= ?2 GROUP BY t ORDER BY t', step, from),
+      all('SELECT role, SUM(n) AS n, SUM(calls) AS c FROM reads_min WHERE bucket >= ?1 GROUP BY role ORDER BY n DESC', from),
+      all('SELECT coll, kind, SUM(n) AS n, SUM(calls) AS c FROM reads_min WHERE bucket >= ?1 GROUP BY coll, kind ORDER BY n DESC LIMIT 20', from),
+      all('SELECT role, site, coll, kind, SUM(n) AS n, SUM(calls) AS c FROM reads_min WHERE bucket >= ?1 GROUP BY role, site, coll, kind ORDER BY n DESC LIMIT 30', from),
+      all("SELECT inst, SUM(n) AS n FROM reads_min WHERE bucket >= ?1 AND inst != '' GROUP BY inst ORDER BY n DESC LIMIT 10", from),
+      all('SELECT build, SUM(n) AS n FROM reads_min WHERE bucket >= ?1 GROUP BY build ORDER BY n DESC LIMIT 10', from),
+      all('SELECT COALESCE(SUM(n),0) AS n, COALESCE(SUM(calls),0) AS c FROM reads_min WHERE bucket >= ?1', from)
+    ]);
+    return { ok: true, from, to: now, step, total: tot[0] || { n: 0, c: 0 }, series, byRole, byColl, bySite, byInst, byBuild };
+  }
+  if (pathname === '/owner/reads/detail') {
+    const a = Math.floor(+sp.get('from')), z = Math.floor(+sp.get('to'));
+    if (!(a > 0) || !(z >= a) || z - a > 1440) throw new HttpErr(400, 'from/to galat');
+    const rows = await all('SELECT bucket, role, inst, coll, kind, site, build, n, calls FROM reads_min WHERE bucket >= ?1 AND bucket <= ?2 ORDER BY n DESC LIMIT 60', a, z);
+    return { ok: true, from: a, to: z, rows };
+  }
+  if (pathname === '/owner/reads/actual') {
+    const mins = Math.min(10080, Math.max(15, Math.floor(+sp.get('minutes') || 60)));
+    const step = mins <= 180 ? 60 : mins <= 1440 ? 300 : 3600;   // seconds
+    const end = new Date(Math.floor(Date.now() / (step * 1000)) * step * 1000), start = new Date(end.getTime() - mins * 60000);   // bucket Worker ke summary se mel khaye
+    const at = await googleAccessToken(o.sa, 'https://www.googleapis.com/auth/monitoring.read');
+    const qs = new URLSearchParams({ filter: 'metric.type="firestore.googleapis.com/document/read_count"', 'interval.startTime': start.toISOString(), 'interval.endTime': end.toISOString(),
+      'aggregation.alignmentPeriod': step + 's', 'aggregation.perSeriesAligner': 'ALIGN_SUM', 'aggregation.crossSeriesReducer': 'REDUCE_SUM' });
+    const r = await fetch('https://monitoring.googleapis.com/v3/projects/' + o.projectId + '/timeSeries?' + qs, { headers: { Authorization: 'Bearer ' + at } });
+    if (r.status === 403) throw new HttpErr(403, 'Monitoring permission nahi — service account ko IAM me "Monitoring Viewer" role dein (docs/READS_MONITOR.md)');
+    if (!r.ok) throw new HttpErr(502, 'Monitoring API ' + r.status + ': ' + (await r.text()).slice(0, 160));
+    const pts = (((await r.json()).timeSeries || [])[0] || {}).points || [];
+    // point ka interval.endTime = bucket ka ant; hum bucket ka shuru (minute epoch) bhejte hain
+    const series = pts.map((p) => ({ t: Math.floor(Date.parse(p.interval.endTime) / 60000) - step / 60, n: +((p.value && (p.value.int64Value || p.value.doubleValue)) || 0) })).sort((x, y) => x.t - y.t);
+    return { ok: true, step: step / 60, until: Math.floor(end.getTime() / 60000), series, total: series.reduce((s, x) => s + x.n, 0) };
+  }
+  throw new HttpErr(404, 'Unknown reads route');
+}
+
+
 const worker = {
-  async scheduled(event, env, ctx) { ctx.waitUntil(sendReminders(env).catch((e) => console.log('reminder fail', e && e.message))); ctx.waitUntil(nightlyRecount(env).catch((e) => console.log('recount fail', e && e.message))); ctx.waitUntil(dailyExpiryDigest(env).catch((e) => console.log('digest fail', e && e.message))); },
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil((async () => {   // v236: ek ke baad ek, taaki Firestore reads ka label (kaun sa cron) sahi aaye
+      const job = async (label, fn) => { RD.label = 'cron:' + label; try { await fn(env); } catch (e) { console.log(label + ' fail', e && e.message); } };
+      await job('reminders', sendReminders); await job('recount', nightlyRecount); await job('digest', dailyExpiryDigest);
+      try { if (env.READS_DB) { await rdEnsure(env); await env.READS_DB.prepare('DELETE FROM reads_min WHERE bucket < ?').bind(Math.floor(Date.now() / 60000) - 14 * 1440).run(); } } catch (e) {}
+      await rdFlush(env);
+    })());
+  },
   // v176: roz ek baar student-count sahi karo (limit wale institutes)
   // (upar wali line ke saath hi chalta hai)
   async fetch(request, env, ctx) {
@@ -1068,7 +1220,9 @@ const worker = {
       const hard = ac !== 'jwks-unavailable' && ac !== 'no-project' && ac !== 'check-error' && pathname !== '/alert';
       if (hard && String(env.APPCHECK_MODE || '').toLowerCase() === 'enforce') return json({ ok: false, error: 'App Check token chahiye (app update karein)' }, 401);
     }
+    RD.label = 'route:' + pathname.slice(0, 40);
     const res = await worker.route(request, env, ctx, pathname);
+    if (RD.pending.length || RD.rows.size) ctx.waitUntil(rdFlush(env));
     if (!ac) return res;
     const out = new Response(res.body, res); out.headers.set('X-AppCheck', ac); return out;
   },
@@ -1077,6 +1231,7 @@ const worker = {
       if (pathname.indexOf('/student/') === 0) return await handleStudentAuth(request, env, pathname);
       if (pathname === '/bank' || pathname === '/bank/meta' || pathname === '/bank/chunk') return await handleBank(request, env, pathname);
       if (pathname.indexOf('/files/') === 0) return await handleFiles(request, env, pathname, ctx);
+      if (pathname === '/readlog') return json(await handleReadLog(request, env));
       if (pathname === '/alert') return json(await handleAlert(request, env));
       if (pathname === '/alerts' || pathname === '/alerts/clear') return json(await handleAlertsList(request, env, pathname));
       if (pathname === '/broadcast') return json(await handleBroadcast(request, env));

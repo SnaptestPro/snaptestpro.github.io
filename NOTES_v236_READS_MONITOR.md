@@ -1,0 +1,18 @@
+# v236 — Owner Panel "Reads Monitor" (build 236)
+
+## Naya
+- `read-tracker.js` — app/admin/owner ke Firestore reads ginta hai (get + onSnapshot), Worker `/readlog` par bhejta hai. Kill-switch: `readTracker:false`.
+- `owner-reads.js` + Owner App me naya **Reads** tab — graph, jhatke (tap = poora karan), role/collection/function@line/institute/build-wise, Firebase asli number se mel.
+- `push-worker/worker.js` — `/readlog` (Firebase token zaroori), Worker ke apne reads ki ginti, `/owner/reads/summary|detail|actual`, cron me label + 14 din ki safai. `googleAccessToken` ab scope-wise cache.
+- Docs: `docs/READS_MONITOR.md` (setup: D1 `READS_DB` binding + Monitoring Viewer role).
+
+## Badli files
+read-tracker.js, owner-reads.js, owner-app.html, owner-ui.js, index.html, question-generator.html, push-worker/worker.js, sw.js, scripts/build-www.js, app-config.js, version.json, package.json, docs/READS_MONITOR.md, tests (3 naye)
+
+## Jo karna hai
+1. Cloudflare par D1 + `READS_DB` binding + naya Worker code (guide dekhein) — iske bina Reads tab khaali rahega.
+2. Naya build deploy (sw cache v236). Owner App ka APK dobara banana padega (Reads tab uske andar hai).
+
+## Check
+node --check OK, check-precache OK (101), stamp in sync, unit tests 51/51 (naye: test_read_tracker_v236, test_worker_reads_v236, test_owner_reads_ui_v236).
+Browser/phone me chalakar nahi dekha.
