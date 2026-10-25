@@ -1212,7 +1212,11 @@ async function rdOwner(request, env, o, pathname) {
     const qs = new URLSearchParams({ filter: 'metric.type="firestore.googleapis.com/document/read_count"', 'interval.startTime': start.toISOString(), 'interval.endTime': end.toISOString(),
       'aggregation.alignmentPeriod': step + 's', 'aggregation.perSeriesAligner': 'ALIGN_SUM', 'aggregation.crossSeriesReducer': 'REDUCE_SUM' });
     const r = await fetch('https://monitoring.googleapis.com/v3/projects/' + o.projectId + '/timeSeries?' + qs, { headers: { Authorization: 'Bearer ' + at } });
-    if (r.status === 403) throw new HttpErr(403, 'Monitoring permission nahi — service account ko IAM me "Monitoring Viewer" role dein (docs/READS_MONITOR.md)');
+    if (r.status === 403 || r.status === 401) {
+      let why = ''; try { const e = JSON.parse(await r.text()).error || {}; why = (e.message || '') + ((e.details || []).map((d) => d && d.reason).filter(Boolean)[0] ? ' [' + (e.details || []).map((d) => d && d.reason).filter(Boolean)[0] + ']' : ''); } catch (e) {}
+      if (/billing/i.test(why)) throw new HttpErr(402, 'BILLING: Firebase ka asli number Google Monitoring se aata hai, jo free (Spark) plan par band hai.');
+      throw new HttpErr(403, 'Monitoring ne mana kiya (' + r.status + '): ' + why.slice(0, 220) + ' || Project: ' + o.projectId + ' || Service account: ' + (o.sa.client_email || '?') + ' — IAM me isi email ko "Monitoring Viewer" role dein, aur Cloud Monitoring API isi project me Enable ho.');
+    }
     if (!r.ok) throw new HttpErr(502, 'Monitoring API ' + r.status + ': ' + (await r.text()).slice(0, 160));
     const pts = (((await r.json()).timeSeries || [])[0] || {}).points || [];
     // point ka interval.endTime = bucket ka ant; hum bucket ka shuru (minute epoch) bhejte hain

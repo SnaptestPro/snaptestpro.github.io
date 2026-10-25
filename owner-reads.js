@@ -7,7 +7,7 @@
   var $ = function (i) { return document.getElementById(i); };
   function esc(x) { return (window.ownerEsc ? window.ownerEsc(x) : String(x == null ? "" : x).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; })); }
   var RANGES = [[60, "1 ghanta"], [360, "6 ghante"], [1440, "24 ghante"], [10080, "7 din"]];
-  var st = { user: null, minutes: 60, sum: null, act: null, actErr: "", err: "", busy: false, sel: null, detail: null };
+  var st = { manual: null, user: null, minutes: 60, sum: null, act: null, actErr: "", err: "", busy: false, sel: null, detail: null };
   var ROLE = { student: "👨‍🎓 Student", admin: "🧑‍🏫 Admin", owner: "👑 Owner", worker: "☁️ Worker" };
   var KIND = { get: "query get", doc: "doc get", listen: "listener (pehla)", "listen+": "listener (badlav)", count: "count query" };
   var fmt = function (n) { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e4 ? (n / 1e3).toFixed(1) + "K" : n.toLocaleString("en-IN"); };
@@ -84,6 +84,12 @@
   var collCell = function (r) { return esc(r.coll || "?") + ' <span style="color:#64748b">' + esc(KIND[r.kind] || r.kind) + "</span>"; };
 
   function gapHtml(sum, act) {
+    if (/^BILLING/.test(st.actErr)) {
+      var man = st.manual, tt = sum.total.n, gp = man == null ? 0 : man - tt, pc = man ? Math.round((Math.abs(gp) / man) * 100) : 0;
+      return '<div class="oa-card" style="margin:0 0 10px"><h3>🔢 Firebase se mel (haath se)</h3><div style="font-size:.7rem;color:#64748b;margin:4px 0 8px">Firebase ka asli number Billing ke bina nahi aata. Firebase Console → Firestore → Usage me <b>isi range</b> (jaise last 1 hour) ke Reads likho:</div>' +
+        '<div style="display:flex;gap:6px"><input id="oa-reads-manual" type="number" inputmode="numeric" min="0" placeholder="Console wale reads" value="' + (man == null ? "" : man) + '" style="flex:1;min-width:0;padding:8px;border:1px solid #cbd5e1;border-radius:10px"><button type="button" class="oa-pill" data-act="manual">Mel karo</button></div>' +
+        (man == null ? "" : '<div class="oa-sum" style="margin-top:8px;display:block;background:' + (pc <= 10 ? "#dcfce7;color:#166534" : "#fee2e2;color:#991b1b") + '"><b>Firebase: ' + fmt(man) + "</b> · hamari ginti: <b>" + fmt(tt) + "</b> · farak: <b>" + (gp >= 0 ? "-" : "+") + fmt(Math.abs(gp)) + " (" + pc + "%)</b><div style=\"font-size:.68rem;margin-top:4px;font-weight:400\">" + (pc <= 10 ? "Mel theek hai." : (gp > 0 ? "Firebase me zyada: purani app/APK, ya Console/export se reads. Build-wise list dekhein." : "Hamari ginti zyada: listener resume me Firebase kam bill karta hai.")) + " Usage graph ghante ke hisaab se banta hai, isliye range thodi alag ho to farak aa sakta hai.</div></div>") + "</div>";
+    }
     if (st.actErr) return '<div class="oa-sum" style="background:#fef3c7;color:#92400e">⚠️ Firebase ka asli number nahi aa paaya: ' + esc(st.actErr) + "</div>";
     if (!act) return "";
     var tr = 0, limit = act.until; sum.series.forEach(function (x) { if (x.t + sum.step <= limit) tr += x.n; });
@@ -161,6 +167,7 @@
       var b = e.target.closest("[data-r],[data-act],[data-sp]"); if (!b) { var rc = e.target.closest("rect[data-t]"); if (rc && st.sum) { var t = +rc.getAttribute("data-t"); if (st.sum.series.some(function (x) { return x.t === t; })) pickSpike(t); } return; }
       if (b.hasAttribute("data-r")) { st.minutes = +b.getAttribute("data-r"); load(); }
       else if (b.getAttribute("data-act") === "refresh") load();
+      else if (b.getAttribute("data-act") === "manual") { var iv = $("oa-reads-manual"), nv = iv && iv.value !== "" ? +iv.value : null; st.manual = nv != null && nv >= 0 ? nv : null; render(); }
       else if (b.hasAttribute("data-sp")) pickSpike(b.getAttribute("data-sp"));
     });
   }

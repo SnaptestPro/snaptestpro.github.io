@@ -24,3 +24,6 @@ Browser/phone me chalakar nahi dekha.
 - Tracker ab user bhi bhejta hai (admin/owner email, student mobile+naam). Worker: nayi table `reads_user` (5 min bucket), `/owner/reads/user`, summary me `byUser`, detail me `users`.
 - Owner panel: "Kaun kaun (ID wise)" list + ID par tap = collection-wise; sabse bada jhatka auto-khulta hai; "Kyu aaya?" box saral bhasha me. Purani app (8-field rows) bhi chalti rahegi.
 - Worker code dobara deploy karna padega (naya table apne-aap banta hai).
+
+## v239 (build 239)
+- Free (Spark) plan par Monitoring API billing maangti hai: Worker ab 402 "BILLING" deta hai, panel me "haath se mel" box (Console ka number likho -> gap %).

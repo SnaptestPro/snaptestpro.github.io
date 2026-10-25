@@ -14,7 +14,8 @@ Worker > Settings > **Bindings** > Add > **D1 database** > Variable name **`READ
 Phir `push-worker/worker.js` ka naya code Worker me paste/deploy karein.
 (Binding na ho to sab pehle jaisa chalta hai; Reads tab "READS_DB nahi hai" dikhata hai.)
 
-### 3. Firebase ka asli number (optional par zaroori hai mel ke liye)
+### 3. Firebase ka asli number (optional; Billing/Blaze plan chahiye)
+**Free (Spark) plan par Google Monitoring API band hai** — tab Reads tab me "haath se mel" box aata hai: Firebase Console > Usage ka number likho, gap nikal jata hai. Neeche wale kaam sirf Blaze plan par.
 Google Cloud Console > IAM > Worker wale **service account** (jiski JSON `SERVICE_ACCOUNT_JSON` me hai) > Role add: **Monitoring Viewer**.
 Cloud Monitoring API usi project me enabled honi chahiye (Console > APIs & Services > "Cloud Monitoring API" > Enable).
 Na ho to Reads tab me peela "Firebase ka asli number nahi aaya" dikhega; baaki sab chalega.

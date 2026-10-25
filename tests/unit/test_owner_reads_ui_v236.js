@@ -22,6 +22,10 @@ function run(handler) {
   const ex = win.window.__readsMonitor.explain([{ role: 'admin', coll: 'questionBank', kind: 'listen', site: 'syncBank@script.js:99', n: 15100, calls: 2, build: '234' }, { role: 'student', coll: 'students', kind: 'get', site: 'x', n: 5, calls: 1, build: '236' }],
     [{ role: 'admin', usr: 'a@x.com', uname: '', n: 15000 }, { role: 'student', usr: '98', n: 100 }]).join(' ');
   assert(/bulk read/.test(ex) && /Is function ka kaam/.test(ex) && /a@x\.com/.test(ex) && /Listener/.test(ex), ex);
+  // billing ke bina: haath se mel wala box
+  const rb = run(async (p) => { if (p.includes('actual')) throw new Error('BILLING: free plan'); return p.includes('summary') ? sum : { ok: true, rows: [], users: [] }; });
+  rb.win.window.ouiReadsOpen(); await new Promise((r) => setTimeout(r, 30));
+  assert(/haath se/.test(rb.els['oa-reads-body'].innerHTML) && /oa-reads-manual/.test(rb.els['oa-reads-body'].innerHTML), 'manual mel box');
   // setup na ho
   const r2 = run(async () => { throw new Error('READS_DB (D1) binding Worker me nahi hai'); });
   r2.win.window.ouiReadsOpen(); await new Promise((r) => setTimeout(r, 20));
