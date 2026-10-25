@@ -8,7 +8,7 @@ window.SNAP_CONFIG = {
   appName: "SmarTest Pro",
   // HYBRID MODE: kuch collections free apne backend par. enabled:false = sab kuch Firebase par (kill-switch). enabled:true = chalu.
   ownBackend: {
-    enabled: false,
+    enabled: true,
     url: "https://snaptestpro-backend.onrender.com",
     collections: ["questionBank", "deletedQuestions", "seedExclusions", "draftQuestions", "pdfDrafts"]
   },
