@@ -46,6 +46,9 @@ function mkSandbox() {
   assert(/students\/\{id\}/.test(keys) && /institutes\/\{id\}\/tests/.test(keys), 'template path: ' + keys);
   assert(/instA/.test(keys), 'institute alag column me');
   assert(/getFromTestSite@/.test(keys), 'function ka naam site me: ' + keys);
+  // Owner APK (page index.html) — ownerGetAuth se pehchan
+  const o = mkSandbox(); o.win.ownerGetAuth = () => null; const oq = new o.Query('admins'); oq.next = o.snapQ(2); await oq.get(); await new Promise(r => setImmediate(r));
+  assert(/\|owner\|/.test(Object.keys(o.win.SnapReads.buf).join('\n')), 'owner role pehchana nahi gaya');
   // flush
   R.flush(); await new Promise(r => setImmediate(r)); await new Promise(r => setImmediate(r));
   assert.strictEqual(sent.length, 1, 'ek hi POST');

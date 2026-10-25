@@ -16,3 +16,6 @@ read-tracker.js, owner-reads.js, owner-app.html, owner-ui.js, index.html, questi
 ## Check
 node --check OK, check-precache OK (101), stamp in sync, unit tests 51/51 (naye: test_read_tracker_v236, test_worker_reads_v236, test_owner_reads_ui_v236).
 Browser/phone me chalakar nahi dekha.
+
+## v237 (build 237)
+- read-tracker.js: Owner APK me (page = index.html) owner ke reads "student" ginte the. Ab `ownerGetAuth`/`owner-panel-box` se role "owner" pehchanta hai. Test joda.

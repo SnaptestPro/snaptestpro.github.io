@@ -29,6 +29,7 @@
   function role() {
     try {
       if (/owner-app|owner=/.test(W.location.pathname + W.location.search)) return "owner";
+      if (typeof W.ownerGetAuth === "function" || (document.getElementById && document.getElementById("owner-panel-box"))) return "owner";   // Owner APK me page ka naam index.html ban jaata hai
       var a = W.vishnuFirebase && W.vishnuFirebase.auth, u = a && a.currentUser;
       return u && !u.isAnonymous && u.email ? "admin" : "student";
     } catch (e) { return "student"; }
