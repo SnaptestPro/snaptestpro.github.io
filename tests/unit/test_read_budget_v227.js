@@ -15,9 +15,10 @@ T('bank auto-fix (class tag / chapter merge / id migration) is opt-in', () => {
 T('restoring the last admin view does not trigger full scans', () => {
   assert.ok(script.includes('window.__restoringView=!0'));
   assert.ok(script.includes('const _rs=!!window.__restoringView'));
-  assert.ok(/async function loadFakeMobileGroups\(\)\{const e=\$\("#fixmobile-list"\);if\(!e\)return;if\(window\.__restoringView\)/.test(script));
+  assert.ok(/async function loadFakeMobileGroups\(\)\{const e=\$\("#fixmobile-list"\);if\(!e\)return;if\(window\.__restoringView\|\|!window\.__fmGo\)/.test(script));   // v240: restore par bhi, aur bina button dabaye bhi scan nahi
 });
 T('students directory record counts are cached', () => { assert.ok(script.includes('snap_srcount_v1_') && script.includes('__srCountStale')); });
+T('v240: students list 5 minute cache + fixmobile scan button se', () => { assert.ok(script.includes('snap_stu_ts_') && script.includes('<3e5') && script.includes('window.__fmGo=1;window.loadFakeMobileGroups()')); });
 T('unbounded listeners are capped', () => {
   assert.ok(script.includes('orderBy("_deletedAt","desc").limit(100).onSnapshot('));
   assert.ok(script.includes('collection("pdfDrafts").limit(150).onSnapshot('));

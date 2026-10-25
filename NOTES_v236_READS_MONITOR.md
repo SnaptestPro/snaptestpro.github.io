@@ -27,3 +27,8 @@ Browser/phone me chalakar nahi dekha.
 
 ## v239 (build 239)
 - Free (Spark) plan par Monitoring API billing maangti hai: Worker ab 402 "BILLING" deta hai, panel me "haath se mel" box (Console ka number likho -> gap %).
+
+## v240 (build 240) — Records ke reads kam
+Reads Monitor ke data se (1 ghante, admin): studentRecords 102 (loadFakeMobileGroups@script.js:496 = 71, count-chunks 24), students 40 (fetchInstituteScopedStudents).
+- "Fix mobile" tool ab bina button dabaye poora studentRecords scan nahi karta (pehle sub-tab kholte hi scan).
+- Students directory ki list 5 minute tak dobara Firestore se nahi padhi jaati (record delete/fix par turant naya padhta hai). Naya student 5 minute tak list me na dikhe to ye wajah hai.
