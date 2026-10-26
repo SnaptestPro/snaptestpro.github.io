@@ -48,12 +48,14 @@
       var timer = ctl ? setTimeout(function () { ctl.abort(); }, cfg().timeoutMs || 60000) : null;
       var headers = {};
       if (token) headers.Authorization = 'Bearer ' + token;
+      try { var _b = W.SNAP_CONFIG && W.SNAP_CONFIG.build; if (_b) headers['X-App-Build'] = String(_b); } catch (_e) {}
       if (body) headers['Content-Type'] = 'application/json';
       return fetch(baseUrl() + path, { method: method, headers: headers, body: body ? JSON.stringify(body) : undefined, signal: ctl ? ctl.signal : undefined })
         .then(function (res) {
           return res.json().catch(function () { return {}; }).then(function (j) {
             if (!res.ok) {
               var code = res.status === 401 ? 'unauthenticated' : res.status === 403 ? 'permission-denied' : res.status === 404 ? 'not-found' : res.status === 429 ? 'resource-exhausted' : 'unavailable';
+              if (res.status === 426) { try { W.dispatchEvent(new CustomEvent('snap-update-required')); } catch (_e) {} }
               var e = err(code, (j && j.error) || ('HTTP ' + res.status)); e.status = res.status; throw e;
             }
             return j;
