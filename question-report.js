@@ -194,7 +194,15 @@
       closeAdmin();
       try { if (typeof showAdminTab === "function") showAdminTab("tests"); } catch (e) {}
       editTest(x.testId);
-      setTimeout(function () { alert("✏️ '" + (x.testTitle || "Test") + "' mein Question " + x.qNumber + " ko theek karein.\n\nStudent ne likha: " + (x.message || "") + "\n\nEdit ke baad 'Save Test Online' dabayein — test dobara online ho jayega. Fir yahan report ko ✅ Resolved mark kar dein."); }, 400);
+      setTimeout(function () {
+        var qi = x.qIndex != null && !isNaN(+x.qIndex) ? +x.qIndex : (+x.qNumber - 1);
+        var note = "Student ne likha:\n" + (x.reason ? x.reason + "\n" : "") + (x.message || "");
+        if (window.SnapQEdit && window.SnapQEdit.editDraft && qi >= 0) {
+          window.SnapQEdit.editDraft(qi, { note: note, doneMsg: "✅ Question badal gaya. Ab 'Save Test Online' dabayein, fir Question Reports me ✅ Resolved kar dein." });
+        } else {
+          alert("✏️ '" + (x.testTitle || "Test") + "' mein Question " + x.qNumber + " ko theek karein.\n\nStudent ne likha: " + (x.message || "") + "\n\nEdit ke baad 'Save Test Online' dabayein — test dobara online ho jayega. Fir yahan report ko ✅ Resolved mark kar dein.");
+        }
+      }, 400);
     } catch (e) { aSt("⚠️ Test edit nahi khul paya: " + (e && e.message || e)); }
   }
   function initAdminCard() {
