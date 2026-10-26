@@ -686,6 +686,17 @@ function _bankCheapLoad(){
     const a=typeof getAuth=="function"?getAuth():null,u=a&&a.currentUser,isAdminUser=!!(u&&!u.isAnonymous&&u.email);
     const fresh=Date.now()-(+localStorage.getItem("snap_bank_sync_ts")||0)<43200000;
     if(!questionBank||!questionBank.length){const j=JSON.parse(localStorage.getItem(BANK_CACHE_KEY)||"null");if(Array.isArray(j)&&j.length){questionBank=j;window.questionBank=j}}
+    /* Admin + apna backend: saved list turant dikhao, cache khali/purani ho to backend se apne-aap (background me) le aao */
+    if(isAdminUser&&window.__bankOwnRouted&&window.__bankOwnRouted()){
+      const have=questionBank&&questionBank.length;
+      const goSync=()=>{window.__bankFullOk=!0;window.__bankForce=!0;try{syncBank()}catch(_e){}};
+      if(have){_bankAfterCheapLoad();if(fresh)return true;goSync();return true}
+      if(window.__bankIdb&&window.__bankIdb.get){
+        window.__bankIdb.get().then(arr=>{const ok=Array.isArray(arr)&&arr.length;if(ok&&(!questionBank||!questionBank.length)){questionBank=arr;window.questionBank=arr;_bankAfterCheapLoad()}if(ok&&fresh)return;goSync()}).catch(goSync);
+        return true
+      }
+      goSync();return true
+    }
     if(isAdminUser)window._bankCheckPublished&&window._bankCheckPublished();
     if(fresh&&questionBank&&questionBank.length){_bankAfterCheapLoad();return true}
     if(fresh&&window.__bankIdb&&!window.__bankIdbTried){window.__bankIdbTried=!0;window.__bankIdb.get().then(arr=>{if(Array.isArray(arr)&&arr.length){questionBank=arr;window.questionBank=arr;_bankAfterCheapLoad()}else{try{localStorage.removeItem("snap_bank_sync_ts")}catch(_e){}window.__bankIdbTried=!1;_bankCheapLoad()}});return true}
@@ -740,6 +751,7 @@ window.refreshBankNow=function(){
   }
   window.__bankForce=!0;try{syncBank()}catch(_e){}
 };
+window.__bankOwnRouted=function(){try{const st=window.SnapOwnBackend&&window.SnapOwnBackend.status&&window.SnapOwnBackend.status();return!!(st&&st.enabled&&(st.collections||[]).indexOf("questionBank")!==-1)}catch(_e){return!1}};
 window.syncBankFromBackend=function(){try{const st=window.SnapOwnBackend&&window.SnapOwnBackend.status&&window.SnapOwnBackend.status();if(!(st&&st.enabled&&(st.collections||[]).indexOf("questionBank")!==-1)){window.refreshBankNow();return}if(_bankSyncStarted){alert("Question bank pehle se backend se live chal raha hai.");return}window.__bankFullOk=!0;window.__bankForce=!0;const b=document.getElementById("bank-reload-banner");if(b)b.remove();syncBank()}catch(e){alert("Sync nahi hua: "+(e.message||e))}};
 window.__bankIsAdmin=function(){try{const a=typeof getAuth=="function"?getAuth():null,u=a&&a.currentUser;return!!(u&&!u.isAnonymous&&u.email)}catch(_e){return!1}};
 window.__bankShowReload=function(){
