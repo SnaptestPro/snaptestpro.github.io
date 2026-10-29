@@ -14,7 +14,12 @@ input[type=text]{padding:9px;border:1px solid #cbd5e1;border-radius:8px;width:10
 </style></head><body>
 <div class="card"><h1>🛟 Question Recovery</h1>
 <div class="note">Ye page sirf <b>jodta</b> hai — kuch delete/overwrite nahi karta. Backend me jo questions pehle se hain unhe nahi chhoota. Admin login ke saath kholo (jis browser me app chalate ho).</div>
-<p id="who">Login check ho raha hai…</p></div>
+<p id="who">Login check ho raha hai…</p>
+<div id="loginBox" style="display:none">
+<p style="font-size:14px;margin:0 0 6px">Is browser me admin login nahi hai (app me hoga, par ye alag browser hai). Yahin admin email-password se login karo — sirf isi page ke liye, kuch save nahi hota.</p>
+<input id="em" type="text" placeholder="Admin email" autocomplete="username" style="margin-bottom:6px">
+<input id="pw" type="text" placeholder="Password" autocomplete="current-password" style="margin-bottom:6px;-webkit-text-security:disc">
+<button id="login">🔑 Login</button></div></div>
 
 <div class="card"><h2>1️⃣ Scan — kahan-kahan purane questions bache hain</h2>
 <p style="font-size:14px;margin:0 0 6px">Backend ki list se mila kar dikhata hai ki saved copies me kaun-se questions backend me <b>nahi</b> hain (Firebase reads: 0).</p>
@@ -107,10 +112,17 @@ $('restore').onclick=async function(){
     return api('POST','/api/collections/'+COLL+'/documents',{docId:id,data:clean(byId[id].data),merge:true}).then(function(){ok++},function(e){bad++;log('❌ '+id+': '+e.message)})})); if(i%50===0)log('… '+ok+' ho gaye')}
   log('✅ Poora: '+ok+' jude, '+bad+' fail. Ab app kholo — 2 baar refresh karo; Question Bank me aa jayenge.');
   this.disabled=false};
+function ready(){var u=user(); if(u&&!u.isAnonymous&&u.email){$('who').textContent='✅ Login: '+u.email+' · Backend: '+BACK;$('loginBox').style.display='none';$('scan').disabled=false;$('fbscan').disabled=false;if(!window.__scanned){window.__scanned=1;$('scan').click()}return true}
+  $('who').textContent='❌ Admin login nahi hai.';$('loginBox').style.display='block';return false}
 function boot(){
   var a=window.vishnuFirebase&&window.vishnuFirebase.authReady; if(!a){$('who').textContent='❌ Firebase load nahi hua';return}
-  a.then(function(){var u=user(); if(u&&!u.isAnonymous&&u.email){$('who').textContent='✅ Login: '+u.email+' · Backend: '+BACK;$('scan').disabled=false;$('fbscan').disabled=false;$('scan').click()}
-    else $('who').textContent='❌ Admin login nahi hai. Pehle app me admin login karo, phir ye page isi browser me kholo.'})}
+  a.then(function(){ready()})}
+$('login').onclick=async function(){
+  var em=$('em').value.trim().toLowerCase(),pw=$('pw').value; if(!em||!pw){$('who').textContent='Email aur password dono likho';return}
+  this.disabled=true;$('who').textContent='Login ho raha hai…';
+  try{await window.vishnuFirebase.auth.signInWithEmailAndPassword(em,pw); ready()}
+  catch(e){$('who').textContent='❌ Login fail: '+(e.code||e.message)}
+  this.disabled=false};
 boot();
 })();
 </script></body></html>
