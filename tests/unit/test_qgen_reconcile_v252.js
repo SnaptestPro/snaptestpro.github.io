@@ -16,12 +16,12 @@ function mk({adminIds,genIds,backendIds,allowed}){
  await T('admin me 3 zyada: backend me hain -> generator me jud jate hain',async()=>{
   const t=mk({adminIds:['a','b','c','d','e'],genIds:['a','b'],backendIds:new Set(['a','b','c','d','e'])});
   await t.W.__qgReconcileNow(); assert.strictEqual(t.W.QUESTION_BANK.length,5); assert.strictEqual(t.dropped.length,0); assert.ok(t.built()>=1);});
- await T('admin me ghost (backend me nahi) -> admin list se hatate hain',async()=>{
+ await T('v253: admin me sirf-wale (backend me nahi) KABHI delete nahi hote, bas batate hain',async()=>{
   const t=mk({adminIds:['a','b','x1','x2'],genIds:['a','b'],backendIds:new Set(['a','b'])});
-  await t.W.__qgReconcileNow(); assert.deepStrictEqual(t.dropped.sort(),['x1','x2']); assert.strictEqual(t.W.QUESTION_BANK.length,2);});
- await T('milte-julte: kuch jude, kuch ghost',async()=>{
+  await t.W.__qgReconcileNow(); assert.strictEqual(t.dropped.length,0); assert.deepStrictEqual(t.W.__qgOnlyAdminIds.sort(),['x1','x2']); assert.ok(/recover-bank/.test(t.toasts[0]));});
+ await T('milte-julte: kuch jude, sirf-admin wale bache rehte hain',async()=>{
   const t=mk({adminIds:['a','n1','n2','g1'],genIds:['a'],backendIds:new Set(['a','n1','n2'])});
-  await t.W.__qgReconcileNow(); assert.strictEqual(t.W.QUESTION_BANK.length,3); assert.deepStrictEqual(t.dropped,['g1']); assert.ok(t.toasts.length===1);});
+  await t.W.__qgReconcileNow(); assert.strictEqual(t.W.QUESTION_BANK.length,3); assert.strictEqual(t.dropped.length,0); assert.deepStrictEqual(t.W.__qgOnlyAdminIds,['g1']); assert.ok(t.toasts.length===1);});
  await T('barabar ho to kuch nahi karta (koi backend call nahi)',async()=>{
   const t=mk({adminIds:['a','b'],genIds:['a','b'],backendIds:new Set()});
   await t.W.__qgReconcileNow(); assert.strictEqual(t.toasts.length,0); assert.strictEqual(t.dropped.length,0);});

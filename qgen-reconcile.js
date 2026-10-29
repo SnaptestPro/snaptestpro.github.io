@@ -1,6 +1,7 @@
 /* v252 — Paper Generator ko Question Bank (admin list) ke barabar rakhta hai.
    Jo question admin ki list me hain par generator me nahi, unhe backend se seedha ID se mangwa kar jod deta hai.
-   Jo admin list me hain par backend me hain hi nahi (purane/ghost), unhe admin list se hata deta hai.
+   v253: ab KUCH BHI DELETE NAHI karta. Jo question sirf admin list me hain (backend ID se nahi mile) unhe admin list me rehne deta hai
+   (ho sakta hai wo asli data ho jo backend tak pahunch hi nahi paya) — bas toast me batata hai aur recover-bank.html ka rasta dikhata hai.
    Ye kaam chupke se hota hai (sirf farak wale questions ki ID — poora bank dobara download nahi). Firebase reads = 0 (apna backend). */
 (function (W) {
   'use strict';
@@ -60,16 +61,12 @@
           if (typeof W.buildBankList === 'function') W.buildBankList();
         }
       }
-      var dropped = 0;
-      if (gone.length) {
-        try { var p = W.parent; if (p && typeof p._bankDropLocal === 'function') { p._bankDropLocal(gone); dropped = gone.length; } } catch (e) { /* ignore */ }
-      }
-      console.warn('[Bank] milan: admin list me ' + pb.length + ', generator me ' + mine.size + ' tha. Jode: ' + added + ', backend me nahi mile (admin se hataye): ' + dropped + ', class se chhupe: ' + hidden + ', check nahi hue: ' + unknown + (missing.length > list.length ? ', baaki ' + (missing.length - list.length) : ''));
-      if (added || dropped) {
-        say('🔄 Bank milan: ' + (added ? added + ' question generator me jode' : '') + (added && dropped ? ', ' : '') + (dropped ? dropped + ' purane (backend me nahi) admin list se hataye' : '') + (hidden ? ' · ' + hidden + ' class ki wajah se chhupe' : ''));
-      } else if (hidden) {
-        say('ℹ️ ' + hidden + ' question is admin ki allowed classes me nahi hain, isliye generator me nahi dikhte');
-      }
+      var onlyAdmin = gone.length; // v253: inhe hataya NAHI jata
+      console.warn('[Bank] milan: admin list me ' + pb.length + ', generator me ' + mine.size + ' tha. Jode: ' + added + ', sirf admin list me (backend me nahi): ' + onlyAdmin + ', class se chhupe: ' + hidden + ', check nahi hue: ' + unknown + (missing.length > list.length ? ', baaki ' + (missing.length - list.length) : ''));
+      W.__qgOnlyAdminIds = gone.slice();
+      if (added) say('🔄 ' + added + ' question generator me jode' + (onlyAdmin ? ' · ' + onlyAdmin + ' question sirf Question Bank list me hain, backend me nahi (recover-bank.html kholo)' : ''));
+      else if (onlyAdmin) say('⚠️ ' + onlyAdmin + ' question sirf Question Bank list me hain, backend me nahi — recover-bank.html kholkar backend me daalo');
+      else if (hidden) say('ℹ️ ' + hidden + ' question is admin ki allowed classes me nahi hain, isliye generator me nahi dikhte');
     } catch (e) {
       console.warn('[Bank] milan fail:', e && e.message);
     } finally { running = false; }
