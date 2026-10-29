@@ -805,5 +805,5 @@ function _isAdminUserNow(){try{const u=getAuth&&getAuth()&&getAuth().currentUser
 (function(){try{const o=window.showAdminTab;if(typeof o!=="function"||o.__bankRef)return;
 const w=function(e){const r=o.apply(this,arguments);try{if(e==="generator"||e==="bank"){
 if(window.SnapOwnBackend&&window.SnapOwnBackend.refresh)window.SnapOwnBackend.refresh("questionBank");
-const f=document.getElementById("qgen-iframe"),c=f&&f.contentWindow;if(c&&c.SnapOwnBackend&&c.SnapOwnBackend.refresh)c.SnapOwnBackend.refresh("questionBank")}}catch(_e){}return r};
+const f=document.getElementById("qgen-iframe"),c=f&&f.contentWindow;if(c&&c.SnapOwnBackend&&c.SnapOwnBackend.refresh)c.SnapOwnBackend.refresh("questionBank");c.__qgReconcile&&setTimeout(()=>{try{c.__qgReconcile()}catch(_e){}},4000)}}catch(_e){}return r};
 w.__bankRef=1;window.showAdminTab=w}catch(_e){}})();
