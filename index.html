@@ -1359,13 +1359,11 @@
             <h3 class="section-title" style="margin:0;">Question Bank</h3>
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
               <span id="bank-question-count" style="background:#dbeafe;color:#1e40af;font-weight:700;font-size:.82rem;padding:3px 10px;border-radius:20px;">0 questions</span>
-              <button type="button" onclick="syncBank();" style="background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:.8rem;cursor:pointer;font-weight:600;">🔄 Refresh from Firebase</button>
               <button type="button" id="bank-migrate-class10-btn" onclick="migrateQuestionBankToClass10();" style="display:none;background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:.8rem;cursor:pointer;font-weight:600;" title="Jin questions mein abhi Class set nahi hai unhe Class 10 assign karein (one-time, safe to re-run)">🎓 Class 10 Assign Karein</button>
               <button type="button" onclick="showDuplicateReport();" style="background:linear-gradient(135deg,#d97706,#b45309);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:.8rem;cursor:pointer;font-weight:600;" title="Duplicate questions dhundho">🔁 Duplicates Check</button>
               <button type="button" onclick="testFirebaseDelete();" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:.8rem;cursor:pointer;font-weight:600;" title="Firebase delete permission test karo">🔧 Test Delete</button>
             </div>
           </div>
-          <div class="field-row"><label for="bank-search-input">🔍 Search Questions</label><input type="text" id="bank-search-input" placeholder="Keyword se search karein (Hindi/English)..." oninput="onBankSearchInput()" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:.9rem;box-sizing:border-box;" /></div>
           <div class="field-row">
             <label for="bank-id-search-input">🆔 Find by ID</label>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -2236,7 +2234,7 @@ B"></textarea>
 <script defer src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
 <script defer src="read-diet.js?v=1"></script>
 <script defer src="app-config.js"></script>
-<script defer src="own-backend.js?v=2"></script>
+<script defer src="own-backend.js?v=3"></script>
 <script defer src="firebase-config.js"></script>
 <script defer src="records-lockdown.js"></script>
 <script defer src="server-auth.js"></script>

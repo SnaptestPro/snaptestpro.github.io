@@ -690,9 +690,9 @@ function _bankCheapLoad(){
     if(isAdminUser&&window.__bankOwnRouted&&window.__bankOwnRouted()){
       const have=questionBank&&questionBank.length;
       const goSync=()=>{window.__bankFullOk=!0;window.__bankForce=!0;try{syncBank()}catch(_e){}};
-      if(have){_bankAfterCheapLoad();if(fresh)return true;goSync();return true}
+      if(have){_bankAfterCheapLoad();goSync();return true}
       if(window.__bankIdb&&window.__bankIdb.get){
-        window.__bankIdb.get().then(arr=>{const ok=Array.isArray(arr)&&arr.length;if(ok&&(!questionBank||!questionBank.length)){questionBank=arr;window.questionBank=arr;_bankAfterCheapLoad()}if(ok&&fresh)return;goSync()}).catch(goSync);
+        window.__bankIdb.get().then(arr=>{const ok=Array.isArray(arr)&&arr.length;if(ok&&(!questionBank||!questionBank.length)){questionBank=arr;window.questionBank=arr;_bankAfterCheapLoad()}goSync()}).catch(goSync);
         return true
       }
       goSync();return true

@@ -161,6 +161,50 @@
     getToken().then(function (token) { socket.emit('subscribe', { collection: collection, token: token }); });
   }
 
+  // ------------------------------------------------------------ persistent cache (IndexedDB) — v250
+  // Bada collection (questionBank) device par save rehta hai. App dobara khulne par poora download nahi hota:
+  // saved list turant dikhti hai, phir chupke se sirf badle hue docs (since=) aate hain + count se delete check.
+  // Kill-switch: SNAP_CONFIG.ownBackend.persistCache = []  (khali) -> purana tareeka (har baar poora load).
+  var CACHE_DB = 'snap_own_cache_v1', CACHE_ST = 'kv';
+  function persistOn(name) {
+    var l = cfg().persistCache; if (!Array.isArray(l)) l = ['questionBank'];
+    return l.indexOf(name) !== -1 && typeof W.indexedDB !== 'undefined' && !!W.indexedDB;
+  }
+  function cacheOpen() {
+    return new Promise(function (res) {
+      try {
+        var r = W.indexedDB.open(CACHE_DB, 1);
+        r.onupgradeneeded = function () { try { r.result.createObjectStore(CACHE_ST); } catch (e) { /* ignore */ } };
+        r.onsuccess = function () { res(r.result); };
+        r.onerror = r.onblocked = function () { res(null); };
+      } catch (e) { res(null); }
+    });
+  }
+  function cacheGet(key) {
+    return cacheOpen().then(function (db) {
+      if (!db) return null;
+      return new Promise(function (res) {
+        try { var q = db.transaction(CACHE_ST, 'readonly').objectStore(CACHE_ST).get(key); q.onsuccess = function () { res(q.result || null); }; q.onerror = function () { res(null); }; }
+        catch (e) { res(null); }
+      });
+    }).catch(function () { return null; });
+  }
+  function cachePut(key, val) {
+    return cacheOpen().then(function (db) {
+      if (!db) return false;
+      return new Promise(function (res) {
+        try { var tx = db.transaction(CACHE_ST, 'readwrite'); tx.objectStore(CACHE_ST).put(val, key); tx.oncomplete = function () { res(true); }; tx.onerror = tx.onabort = function () { res(false); }; }
+        catch (e) { res(false); }
+      });
+    }).catch(function () { return false; });
+  }
+  var flushers = [];
+  function flushAll() { flushers.slice().forEach(function (f) { try { f(); } catch (e) { /* ignore */ } }); }
+  try {
+    if (W.addEventListener) W.addEventListener('pagehide', flushAll);
+    if (W.document && W.document.addEventListener) W.document.addEventListener('visibilitychange', function () { if (W.document.visibilityState === 'hidden') flushAll(); });
+  } catch (e) { /* ignore */ }
+
   // ------------------------------------------------------------ Query / Collection
   function OwnQuery(name, wheres, order, lim) { this.name = name; this._w = wheres || []; this._o = order || null; this._l = lim || null; this.id = name; this.path = name; }
   OwnQuery.prototype._with = function (p) { return new OwnQuery(this.name, p.w || this._w, p.o || this._o, p.l || this._l); };
@@ -217,11 +261,24 @@
   };
   OwnQuery.prototype.onSnapshot = function (next, onError) {
     var self = this, alive = true, busy = true, queue = [], map = new Map(), prev = new Map(), emitted = false, lastServerTime = null, reloading = false;
+    var inflight = false, rerun = false, persistT = null;
+    // v250: sirf poore collection ka listener (koi where/orderBy/limit nahi) device par save hota hai
+    var cacheKey = (!self._w.length && !self._o && !self._l && persistOn(self.name)) ? 'coll:' + self.name + '@' + baseUrl() : null;
     if (next && typeof next === 'object') { onError = next.error; next = next.next; }
     function apply(ev) {
       if (ev.action === 'delete') { map.delete(ev.docId); return; }
       if (self._matches(ev.data)) map.set(ev.docId, ev.data); else map.delete(ev.docId);
     }
+    function doPersist() {
+      if (!cacheKey || !lastServerTime || !alive) return;
+      cachePut(cacheKey, { v: 1, docs: Array.from(map.entries()), serverTime: lastServerTime, ts: Date.now() });
+    }
+    function schedulePersist() {
+      if (!cacheKey || !lastServerTime) return;
+      clearTimeout(persistT); persistT = setTimeout(function () { persistT = null; doPersist(); }, 2500);
+    }
+    function flush() { if (persistT) { clearTimeout(persistT); persistT = null; doPersist(); } }
+    if (cacheKey) flushers.push(flush);
     function emitChanges() {
       if (!alive) return;
       var view = self._view(map), now = new Map(), changes = [];
@@ -239,33 +296,78 @@
       emitted = true; prev = now;
       try { next(mkQuerySnap(self.name, view, changes)); } catch (e) { console.error('[own-backend] onSnapshot callback error', e); }
     }
-    function finish() { queue.splice(0).forEach(apply); busy = false; emitChanges(); }
-    // full = poora dobara load; delta = sirf kuch der pehle ke baad badle docs (socket judne se pehle ka gap bharne ke liye)
-    function load(full, first) {
-      busy = true;
-      var since = !full && lastServerTime ? new Date(new Date(lastServerTime).getTime() - 5000).toISOString() : null;
+    function settle() { // ek load poora (ya fail) hua: agar beech me catch-up maanga gaya tha to ab chalao
+      inflight = false;
+      if (rerun && alive) { rerun = false; load(false, false, !!cacheKey); }
+    }
+    function finish() { queue.splice(0).forEach(apply); busy = false; emitChanges(); schedulePersist(); settle(); }
+    function sinceIso() { return lastServerTime ? new Date(new Date(lastServerTime).getTime() - 5000).toISOString() : null; }
+    function mergeDelta(since) { // since ke baad ke docs map me milao
+      return self._fetchAll(since).then(function (r) {
+        if (!alive) return r;
+        r.list.forEach(function (e) { if (self._matches(e.raw)) map.set(e.id, e.raw); else map.delete(e.id); });
+        lastServerTime = r.serverTime || lastServerTime;
+        return r;
+      });
+    }
+    // Delete pakadne ke liye: server ka count hamare count se alag ho to pehle ek baar delta dobara, phir bhi alag ho to poora resync
+    function verify(tries) {
+      return http('GET', '/api/collections/' + self.name + '/count').then(function (c) { return c; }, function () { return null; }).then(function (c) {
+        if (!alive) return;
+        queue.splice(0).forEach(apply);
+        if (c && typeof c.count === 'number' && c.count !== map.size) {
+          if (tries < 1) return mergeDelta(sinceIso()).then(function () { return verify(tries + 1); });
+          return load(true, false, false);
+        }
+        finish();
+      });
+    }
+    // full = poora dobara load; delta = sirf kuch der pehle ke baad badle docs (cache/socket ka gap bharne ke liye)
+    function load(full, first, verifyCount) {
+      busy = true; inflight = true;
+      var since = !full && lastServerTime ? sinceIso() : null;
       return self._fetchAll(since).then(function (r) {
         if (!alive) return;
         if (since) r.list.forEach(function (e) { if (self._matches(e.raw)) map.set(e.id, e.raw); else map.delete(e.id); });
         else { map = new Map(); r.list.forEach(function (e) { map.set(e.id, e.raw); }); }
         lastServerTime = r.serverTime || lastServerTime;
+        if (since && verifyCount && cacheKey) return verify(0);
         finish();
       }).catch(function (e) {
-        busy = false;
-        if (first && onError) onError(e); else console.warn('[own-backend] sync fail:', e.message);
+        if (first && onError) { busy = false; inflight = false; onError(e); return; }
+        console.warn('[own-backend] sync fail:', e.message);
+        // v250: fail hone par bhi beech me aaye socket events na khoyein (pehle ye drop ho jate the -> list purani reh jati thi)
+        if (alive) { queue.splice(0).forEach(apply); busy = false; if (emitted) emitChanges(); }
+        settle();
       });
     }
     var l = {
       name: self.name,
-      onEvent: function (ev) { if (busy) { queue.push(ev); return; } apply(ev); emitChanges(); },
-      catchUp: function () { return load(false, false); },   // socket join hone ke baad
-      resync: function () { return load(true, false); }      // disconnect ke baad
+      onEvent: function (ev) { if (busy) { queue.push(ev); return; } apply(ev); emitChanges(); schedulePersist(); },
+      catchUp: function () { if (inflight) { rerun = true; return; } return load(false, false, !!cacheKey); },   // socket join hone ke baad
+      resync: function () {                                                                                      // disconnect ke baad
+        if (inflight) { rerun = true; return; }
+        return cacheKey && lastServerTime ? load(false, false, true) : load(true, false);
+      }
     };
     (subs[self.name] = subs[self.name] || []).push(l);
     ensureSocket(); subscribe(self.name);
-    load(true, true);
+    if (!cacheKey) load(true, true);
+    else {
+      inflight = true; // cache padhte waqt socket ka catch-up dobara poora load na shuru kare
+      cacheGet(cacheKey).then(function (c) {
+        if (!alive) return;
+        if (c && c.v === 1 && Array.isArray(c.docs) && c.docs.length && c.serverTime) {
+          map = new Map(c.docs); lastServerTime = c.serverTime;
+          queue.splice(0).forEach(apply);
+          busy = false; emitChanges();            // saved list turant (network ka intezaar nahi)
+          load(false, false, true);               // chupke se sirf badle hue docs + count check
+        } else load(true, true);                  // pehli baar: poora load, phir device par save
+      });
+    }
     return function unsubscribe() {
-      alive = false;
+      flush(); alive = false;
+      flushers = flushers.filter(function (f) { return f !== flush; });
       subs[self.name] = (subs[self.name] || []).filter(function (x) { return x !== l; });
       if (!subs[self.name].length) { delete subs[self.name]; if (socket && socket.connected) socket.emit('unsubscribe', self.name); }
     };
