@@ -95,6 +95,14 @@
       el.textContent = parts.length ? 'Total ' + (W.QUESTION_BANK || []).length + ' → ' + parts.join(' · ') : '';
     } catch (e) { /* ignore */ }
   }
-  W.__qgReconcile = function () { showMix(); clearTimeout(timer); timer = setTimeout(function () { showMix(); run(); }, 2500); };
+  // v257: generator ko backend se judna HI chahiye. Config na mile to chupke se purane Firebase se padhta tha (galat/delete hue question dikhte the)
+  function checkRouted() {
+    try {
+      var st = W.SnapOwnBackend && W.SnapOwnBackend.status && W.SnapOwnBackend.status();
+      var ok = st && st.enabled && (st.collections || []).indexOf('questionBank') !== -1;
+      if (!ok && !W.__qgRouteWarned) { W.__qgRouteWarned = 1; console.error('[Bank] Generator apne backend se NAHI juda (SNAP_CONFIG missing?)'); say('⚠️ Generator backend se nahi juda — page refresh karo; na chale to mujhe batao'); }
+    } catch (e) { /* ignore */ }
+  }
+  W.__qgReconcile = function () { checkRouted(); showMix(); clearTimeout(timer); timer = setTimeout(function () { showMix(); run(); }, 2500); };
   W.__qgReconcileNow = run; // test ke liye
 })(typeof window !== 'undefined' ? window : globalThis);

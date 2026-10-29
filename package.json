@@ -1,6 +1,6 @@
 {
   "name": "snaptestpro-app",
-  "version": "1.4.42",
+  "version": "1.4.43",
   "private": true,
   "description": "SmarTest Pro - web (Firebase Hosting) + Android app (Capacitor, built on GitHub Actions)",
   "scripts": {
