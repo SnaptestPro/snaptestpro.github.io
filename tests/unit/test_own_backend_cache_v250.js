@@ -18,6 +18,7 @@ function mkServer(){
         let rows=[...docs.entries()].map(([id,v])=>({id,data:v.data,u:v.updated})); 
         if(since) rows=rows.filter(r=>r.u> (Date.parse(since)-Date.parse('2026-01-01T00:00:00.000Z')) ); // since = ISO of (serverTime-5000)
         rows.sort((a,b)=>b.u-a.u); rows=rows.slice(off,off+limit);
+        if(api.dropOnce && !since && off===0){ rows=rows.slice(0,-1); api.dropOnce=false; api.dropped=true; }
         body={success:true,docs:rows.map(r=>({id:r.id,data:r.data})),count:rows.length,serverTime:new Date(Date.parse('2026-01-01T00:00:00.000Z')+t).toISOString()}; }
       return Promise.resolve({ok:true,status:200,json:()=>Promise.resolve(body)}); } };
   return api;
@@ -69,5 +70,19 @@ async function run(){
   if(sn.length!==1||sn[0].size!==2501) throw new Error('C: expected single cached emit');
   if(srv.log.length>3) throw new Error('C: too many requests '+srv.log.length);
   console.log('PASS C: no change -> 1 cached emit, '+srv.log.length+' requests (1 delta + 1 count)');
+  // D) poore load me ek doc chhoot jaye (paging) -> count mismatch -> apne-aap dobara load
+  idbStore.clear(); srv.dropOnce=true; srv.log.length=0;
+  sn=await reopen('D skipped doc');
+  last=sn[sn.length-1];
+  if(!srv.dropped) throw new Error('D: test setup (doc drop) nahi hua');
+  if(last.size!==srv.docs.size) throw new Error('D: expected '+srv.docs.size+' got '+last.size);
+  console.log('PASS D: chhoota hua doc count check se pakda gaya ('+last.size+' = server)');
+  // E) listener chalu hai; server par naya doc aaya; SnapOwnBackend.refresh() se chupke se aa jaye
+  W=boot(); W.document=global.document; db=mkdb(W); snaps=[];
+  const un2=db.collection('questionBank').onSnapshot(s=>snaps.push({size:s.size,ids:s.docs.map(d=>d.id)}));
+  await wait(300);
+  srv.set('late1',{t:'late'}); W.SnapOwnBackend.refresh('questionBank',true); await wait(300);
+  const l2=snaps[snaps.length-1]; if(!l2.ids.includes('late1')) throw new Error('E: refresh se naya doc nahi aaya');
+  console.log('PASS E: SnapOwnBackend.refresh() se naya doc silently aaya'); un2();
 }
 run().then(()=>process.exit(0)).catch(e=>{console.error('FAIL',e.message);process.exit(1)});

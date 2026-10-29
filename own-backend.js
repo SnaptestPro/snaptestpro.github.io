@@ -200,9 +200,21 @@
   }
   var flushers = [];
   function flushAll() { flushers.slice().forEach(function (f) { try { f(); } catch (e) { /* ignore */ } }); }
+  // v251: tab/app wapas khule ya net wapas aaye to chupke se badle hue docs le aao (10 sec se jaldi dobara nahi)
+  var lastRefresh = {};
+  function refreshCollection(name, force) {
+    var now = Date.now();
+    if (!force && lastRefresh[name] && now - lastRefresh[name] < 10000) return false;
+    lastRefresh[name] = now;
+    (subs[name] || []).slice().forEach(function (l) { try { l.catchUp(); } catch (e) { /* ignore */ } });
+    return true;
+  }
+  function refreshAll() { Object.keys(subs).forEach(function (c) { refreshCollection(c); }); }
   try {
-    if (W.addEventListener) W.addEventListener('pagehide', flushAll);
-    if (W.document && W.document.addEventListener) W.document.addEventListener('visibilitychange', function () { if (W.document.visibilityState === 'hidden') flushAll(); });
+    if (W.addEventListener) { W.addEventListener('pagehide', flushAll); W.addEventListener('online', refreshAll); }
+    if (W.document && W.document.addEventListener) W.document.addEventListener('visibilitychange', function () {
+      if (W.document.visibilityState === 'hidden') flushAll(); else if (W.document.visibilityState === 'visible') refreshAll();
+    });
   } catch (e) { /* ignore */ }
 
   // ------------------------------------------------------------ Query / Collection
@@ -311,19 +323,21 @@
       });
     }
     // Delete pakadne ke liye: server ka count hamare count se alag ho to pehle ek baar delta dobara, phir bhi alag ho to poora resync
-    function verify(tries) {
+    function verify(tries, wasFull) {
       return http('GET', '/api/collections/' + self.name + '/count').then(function (c) { return c; }, function () { return null; }).then(function (c) {
         if (!alive) return;
         queue.splice(0).forEach(apply);
         if (c && typeof c.count === 'number' && c.count !== map.size) {
-          if (tries < 1) return mergeDelta(sinceIso()).then(function () { return verify(tries + 1); });
-          return load(true, false, false);
+          // poora load karne par bhi doc chhoot sakta hai (paging ke beech koi doc badal jaye) -> 2 baar dobara try
+          if (wasFull) { if (tries < 2) return load(true, false, true, tries + 1); }
+          else { if (tries < 1) return mergeDelta(sinceIso()).then(function () { return verify(tries + 1, false); }); return load(true, false, true, 0); }
+          console.warn('[own-backend] ' + self.name + ': count match nahi hua (local ' + map.size + ', server ' + c.count + ')');
         }
         finish();
       });
     }
     // full = poora dobara load; delta = sirf kuch der pehle ke baad badle docs (cache/socket ka gap bharne ke liye)
-    function load(full, first, verifyCount) {
+    function load(full, first, verifyCount, tries) {
       busy = true; inflight = true;
       var since = !full && lastServerTime ? sinceIso() : null;
       return self._fetchAll(since).then(function (r) {
@@ -331,7 +345,7 @@
         if (since) r.list.forEach(function (e) { if (self._matches(e.raw)) map.set(e.id, e.raw); else map.delete(e.id); });
         else { map = new Map(); r.list.forEach(function (e) { map.set(e.id, e.raw); }); }
         lastServerTime = r.serverTime || lastServerTime;
-        if (since && verifyCount && cacheKey) return verify(0);
+        if (verifyCount && cacheKey) return verify(since ? 0 : (tries || 0), !since);
         finish();
       }).catch(function (e) {
         if (first && onError) { busy = false; inflight = false; onError(e); return; }
@@ -353,7 +367,7 @@
     (subs[self.name] = subs[self.name] || []).push(l);
     ensureSocket(); subscribe(self.name);
     if (!cacheKey) load(true, true);
-    else {
+    else {   // (cacheKey wale collection me poora load bhi count se verify hota hai)
       inflight = true; // cache padhte waqt socket ka catch-up dobara poora load na shuru kare
       cacheGet(cacheKey).then(function (c) {
         if (!alive) return;
@@ -362,7 +376,7 @@
           queue.splice(0).forEach(apply);
           busy = false; emitChanges();            // saved list turant (network ka intezaar nahi)
           load(false, false, true);               // chupke se sirf badle hue docs + count check
-        } else load(true, true);                  // pehli baar: poora load, phir device par save
+        } else load(true, true, true);            // pehli baar: poora load (+count check), phir device par save
       });
     }
     return function unsubscribe() {
@@ -453,6 +467,8 @@
 
   W.SnapOwnBackend = {
     version: VERSION, wrap: wrap, routed: routed,
+    // v251: dusre code (jaise admin tab badalna) se silent delta refresh maango: SnapOwnBackend.refresh('questionBank')
+    refresh: function (name, force) { return refreshCollection(name, force); },
     status: function () { return { enabled: cfg().enabled !== false && !!baseUrl() && (cfg().collections || []).length > 0, url: baseUrl(), collections: cfg().collections || [], socket: socketState }; },
     // Console me chalao:  await SnapOwnBackend.whoami()   -> backend ko tumhara Firebase login kaisa dikh raha hai
     whoami: function () { return http('GET', '/api/auth/whoami'); }
