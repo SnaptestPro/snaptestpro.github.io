@@ -805,5 +805,35 @@ function _isAdminUserNow(){try{const u=getAuth&&getAuth()&&getAuth().currentUser
 (function(){try{const o=window.showAdminTab;if(typeof o!=="function"||o.__bankRef)return;
 const w=function(e){const r=o.apply(this,arguments);try{if(e==="generator"||e==="bank"){
 if(window.SnapOwnBackend&&window.SnapOwnBackend.refresh)window.SnapOwnBackend.refresh("questionBank");
-const f=document.getElementById("qgen-iframe"),c=f&&f.contentWindow;if(c&&c.SnapOwnBackend&&c.SnapOwnBackend.refresh)c.SnapOwnBackend.refresh("questionBank");c.__qgReconcile&&setTimeout(()=>{try{c.__qgReconcile()}catch(_e){}},4000)}}catch(_e){}return r};
+const f=document.getElementById("qgen-iframe"),c=f&&f.contentWindow;if(c&&c.SnapOwnBackend&&c.SnapOwnBackend.refresh)c.SnapOwnBackend.refresh("questionBank");setTimeout(()=>{try{window.__bankHealCheck&&window.__bankHealCheck()}catch(_e){}},3000);c.__qgReconcile&&setTimeout(()=>{try{c.__qgReconcile()}catch(_e){}},4000)}}catch(_e){}return r};
 w.__bankRef=1;window.showAdminTab=w}catch(_e){}})();
+
+/* v255: Question Bank list hamesha backend ke barabar. Backend ka count (1 chhota request) alag nikle to chupke se backend se poori list le aata hai.
+   Isse "Question Bank 7499, Generator 7550" jaisa farak band — dono ka sach ek hi jagah (backend). Firebase reads = 0. */
+window.__bankHealCheck=async function(){
+  try{
+    if(window.__bankHealBusy)return;
+    if(!(window.__bankOwnRouted&&window.__bankOwnRouted()))return;
+    const a=typeof getAuth=="function"?getAuth():null,u=a&&a.currentUser;if(!u||u.isAnonymous||!u.email)return;
+    if(!questionBank||!questionBank.length)return;
+    const cfg=(window.SNAP_CONFIG&&window.SNAP_CONFIG.ownBackend)||{},base=String(cfg.url||"").replace(/\/+$/,"");if(!base)return;
+    window.__bankHealBusy=!0;
+    const t=await u.getIdToken();
+    const r=await fetch(base+"/api/collections/questionBank/count",{headers:{Authorization:"Bearer "+t}});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||typeof j.count!=="number"||j.count===questionBank.length)return;
+    const last=window.__bankHealLast;if(last&&last.local===questionBank.length&&last.server===j.count&&Date.now()-last.ts<60000)return;
+    window.__bankHealLast={local:questionBank.length,server:j.count,ts:Date.now()};
+    const before=questionBank.length,snap=await getDB().collection("questionBank").get(),fmt=!!window.autoFormatMathFields;
+    let arr=snap.docs.map(n=>({id:n.id,...n.data()}));
+    fmt&&(arr=arr.map(n=>window.autoFormatMathFields(Object.assign({},n))||n));
+    arr.sort((n,s)=>_bankCollator.compare(n.id,s.id));
+    questionBank=arr;window.questionBank=arr;_bankMap=new Map(arr.map(q=>[q.id,q]));_bankFmt=fmt;
+    saveBankCacheQuietly(arr);
+    try{localStorage.setItem("snap_bank_sync_ts",String(Date.now()))}catch(_e){}
+    console.warn("[bank] heal: list backend se match ki",before,"->",arr.length,"(backend count",j.count+")");
+    try{renderBank();typeof refreshExistingSubjectChapterDropdowns=="function"&&refreshExistingSubjectChapterDropdowns()}catch(_e){}
+    try{const d=document.createElement("div");d.textContent="🔄 Question Bank backend se match kiya: "+before+" → "+arr.length;d.style.cssText="position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:99999;background:#1e293b;color:#fff;padding:9px 14px;border-radius:10px;font-size:.85rem";document.body.appendChild(d);setTimeout(()=>d.remove(),6000)}catch(_e){}
+  }catch(e){console.warn("[bank] heal fail",e&&e.message)}finally{window.__bankHealBusy=!1}
+};
+setTimeout(()=>window.__bankHealCheck&&window.__bankHealCheck(),9000);setTimeout(()=>window.__bankHealCheck&&window.__bankHealCheck(),30000);
