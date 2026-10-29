@@ -32,3 +32,9 @@ function mk({adminIds,genIds,backendIds,allowed}){
   const t=mk({adminIds:['a'],genIds:[],backendIds:new Set(['a'])}); t.W.parent=t.W; await t.W.__qgReconcileNow(); assert.strictEqual(t.W.QUESTION_BANK.length,0);});
  console.log(pass+' passed');
 })();
+// v254: class normalize
+(()=>{const W={};new Function('window','globalThis',require('fs').readFileSync(require('path').join(__dirname,'..','..','qgen-reconcile.js'),'utf8'))(W,W);
+ const n=W.__qgNormClass,a=require('assert');
+ a.strictEqual(n('class_9','x'),'class_9');a.strictEqual(n('9','x'),'class_9');a.strictEqual(n('Class 9','x'),'class_9');a.strictEqual(n('class10','x'),'class_10');
+ a.strictEqual(n('','class9-Real-3'),'class_9');a.strictEqual(n(undefined,'class_12-AP-1'),'class_12');a.strictEqual(n('','bulk-17829-42-700'),'');a.strictEqual(n('Nursery','x'),'Nursery');
+ console.log('  PASS v254: class normalize');})();

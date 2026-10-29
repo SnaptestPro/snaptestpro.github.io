@@ -72,6 +72,29 @@
     } finally { running = false; }
   }
 
-  W.__qgReconcile = function () { clearTimeout(timer); timer = setTimeout(run, 2500); };
+
+  // v254: classId alag-alag shakl me ho sakta hai ("9", "class9", "Class 9", ya khali). Sab ko "class_9" jaisa banata hai;
+  // khali ho to doc ID ("class9-...") se nikalta hai. Isse Class 9 filter / allowed-class check me question chhootte nahi.
+  W.__qgNormClass = function (c, id) {
+    var v = String(c == null ? '' : c).trim().toLowerCase().replace(/\s+/g, '');
+    var m = v.match(/^(?:class[_-]?)?(\d{1,2})$/);
+    if (m) return 'class_' + m[1];
+    if (v) return c;
+    m = String(id || '').toLowerCase().match(/^class[_-]?(\d{1,2})[-_]/);
+    return m ? 'class_' + m[1] : '';
+  };
+  // generator me count ke neeche chhoti line: kis class ke kitne question load hue (kaun-sa class gayab hai turant dikh jaye)
+  function showMix() {
+    try {
+      var d = W.document, bt = d && d.getElementById('bankTotal'); if (!bt) return;
+      var host = bt.parentNode, el = d.getElementById('qgClassMix');
+      if (!el) { el = d.createElement('div'); el.id = 'qgClassMix'; el.style.cssText = 'font-size:11px;color:#64748b;text-align:center;margin:2px 0'; host.parentNode.insertBefore(el, host.nextSibling); }
+      var cnt = {}; (W.QUESTION_BANK || []).forEach(function (q) { var k = q[10] || '(class nahi)'; cnt[k] = (cnt[k] || 0) + 1; });
+      var parts = Object.keys(cnt).sort().map(function (k) { return k.replace('class_', 'Class ') + ': ' + cnt[k]; });
+      if (W.__qgHiddenByClass > 0) parts.push('allowed class ke bahar: ' + W.__qgHiddenByClass);
+      el.textContent = parts.length ? 'Total ' + (W.QUESTION_BANK || []).length + ' → ' + parts.join(' · ') : '';
+    } catch (e) { /* ignore */ }
+  }
+  W.__qgReconcile = function () { showMix(); clearTimeout(timer); timer = setTimeout(function () { showMix(); run(); }, 2500); };
   W.__qgReconcileNow = run; // test ke liye
 })(typeof window !== 'undefined' ? window : globalThis);
