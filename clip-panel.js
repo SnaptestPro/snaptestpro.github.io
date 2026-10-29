@@ -80,7 +80,7 @@
 
     /* 1) Photo se test */
     box.appendChild(el("div", "margin-top:16px;font-weight:800", "📷 Photo se sawal nikalo"));
-    box.appendChild(el("div", "font-size:.8rem;color:#475569;margin-top:2px", "Kisi bhi sawal ki photo / screenshot chuniye. AI sawal banakar PDF Drafts me daal dega."));
+    box.appendChild(el("div", "font-size:.8rem;color:#475569;margin-top:2px", "Kisi bhi sawal ki photo / screenshot chuniye. AI sawal banakar 📥 Clip Drafts me daal dega."));
     var file = el("input", "margin-top:8px;max-width:100%"); file.type = "file"; file.accept = "image/*";
     var go = el("button", BTN + "margin-top:8px;background:#4f46e5;color:#fff", "Bhejo"); go.type = "button";
     var res = el("div", "margin-top:8px;font-size:.85rem;white-space:pre-wrap");
@@ -90,7 +90,7 @@
       shrink(f).then(function (blob) { return api("POST", "/api/clip", { headers: { "Content-Type": "image/jpeg", "X-Clip-Source": "App photo" }, body: blob }); })
         .then(function (r) {
           res.style.color = r.count ? "#166534" : "#92400e";
-          res.textContent = r.count ? ("✅ " + r.count + " sawal PDF Drafts me aa gaye.\nWahan se Edit / Bank / Test kar sakte hain.") : ("⚠️ " + (r.notes || "Photo me sawal nahi mila"));
+          res.textContent = r.count ? ("✅ " + r.count + " sawal 📥 Clip Drafts me aa gaye.\nWahan se Edit / Bank / Test kar sakte hain.") : ("⚠️ " + (r.notes || "Photo me sawal nahi mila"));
           refresh();
         })
         .catch(function (e) { res.style.color = "#b91c1c"; res.textContent = "❌ " + (e.message || e); })
@@ -157,5 +157,146 @@
     }).catch(function (e) { toast("Photo nahi mili: " + (e.message || e), 6000); });
   }
 
-  root.SnapClip = { open: open, showImage: showImage };
+
+  /* ===================== 📥 Clip Drafts (Clipper se aaye sawal) ===================== */
+  function lastPick() { try { return JSON.parse(localStorage.getItem("snap_clip_last") || "{}"); } catch (e) { return {}; } }
+  function savePick(p) { try { localStorage.setItem("snap_clip_last", JSON.stringify(p)); } catch (e) {} }
+  function clipDrafts() {
+    var arr = (typeof pdfDraftQuestions !== "undefined" && pdfDraftQuestions) || [];
+    return arr.filter(function (d) { return d && d.status === "pending" && d.clipMeta; })
+      .sort(function (a, b) { return String(b.importedAt || "").localeCompare(String(a.importedAt || "")); });
+  }
+  function badge() {
+    var b = document.getElementById("bank-clipdrafts-btn"); if (!b) return;
+    var n = clipDrafts().length; b.textContent = "📥 Clip Drafts" + (n ? " (" + n + ")" : "");
+  }
+  setTimeout(badge, 1500); setInterval(badge, 3000);
+
+  function uniq(a) { var o = {}, r = []; a.forEach(function (x) { x = String(x || "").trim(); if (x && !o[x.toLowerCase()]) { o[x.toLowerCase()] = 1; r.push(x); } }); return r.sort(); }
+  function norm(x) { return String(x || "").toLowerCase().replace(/[^a-z0-9\u0900-\u097f]/g, ""); }
+  function fuzzy(a, b) { a = norm(a); b = norm(b); if (!a || !b) return false; if (a === b) return true; var n = Math.min(a.length, b.length); return n >= 4 && (a.indexOf(b) === 0 || b.indexOf(a) === 0 || a.slice(0, 4) === b.slice(0, 4)); }
+  function classOptions() {
+    var out = [], sel = document.getElementById("bank-classid");
+    if (sel) Array.prototype.forEach.call(sel.options, function (o) { if (o.value) out.push([o.value, o.textContent.trim() || o.value]); });
+    if (!out.length) uniq((typeof questionBank !== "undefined" && questionBank || []).map(function (q) { return q.classId; })).forEach(function (c) { out.push([c, c]); });
+    return out;
+  }
+  function userEmail() { try { var a = getAuth(); return (a && a.currentUser && a.currentUser.email) || null; } catch (e) { return null; } }
+  function field(css) { return el("input", "box-sizing:border-box;padding:8px 9px;border:1px solid #cbd5e1;border-radius:9px;font-size:.85rem;min-width:0;" + (css || "")); }
+
+  function toBank(d, pick, btn, rerender) {
+    var isSub = d.qType === "subjective", src = d.clipMeta && d.clipMeta.answerSource;
+    if (!isSub && src === "unknown") { alert("Pehle ✏️ Edit dabakar sahi uttar chuniye."); return; }
+    if (!isSub && src === "solved" && !confirm("Is sawal ka uttar AI ne nikala hai. Kya aapne check kar liya?")) return;
+    var classId = pick.cls.value, subject = pick.sub.value.trim(), chapter = pick.ch.value.trim();
+    if (!classId || !subject || !chapter) { alert("Class, Subject aur Chapter teeno chuniye."); return; }
+    var q = d.textHI || d.text || "", opts = (d.optionsHI || d.options || ["", "", "", ""]).slice(0, 4), ex = d.explanationHI || d.explanation || "";
+    var doc = { subject: subject, chapter: chapter, classId: classId, qType: isSub ? "subjective" : "mcq",
+      text: q, textHI: q, textEN: q, options: opts, optionsHI: opts, optionsEN: opts, answer: isSub ? 0 : Number(d.answer || 0),
+      explanation: ex, explanationHI: ex, explanationEN: ex, marks: d.marks == null ? null : d.marks, difficulty: "", createdBy: userEmail() };
+    var id;
+    try { var R = root.SubjectResolver; id = R && R.buildQuestionDocId ? R.buildQuestionDocId(classId, chapter, R.nextSerialForGroup(questionBank, classId, chapter)) : ("clip-bank-" + Date.now()); }
+    catch (e) { id = "clip-bank-" + Date.now(); }
+    btn.disabled = true;
+    Promise.resolve(saveBankOnline(id, doc)).then(function () {
+      try {
+        if (!questionBank.some(function (x) { return x.id === id; })) questionBank.push(Object.assign({ id: id }, doc));
+        root.questionBank = questionBank;
+        if (typeof saveBankCacheQuietly === "function") saveBankCacheQuietly(questionBank);
+        if (typeof renderBank === "function") renderBank();
+      } catch (e) {}
+      savePick({ classId: classId, subject: subject, chapter: chapter });
+      return updatePdfDraftStatus(d.id, "verified");
+    }).then(function () { toast("✅ Question Bank me add ho gaya", 2500); badge(); rerender(); })
+      .catch(function (e) { btn.disabled = false; alert("Bank me save nahi hua: " + (e && e.message || e)); });
+  }
+
+  function card(d, rerender) {
+    var m = d.clipMeta || {}, src = m.answerSource, isSub = d.qType === "subjective";
+    var c = el("div", "margin-top:12px;padding:11px;border:1px solid #e2e8f0;border-radius:14px;background:#fff");
+    var tagBg = src === "unknown" ? "#fee2e2;color:#991b1b" : src === "solved" ? "#fef3c7;color:#92400e" : "#dcfce7;color:#166534";
+    c.appendChild(el("div", "display:inline-block;padding:3px 9px;border-radius:999px;font-size:.72rem;font-weight:800;background:" + tagBg, d.sourcePdf || "Clip"));
+    c.appendChild(el("div", "margin-top:8px;font-weight:700;white-space:pre-wrap;line-height:1.4", d.textHI || d.text || ""));
+    if (!isSub) {
+      var ol = el("div", "margin-top:6px");
+      (d.optionsHI || d.options || []).slice(0, 4).forEach(function (o, i) {
+        var right = src !== "unknown" && Number(d.answer || 0) === i;
+        ol.appendChild(el("div", "padding:5px 8px;margin-top:4px;border-radius:8px;font-size:.88rem;background:" + (right ? "#dcfce7;font-weight:800" : "#f1f5f9"), "ABCD"[i] + ".  " + o + (right ? "   ✓" : "")));
+      });
+      c.appendChild(ol);
+    }
+    if (d.explanationHI || d.explanation) c.appendChild(el("div", "margin-top:6px;font-size:.8rem;color:#475569;white-space:pre-wrap", "💡 " + (d.explanationHI || d.explanation)));
+
+    var lp = lastPick(), classes = classOptions(), bankQ = (typeof questionBank !== "undefined" && questionBank) || [];
+    var row = el("div", "display:flex;flex-wrap:wrap;gap:6px;margin-top:10px");
+    var cls = el("select", "box-sizing:border-box;padding:8px 9px;border:1px solid #cbd5e1;border-radius:9px;font-size:.85rem;background:#fff;flex:1 1 90px;min-width:0");
+    var o0 = el("option", "", "Class"); o0.value = ""; cls.appendChild(o0);
+    classes.forEach(function (x) { var o = el("option", "", x[1]); o.value = x[0]; cls.appendChild(o); });
+    cls.value = lp.classId || "";
+    /* AI ke andaze se naya/alag naam na bane: sirf tab bharo jab bank ke ek hi maujooda naam se milta ho; warna khali + hint */
+    var subs = uniq(bankQ.map(function (q) { return q.subject; }));
+    var subHit = m.aiSubject ? subs.filter(function (x) { return fuzzy(x, m.aiSubject); }) : [];
+    var sub = field("flex:1 1 110px"); sub.placeholder = m.aiSubject && subHit.length !== 1 ? "Subject (AI: " + m.aiSubject + ")" : "Subject";
+    sub.value = lp.subject || (subHit.length === 1 ? subHit[0] : "");
+    var chs = uniq(bankQ.filter(function (q) { return String(q.subject || "").toLowerCase() === sub.value.trim().toLowerCase(); }).map(function (q) { return q.chapter; }));
+    var chHit = m.aiChapter ? chs.filter(function (x) { return fuzzy(x, m.aiChapter) || norm(x).indexOf(norm(m.aiChapter)) >= 0; }) : [];
+    var ch = field("flex:2 1 150px"); ch.placeholder = m.aiChapter && chHit.length !== 1 ? "Chapter (AI: " + m.aiChapter + ")" : "Chapter";
+    ch.value = (lp.chapter && lp.subject === sub.value) ? lp.chapter : (chHit.length === 1 ? chHit[0] : "");
+    var dlS = el("datalist"), dlC = el("datalist"), uid = "clipdl" + Math.random().toString(36).slice(2, 8);
+    dlS.id = uid + "s"; dlC.id = uid + "c"; sub.setAttribute("list", dlS.id); ch.setAttribute("list", dlC.id);
+    uniq(bankQ.map(function (q) { return q.subject; })).forEach(function (x) { var o = document.createElement("option"); o.value = x; dlS.appendChild(o); });
+    function fillCh() {
+      dlC.textContent = "";
+      uniq(bankQ.filter(function (q) { return (!cls.value || q.classId === cls.value) && String(q.subject || "").toLowerCase() === sub.value.trim().toLowerCase(); }).map(function (q) { return q.chapter; }))
+        .forEach(function (x) { var o = document.createElement("option"); o.value = x; dlC.appendChild(o); });
+    }
+    cls.onchange = fillCh; sub.oninput = fillCh; fillCh();
+    row.append(cls, sub, ch, dlS, dlC); c.appendChild(row);
+
+    var acts = el("div", "display:flex;flex-wrap:wrap;gap:6px;margin-top:10px");
+    var B = function (t, bg, fg, fn) { var b = el("button", BTN + "padding:8px 11px;font-size:.82rem;background:" + bg + ";color:" + fg, t); b.type = "button"; b.onclick = function () { fn(b); }; return b; };
+    acts.appendChild(B("✏️ Edit", "#e0e7ff", "#3730a3", function () {
+      if (!root.SnapQEdit) { alert("Editor load nahi hua, page refresh karein."); return; }
+      root.SnapQEdit.open({ title: "Clip sawal edit", q: d, note: d.sourcePdf, onSave: function (f) {
+        var payload = Object.assign({}, f, { needsReview: false, sourcePdf: "Clip • ✏️ Aapne check kiya", clipMeta: Object.assign({}, m, { answerSource: "manual" }) });
+        Object.assign(d, payload);
+        try { getDB().collection("pdfDrafts").doc(d.id).set(payload, { merge: true }).catch(function (e) { alert("Draft save nahi hua: " + (e && e.message || e)); }); } catch (e) {}
+        rerender();
+      } });
+    }));
+    acts.appendChild(B("✅ Bank me daalo", "#16a34a", "#fff", function (b) { toBank(d, { cls: cls, sub: sub, ch: ch }, b, rerender); }));
+    acts.appendChild(B("➕ Test me", "#f1f5f9", "#334155", function () { close(); if (typeof addPdfDraftToTest === "function") addPdfDraftToTest(d.id); }));
+    if (m.imageId) acts.appendChild(B("🖼️ Photo", "#f1f5f9", "#334155", function () { showImage(m.imageId); }));
+    acts.appendChild(B("🗑️", "#fee2e2", "#991b1b", function () {
+      Promise.resolve(typeof deletePdfDraft === "function" ? deletePdfDraft(d.id) : null).then(function () { badge(); rerender(); });
+    }));
+    c.appendChild(acts);
+    return c;
+  }
+
+  function openDrafts() {
+    var box = shell("📥 Clip se aaye sawal");
+    box.appendChild(el("div", "margin-top:6px;font-size:.8rem;color:#475569", "Har sawal dekhiye. Class / Subject / Chapter chunkar ✅ Bank me daalo. Uttar galat ho to ✏️ Edit."));
+    var host = el("div"); box.appendChild(host);
+    function render() {
+      host.textContent = "";
+      var list = clipDrafts();
+      if (!list.length) { host.appendChild(el("div", "margin-top:24px;text-align:center;color:#64748b;font-size:.9rem;white-space:pre-line", "Abhi koi naya Clip sawal nahi hai.\n✂️ Clipper se sawal bhejiye.")); return; }
+      list.forEach(function (d) { host.appendChild(card(d, render)); });
+    }
+    render();
+    if (!clipDrafts().length) {
+      try {
+        getDB().collection("pdfDrafts").limit(150).get().then(function (sn) {
+          var arr = sn.docs.map(function (x) { return Object.assign({ id: x.id }, x.data()); });
+          arr.sort(function (a, b) { return String(b.importedAt || "").localeCompare(String(a.importedAt || "")); });
+          try { pdfDraftQuestions = arr; } catch (e) {}
+          render(); badge();
+        }).catch(function () {});
+      } catch (e) {}
+    }
+  }
+
+  root.SnapClip = { open: open, showImage: showImage, openDrafts: openDrafts };
+
 })(window);
