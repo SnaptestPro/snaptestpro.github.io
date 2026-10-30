@@ -244,6 +244,42 @@
     return pdf.output("blob");
   }
 
+  /* ---- app (Capacitor) me seedha phone me save: Documents/SnapTestPro/ ---- */
+  function getCap() {
+    var w = []; try { if (window.top) w.push(window.top); } catch (e) {}
+    try { if (window.parent && window.parent !== window.top) w.push(window.parent); } catch (e) {}
+    w.push(window);
+    for (var i = 0; i < w.length; i++) { try { var c = w[i].Capacitor; if (c && typeof c.nativePromise === "function") return c; } catch (e) {} }
+    return null;
+  }
+  function blobToB64(blob) {
+    return new Promise(function (res, rej) {
+      var r = new FileReader();
+      r.onload = function () { res(String(r.result).split(",")[1] || ""); };
+      r.onerror = function () { rej(r.error || new Error("File padh nahi payi")); };
+      r.readAsDataURL(blob);
+    });
+  }
+  async function saveAllNative(files) {
+    var C = getCap(); if (!C) return false;
+    var dirs = ["DOCUMENTS", "EXTERNAL_STORAGE", "EXTERNAL"], done = 0;
+    for (var i = 0; i < files.length; i++) {
+      var data = await blobToB64(files[i]), ok = false, lastErr = null;
+      for (var d = 0; d < dirs.length && !ok; d++) {
+        try {
+          await Promise.race([
+            C.nativePromise("Filesystem", "writeFile", { path: "SnapTestPro/" + files[i].name, data: data, directory: dirs[d], recursive: true }),
+            new Promise(function (_, rej) { setTimeout(function () { rej(new Error("timeout")); }, 25000); })
+          ]);
+          ok = true;
+        } catch (e) { lastErr = e; }
+      }
+      if (!ok) { console.warn("native save fail", lastErr); return done; }
+      done++;
+    }
+    return done;
+  }
+
   function downloadFile(f) {
     var url = URL.createObjectURL(f), a = document.createElement("a");
     a.href = url; a.download = f.name;
@@ -346,20 +382,23 @@
         files.push(new File([blob], base + " Set " + letter + ".pdf", { type: "application/pdf" }));
       }
 
-      // Mobile: share sheet ke liye FRESH tap chahiye (PDF banne me der lagti hai, purana tap expire ho jaata hai)
-      // aur ek saath kai files share karne par "sharing in process" error aata hai.
-      // Isliye har set ka alag button dikhate hain. Desktop par seedha download.
-      var canShareFiles = false;
-      try { canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [files[0]] })); } catch (e) {}
-      if (canShareFiles || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "")) {
-        showResultDialog(files, base, canShareFiles);
-      } else {
-        for (var k = 0; k < files.length; k++) {
-          downloadFile(files[k]);
-          if (k < files.length - 1) await sleep(700);
+      // Saare sets AUTOMATIC device me save (koi tap / share sheet nahi)
+      var isApp = !!(window.__IS_APP || getCap());
+      if (isApp) {
+        var n = await saveAllNative(files);
+        if (n === files.length) {
+          if (typeof toast === "function") toast("✅ " + n + " PDF save ho gayi: Documents/SnapTestPro folder me");
+          return;
         }
-        if (typeof toast === "function") toast("📕 PDF download shuru: " + files.map(function (f) { return f.name; }).join(", "));
+        // native save nahi chali -> buttons wala dialog (fallback)
+        showResultDialog(files, base, true);
+        return;
       }
+      for (var k = 0; k < files.length; k++) {
+        downloadFile(files[k]);
+        if (k < files.length - 1) await sleep(1200);          // browser multiple downloads block na kare
+      }
+      if (typeof toast === "function") toast("✅ " + files.length + " PDF download ho gayi: " + files.map(function (f) { return f.name; }).join(", "));
     } catch (err) {
       console.error(err);
       alert("Paper Format PDF banane mein error: " + (err.message || err));
