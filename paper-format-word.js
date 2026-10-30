@@ -48,7 +48,9 @@
   var BOTTOM_GUARD = 100;                 // columns ke neeche itni jagah chhodte hain (twips)
   var MAX_EXTRA = 160;                    // bhare column ko neeche tak barabar baantne ke liye har gap me max itna (twips) extra: neeche anjaan khali patti nahi dikhegi, gap bhi bade nahi lagenge
   var SAFETY = 1.0;                       // estimate safety margin (1.0 = sabse zyada questions fit; 1.03-1.05 = zyada safe)
-  var FIT_GUARD = 100;                    // column ke neeche itni jagah (twips) hamesha khali rakhte hain, kategne se bachne ke liye
+  var FIT_GUARD = 160;                    // column ke neeche itni jagah (twips) hamesha khali rakhte hain, kategne se bachne ke liye
+  var FIT_PESSIMISM = 0.93;               // v2: FIT decision ke liye line-width 7% kam maante hain. Borderline wrap (jaise Hindi option ki line jo Word me 2 line ho jaati hai) ko hum 2 line gin lete hain, taaki question neeche kat na jaye; agar jagah kam ho to POORA question agle column/page me chala jaata hai.
+  var BLOCK_PAD = 24;                     // har question block par extra twips (chhoti-chhoti errors jama hoke aakhri question ko katne se bachane ke liye)
   var MAX_PAGES = 40;                     // booklet max: 4, 8, 12 ... 40 pages
   var TAG_H = 280;                        // har page (page 1 ke alawa) ke upar chhote SET tag ki height (twips)
   var HEAD_H = LH + 140;                  // section heading ki height (twips)
@@ -127,14 +129,20 @@
       Array.prototype.forEach.call(n.childNodes, function (c) { walk(c, sc); });
     }
     walk(d, 1); flush();
-    var W = (widthTw / 20 / pt) * WRAP_SAFE, lines = 1, x = 0, pend = 0;
-    atoms.forEach(function (a) {
-      if (a.sp) { pend = a.w; return; }
-      if (x === 0) { x = a.w; pend = 0; }
-      else if (x + pend + a.w <= W) { x += pend + a.w; pend = 0; }
-      else { lines++; x = a.w; pend = 0; }
-      while (x > W) { lines++; x -= W; }          // bahut lamba single word
-    });
+    function wrapLines(W) {
+      var lines = 1, x = 0, pend = 0;
+      atoms.forEach(function (a) {
+        if (a.sp) { pend = a.w; return; }
+        if (x === 0) { x = a.w; pend = 0; }
+        else if (x + pend + a.w <= W) { x += pend + a.w; pend = 0; }
+        else { lines++; x = a.w; pend = 0; }
+        while (x > W) { lines++; x -= W; }          // bahut lamba single word
+      });
+      return lines;
+    }
+    var Wn = (widthTw / 20 / pt) * WRAP_SAFE;
+    // fit ke liye pessimistic count (Word me line zyada lag sakti hai, kam nahi)
+    var lines = Math.max(wrapLines(Wn), wrapLines(Wn * FIT_PESSIMISM));
     var extra = Math.min(mathN, lines) * MATH_EXTRA;
     return { lines: lines, math: mathN > 0, h: lines * LH + extra };
   }
@@ -185,12 +193,12 @@
       columnWidths: [w1, w2], layout: docx.TableLayoutType.FIXED,
       borders: noBorders(), rows: rows
     }));
-    return { children: out, h: (h + SPACER) * SAFETY };
+    return { children: out, h: (h + SPACER + BLOCK_PAD) * SAFETY };
   }
   function subBlock(n, q) {
     var html = mathToWordHtml(q.text || ""), e = est(html, n + ". ", INNER_W - 40, PT + 0.5);
     return {
-      h: (e.h + e.lines * 20 + 100) * SAFETY,
+      h: (e.h + e.lines * 20 + 100 + BLOCK_PAD) * SAFETY,
       children: [new docx.Paragraph({
         spacing: Object.assign(sp(e.math, 100), { line: LH + 20 }),
         children: [new docx.TextRun({ text: n + ". ", bold: true, size: SZ + 1 })].concat(htmlToDocxRuns(html, { size: SZ + 1 }))
