@@ -225,7 +225,7 @@ async function handleBank(request, env, pathname) {
   throw new HttpErr(404, 'Not found');
 }
 
-/* ---------- App update broadcast: GitHub Actions -> admin / student phones (FCM topics app_admin, app_student) ----------
+/* ---------- App update broadcast: GitHub Actions -> admin / student phones (FCM topics app_admin, app_student, owner_alerts; audience: admin|student|owner|both|all) ----------
    Secret: BROADCAST_SECRET (Cloudflare Worker > Settings > Variables and Secrets) — wahi GitHub repo secret me bhi. */
 async function handleBroadcast(request, env) {
   if (request.method !== 'POST') throw new HttpErr(405, 'POST chahiye');
@@ -236,7 +236,7 @@ async function handleBroadcast(request, env) {
   let diff = a.length ^ b.length; for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a[i] || 0) ^ (b[i] || 0);
   if (diff !== 0) throw new HttpErr(403, 'Secret galat hai');
   const aud = String(req.audience || 'both').toLowerCase();
-  const topics = aud === 'admin' ? ['app_admin'] : aud === 'student' ? ['app_student'] : ['app_admin', 'app_student'];
+  const topics = aud === 'admin' ? ['app_admin'] : aud === 'student' ? ['app_student'] : aud === 'owner' ? ['owner_alerts'] : aud === 'all' ? ['app_admin', 'app_student', 'owner_alerts'] : ['app_admin', 'app_student'];   // v259: owner + all
   const title = String(req.title || 'SmarTest Pro').slice(0, 100), body = String(req.body || 'App me naya update aaya hai.').slice(0, 300);
   const kind = req.kind === 'apk' ? 'apk' : 'web';
   const sa = JSON.parse(env.SERVICE_ACCOUNT_JSON), projectId = env.PROJECT_ID || sa.project_id, at = await googleAccessToken(sa);
