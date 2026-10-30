@@ -573,4 +573,10 @@
     }
   };
 
+  /* PDF module (paper-format-pdf.js) ye helpers use karta hai */
+  window.__PFW = {
+    drawHeaderPng: drawHeaderPng, fmtDate: fmtDate, fmtTime: fmtTime, val: val,
+    instituteName: instituteName, safeName: safeName, sectionMap: sectionMap, collectQuestions: collectQuestions
+  };
+
 })();
