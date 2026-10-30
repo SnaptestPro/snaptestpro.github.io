@@ -1179,6 +1179,18 @@ service cloud.firestore {
 
     // Doc ID = admin ka email address (isAdmin() function isi se
     // seedha lookup karta hai — /admins/{unka-email}).
+    // ── Live presence (Owner dashboard: abhi kitne student/admin online) ──
+    // Har signed-in user sirf role + lastSeen (server time) + instituteId likh sakta hai. Sirf Owner padh sakta hai.
+    match /presence/{pid} {
+      allow read: if isOwner();
+      allow create, update: if isSignedIn() &&
+        pid.matches('^[sa]_[A-Za-z0-9]{3,40}$') &&
+        request.resource.data.keys().hasOnly(['role', 'lastSeen', 'instituteId']) &&
+        request.resource.data.role in ['student', 'admin'] &&
+        request.resource.data.lastSeen == request.time;
+      allow delete: if isOwner();
+    }
+
     match /admins/{email} {
       allow read, write: if isOwner();
 
