@@ -244,12 +244,68 @@
     return pdf.output("blob");
   }
 
+  function downloadFile(f) {
+    var url = URL.createObjectURL(f), a = document.createElement("a");
+    a.href = url; a.download = f.name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+  }
+  // Ek file share (ek tap = ek share). Fail ho to download.
+  var sharing = false;
+  async function shareOne(f, base, canShare) {
+    if (sharing) return;
+    sharing = true;
+    try {
+      if (canShare && navigator.share) {
+        await navigator.share({ files: [f], title: base });
+        return;
+      }
+      downloadFile(f);
+    } catch (err) {
+      if (err && err.name === "AbortError") return;           // user ne cancel kiya
+      console.warn("Share fail, download try:", err);
+      downloadFile(f);
+    } finally {
+      setTimeout(function () { sharing = false; }, 600);
+    }
+  }
+  function showResultDialog(files, base, canShare) {
+    var old = document.getElementById("pfpDlg"); if (old) old.remove();
+    var ov = document.createElement("div"); ov.id = "pfpDlg";
+    ov.style.cssText = "position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,sans-serif;";
+    var bx = document.createElement("div");
+    bx.style.cssText = "background:#fff;color:#111;border-radius:14px;max-width:420px;width:100%;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.4);max-height:90vh;overflow:auto;";
+    bx.innerHTML = '<div style="font-weight:700;font-size:17px;margin-bottom:4px;">📕 PDF taiyar hai</div>' +
+      '<div style="font-size:13px;color:#555;margin-bottom:12px;">Har set ke button ko alag se dabayein (ek ke baad ek).</div>';
+    files.forEach(function (f) {
+      var row = document.createElement("div"); row.style.cssText = "border:1px solid #ddd;border-radius:10px;padding:10px;margin-bottom:8px;";
+      var nm = document.createElement("div"); nm.textContent = f.name + " (" + Math.round(f.size / 1024) + " KB)"; nm.style.cssText = "font-size:13px;font-weight:600;margin-bottom:8px;word-break:break-all;";
+      var b1 = document.createElement("button"); b1.textContent = canShare ? "📤 Share / Save" : "⬇️ Download";
+      b1.style.cssText = "padding:9px 14px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:600;margin-right:8px;";
+      b1.onclick = function () { shareOne(f, base, canShare); };
+      row.appendChild(nm); row.appendChild(b1);
+      if (canShare) {
+        var b2 = document.createElement("button"); b2.textContent = "⬇️ Download";
+        b2.style.cssText = "padding:9px 14px;border:1px solid #2563eb;border-radius:8px;background:#fff;color:#2563eb;font-weight:600;";
+        b2.onclick = function () { downloadFile(f); };
+        row.appendChild(b2);
+      }
+      bx.appendChild(row);
+    });
+    var cl = document.createElement("button"); cl.textContent = "Band karein";
+    cl.style.cssText = "width:100%;padding:10px;border:0;border-radius:8px;background:#eee;font-weight:600;margin-top:4px;";
+    cl.onclick = function () { ov.remove(); };
+    bx.appendChild(cl); ov.appendChild(bx); document.body.appendChild(ov);
+  }
+
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
   /* ---- main ------------------------------------------------------------ */
   window.exportPaperFormatPDF = async function () {
     var H = window.__PFW;
     if (!H) { alert("Paper Format module load nahi hua — page reload karein."); return; }
+    if (window.__pfpBusy) { if (typeof toast === "function") toast("⏳ PDF abhi ban rahi hai, ruko..."); return; }
+    window.__pfpBusy = true;
     try { if (window.QGSets && typeof QGSets.ensure === "function") QGSets.ensure(); } catch (e) {}
     var nSets = 1;
     try { if (window.QGSets && QGSets.state) nSets = Math.max(1, QGSets.state().n || 1); } catch (e) {}
@@ -258,7 +314,7 @@
       try { if (window.QGSets && typeof QGSets.flatFor === "function") return QGSets.flatFor(i) || []; } catch (e) {}
       return i === 0 ? H.collectQuestions() : [];
     }
-    if (!setQuestions(0).length) { alert("Pehle paper mein kam se kam ek question add karein."); return; }
+    if (!setQuestions(0).length) { window.__pfpBusy = false; alert("Pehle paper mein kam se kam ek question add karein."); return; }
 
     var host = null, styleEl = null;
     try {
@@ -290,28 +346,25 @@
         files.push(new File([blob], base + " Set " + letter + ".pdf", { type: "application/pdf" }));
       }
 
-      try {
-        if (navigator.canShare && navigator.canShare({ files: files })) {
-          await navigator.share({ files: files, title: base, text: "Test paper — " + files.length + " set (PDF)" });
-          if (typeof toast === "function") toast("📕 " + files.length + " set ki PDF share ho gayi!");
-          return;
+      // Mobile: share sheet ke liye FRESH tap chahiye (PDF banne me der lagti hai, purana tap expire ho jaata hai)
+      // aur ek saath kai files share karne par "sharing in process" error aata hai.
+      // Isliye har set ka alag button dikhate hain. Desktop par seedha download.
+      var canShareFiles = false;
+      try { canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [files[0]] })); } catch (e) {}
+      if (canShareFiles || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "")) {
+        showResultDialog(files, base, canShareFiles);
+      } else {
+        for (var k = 0; k < files.length; k++) {
+          downloadFile(files[k]);
+          if (k < files.length - 1) await sleep(700);
         }
-      } catch (shareErr) {
-        if (shareErr && shareErr.name === "AbortError") return;
-        console.warn("Share failed, downloading instead:", shareErr);
+        if (typeof toast === "function") toast("📕 PDF download shuru: " + files.map(function (f) { return f.name; }).join(", "));
       }
-      for (var k = 0; k < files.length; k++) {
-        var url = URL.createObjectURL(files[k]), a = document.createElement("a");
-        a.href = url; a.download = files[k].name;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        (function (u) { setTimeout(function () { URL.revokeObjectURL(u); }, 8000); })(url);
-        if (k < files.length - 1) await sleep(700);
-      }
-      if (typeof toast === "function") toast("📕 PDF download shuru: " + files.map(function (f) { return f.name; }).join(", "));
     } catch (err) {
       console.error(err);
       alert("Paper Format PDF banane mein error: " + (err.message || err));
     } finally {
+      window.__pfpBusy = false;
       try { if (host && host.parentNode) host.parentNode.removeChild(host); } catch (e) {}
       try { if (styleEl && styleEl.parentNode) styleEl.parentNode.removeChild(styleEl); } catch (e) {}
     }
