@@ -44,13 +44,13 @@
   var SZ = Math.round(PT * 2);            // docx half-points
   var LH_RATIO = 1.625;                   // line height = font x ye ratio (1.5 = aur tight, par Hindi matra kat sakti hai)
   var LH = Math.round(PT * LH_RATIO * 20);   // exact line height (twips)
-  var SPACER = 60;                        // base gap between questions
+  var SPACER = 40;                        // base gap between questions
   var BOTTOM_GUARD = 100;                 // columns ke neeche itni jagah chhodte hain (twips)
-  var MAX_EXTRA = 160;                    // bhare column ko neeche tak barabar baantne ke liye har gap me max itna (twips) extra: neeche anjaan khali patti nahi dikhegi, gap bhi bade nahi lagenge
+  var MAX_EXTRA = 30;                     // bhare column ko neeche tak barabar baantne ke liye har gap me max itna (twips) extra: neeche anjaan khali patti nahi dikhegi, gap bhi bade nahi lagenge
   var SAFETY = 1.0;                       // estimate safety margin (1.0 = sabse zyada questions fit; 1.03-1.05 = zyada safe)
-  var FIT_GUARD = 160;                    // column ke neeche itni jagah (twips) hamesha khali rakhte hain, kategne se bachne ke liye
-  var FIT_PESSIMISM = 0.93;               // v2: FIT decision ke liye line-width 7% kam maante hain. Borderline wrap (jaise Hindi option ki line jo Word me 2 line ho jaati hai) ko hum 2 line gin lete hain, taaki question neeche kat na jaye; agar jagah kam ho to POORA question agle column/page me chala jaata hai.
-  var BLOCK_PAD = 24;                     // har question block par extra twips (chhoti-chhoti errors jama hoke aakhri question ko katne se bachane ke liye)
+  var FIT_GUARD = 90;                    // column ke neeche itni jagah (twips) hamesha khali rakhte hain, kategne se bachne ke liye
+  var FIT_PESSIMISM = 0.975;               // v2: FIT decision ke liye line-width 7% kam maante hain. Borderline wrap (jaise Hindi option ki line jo Word me 2 line ho jaati hai) ko hum 2 line gin lete hain, taaki question neeche kat na jaye; agar jagah kam ho to POORA question agle column/page me chala jaata hai.
+  var BLOCK_PAD = 0;                      // har question block par extra twips (chhoti-chhoti errors jama hoke aakhri question ko katne se bachane ke liye)
   var MAX_PAGES = 40;                     // booklet max: 4, 8, 12 ... 40 pages
   var TAG_H = 280;                        // har page (page 1 ke alawa) ke upar chhote SET tag ki height (twips)
   var HEAD_H = LH + 140;                  // section heading ki height (twips)
