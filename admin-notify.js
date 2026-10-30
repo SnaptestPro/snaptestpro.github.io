@@ -115,9 +115,9 @@
 
   function init() {
     hookSave();
-    var grid = document.querySelector("#admin-dashboard-home .cd-grid");
+    var grid = document.querySelector("#admin-grid-students") || document.querySelector("#admin-dashboard-home .cd-grid");
     if (grid && !$("an-card")) {
-      var b = document.createElement("button"); b.type = "button"; b.id = "an-card"; b.className = "cd-card cd-gold";
+      var b = document.createElement("button"); b.type = "button"; b.id = "an-card"; b.className = "cd-card cd-pink";
       b.innerHTML = '<div class="cd-card-top"><div class="cd-icon-circle">🔔</div><span class="cd-badge">Students</span></div><div class="cd-card-title">Notification</div><div class="cd-card-sub">Students ko message bhejein</div><div class="cd-card-bottom"><span class="cd-arrow-btn">→</span></div>';
       b.onclick = open; grid.appendChild(b);
     }

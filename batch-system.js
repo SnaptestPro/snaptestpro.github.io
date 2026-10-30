@@ -818,8 +818,8 @@ function vPay(m) {
     }
     var sg = $("#student-dashboard-home .cd-grid");
     if (sg && !sg.querySelector("[data-bm]")) { var c = document.createElement("button"); c.type = "button"; c.className = "cd-card cd-purple"; c.dataset.bm = "1"; c.innerHTML = '<div class="cd-card-top"><div class="cd-icon-circle">🎓</div><span class="cd-badge">New</span></div><div class="cd-card-title">My Batches</div><div class="cd-card-sub">Live, recordings, notes</div><div class="cd-card-bottom"><span class="cd-arrow-btn">→</span></div>'; c.onclick = function (e) { e.preventDefault(); openStudent(); }; sg.appendChild(c); }
-    var ag = $("#admin-dashboard-home .cd-grid");
-    if (ag && !ag.querySelector("[data-bm]")) { var d = document.createElement("button"); d.type = "button"; d.className = "cd-card cd-indigo"; d.dataset.bm = "1"; d.innerHTML = '<div class="cd-card-top"><div class="cd-icon-circle">🎓</div><span class="cd-badge">New</span></div><div class="cd-card-title">Batch Management</div><div class="cd-card-sub">Batches, live classes, recordings, notes</div><div class="cd-card-bottom"><span class="cd-arrow-btn">→</span></div>'; d.onclick = openAdmin; ag.appendChild(d); }
+    var ag = $("#admin-grid-students") || $("#admin-dashboard-home .cd-grid");
+    if (ag && !ag.querySelector("[data-bm]")) { var d = document.createElement("button"); d.type = "button"; d.className = "cd-card cd-purple"; d.dataset.bm = "1"; d.innerHTML = '<div class="cd-card-top"><div class="cd-icon-circle">🎓</div><span class="cd-badge">New</span></div><div class="cd-card-title">Batch Management</div><div class="cd-card-sub">Batches, live classes, recordings, notes</div><div class="cd-card-bottom"><span class="cd-arrow-btn">→</span></div>'; d.onclick = openAdmin; ag.appendChild(d); }
   }
   setInterval(function () { if (!document.hidden) hook(); }, 2500);
   /* v199: app khulne ke baad (idle me) batches pehle se load — taaki Batch dabate hi sab ready mile.

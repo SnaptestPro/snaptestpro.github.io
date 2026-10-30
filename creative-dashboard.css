@@ -24,3 +24,7 @@
 .cd-red .cd-badge{color:#b91c1c}
 .cd-gold .cd-badge{color:#92400e}
 .cd-indigo .cd-badge{color:#3730a3}
+
+/* v258: admin panel — purani gradient tab-bar hata di (navigation ab sirf section cards se). DOM me rehti hai taaki JS ids na tootein. */
+#admin-panel .admin-tabs{display:none!important}
+#admin-dashboard-home .cd-section-title:first-of-type{margin-top:6px!important}
