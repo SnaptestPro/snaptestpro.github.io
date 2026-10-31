@@ -297,8 +297,10 @@
      v263 ADMIN BOTTOM NAV — student jaisa: Home · Batch · Tests · Analysis · More
      (#an-nav, #admin-panel ke andar — admin panel dikhta hai to hi nav dikhta hai)
      ===================================================================================== */
-  var A_SEC = { "tests-area": "tests", "records-box": "analysis", "leaderboard-box": "analysis", "grade-box": "analysis", "omr-box": "analysis",
-    "bank-box": "more", "bulk-upload-box": "more", "generator-box": "more", "trash-box": "more", "settings-box": "more", "solidslab-box": "more" };
+  var A_SEC = { "tests-area": "tests", "bank-box": "tests", "bulk-upload-box": "tests", "generator-box": "tests",
+    "records-box": "students", "leaderboard-box": "students", "grade-box": "students", "omr-box": "students",
+    "trash-box": "more", "settings-box": "more", "solidslab-box": "more" };
+  var A_TABS = { tests: { t: "Tests & Papers", sec: ["Tests & Papers"] }, students: { t: "Students & Results", sec: ["Students & Results"] }, more: { t: "More", sec: ["Tools", "Account"] } };
   function aActive() {
     if (pageOpen() && curPage.indexOf("a-") === 0) return curPage.slice(2);
     var bm = $("bm-admin"); if (bm && shown(bm)) return "batch";
@@ -311,27 +313,34 @@
     n.querySelectorAll("button").forEach(function (b) { var on = b.dataset.k === k; b.classList.toggle("on", on); on ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"); });
   }
   var BATCH_SVG = '<span class="sn-i"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>';
-  var A_ANALYSIS = [["📁", "#e8e7ff", "Records", "Students & results", "records"], ["🏆", "#fff0cc", "Top Performers", "Kiske kitne marks", "leaderboard"], ["📝", "#ffedd5", "Grade Subjective", "Answers check karein", "grade"], ["🔲", "#d9f7f3", "OMR", "Sheets scan karein", "omr"]];
-  var A_MORE = [["📄", "#fce7f3", "Paper Generator", "Question paper banayein", "generator"], ["🏦", "#ede9fe", "Question Bank", "Saare questions ek jagah", "bank"], ["📦", "#d9f7f3", "Bulk Upload", "Ek saath kai questions", "bulk-upload"],
-    ["🧊", "#dbeafe", "Solids Lab", "3D solids", "solidslab"], ["🗑️", "#ffe4e4", "Recycle Bin", "Delete kiye items recover", "trash"], ["🎓", "#dcfce7", "Student View", "Student ki tarah dekhein", "@student"], ["⚙️", "#e5e7eb", "Settings", "Profile, institute & logout", "settings"]];
+  var BGS = ["#e8e7ff", "#fce7f3", "#ede9fe", "#d9f7f3", "#fff0cc", "#ffedd5", "#dbeafe", "#dcfce7", "#ffe4e4", "#e5e7eb"];
+  /* page admin dashboard ke sections se hi banta hai (naya card aaye to apne-aap judta hai, jaise Question Reports) */
+  function aCards(k) {
+    var home = $("admin-dashboard-home"), out = [], want = A_TABS[k].sec; if (!home) return out;
+    home.querySelectorAll(".cd-section-title").forEach(function (h) {
+      if (want.indexOf(h.textContent.replace(/\s+/g, " ").trim()) < 0) return;
+      var g = h.nextElementSibling; if (!g) return;
+      g.querySelectorAll(".cd-card").forEach(function (c) {
+        var ic = c.querySelector(".cd-icon-circle"), t = c.querySelector(".cd-card-title"), sb = c.querySelector(".cd-card-sub");
+        out.push({ el: c, ic: ic ? ic.textContent.trim() : "", t: t ? t.textContent.trim() : "", s: sb ? sb.textContent.trim() : "" });
+      });
+    });
+    return out;
+  }
   function aPage(k) {
-    var rows = k === "analysis" ? A_ANALYSIS : A_MORE;
-    if (k === "analysis") {
-      return '<div class="ph"><button type="button" data-a="menu">' + svg("menu") + '</button><b>Analysis</b></div><div class="sn-tiles">' +
-        rows.map(function (x) { return '<button type="button" class="sn-tile" data-aa="' + x[4] + '"><div class="i" style="background:' + x[1] + '">' + E(x[0]) + "</div><b>" + x[2] + "</b><small>" + x[3] + "</small></button>"; }).join("") + "</div>";
-    }
-    return '<div class="ph"><button type="button" data-a="menu">' + svg("menu") + '</button><b>More</b></div>' +
-      rows.map(function (x) { return '<button type="button" class="sn-row" data-aa="' + x[4] + '"><div class="i" style="background:' + x[1] + '">' + E(x[0]) + "</div><div>" + x[2] + "<small>" + x[3] + "</small></div></button>"; }).join("");
+    var cards = aCards(k), T = A_TABS[k].t;
+    window.__aCards = cards;
+    return '<div class="ph"><button type="button" data-a="menu">' + svg("menu") + "</button><b>" + T + "</b></div>" +
+      (cards.length ? cards.map(function (x, i) { return '<button type="button" class="sn-row" data-ai="' + i + '"><div class="i" style="background:' + BGS[i % BGS.length] + '">' + E(x.ic) + "</div><div>" + esc(x.t) + "<small>" + esc(x.s) + "</small></div></button>"; }).join("") : '<div class="sn-faq"><b>Abhi kuch nahi hai</b></div>');
   }
   function aShow(k) {
     var p = $("sn-page"); if (!p) return;
     curPage = "a-" + k; p.innerHTML = aPage(k); p.style.display = "block"; p.scrollTop = 0;
-    p.querySelectorAll("button[data-aa]").forEach(function (b) {
+    p.querySelectorAll("button[data-ai]").forEach(function (b) {
       b.onclick = function (ev) {
-        ev.preventDefault(); var a = b.dataset.aa; hidePage();
-        if (a === "@student") { try { showMode("student"); } catch (e) {} }
-        else { try { goAdmin(a); } catch (e) { console.warn(e); } }
-        window.scrollTo(0, 0); aSync();
+        ev.preventDefault(); var c = (window.__aCards || [])[+b.dataset.ai]; hidePage();
+        try { c && c.el.click(); } catch (e) { console.warn(e); }
+        window.scrollTo(0, 0); aSync(); setTimeout(aSync, 150);
       };
     });
     var m = p.querySelector('[data-a="menu"]'); m && (m.onclick = function (ev) { ev.preventDefault(); aShow("more"); });
@@ -340,15 +349,14 @@
   function aGo(k) {
     hidePage();
     if (k === "home") { try { backToAdminDashboard(); } catch (e) {} window.scrollTo(0, 0); }
-    else if (k === "tests") { try { goAdmin("tests"); } catch (e) {} }
-    else if (k === "batch") { if (window.SnapBatch && SnapBatch.openAdmin) SnapBatch.openAdmin(); else toast("Batch abhi load ho raha hai — thodi der baad try karein"); }
+        else if (k === "batch") { if (window.SnapBatch && SnapBatch.openAdmin) SnapBatch.openAdmin(); else toast("Batch abhi load ho raha hai — thodi der baad try karein"); }
     else aShow(k);
     aSync(); setTimeout(aSync, 0); setTimeout(aSync, 150);
   }
   function buildAdminNav() {
     var ap = $("admin-panel"); if (!ap || $("an-nav")) return;
     var nav = document.createElement("div"); nav.id = "an-nav";
-    nav.innerHTML = [["home", svg("home"), "Home"], ["batch", BATCH_SVG, "Batch"], ["tests", svg("doc"), "Tests"], ["analysis", svg("chart"), "Analysis"], ["more", svg("grid"), "More"]]
+    nav.innerHTML = [["home", svg("home"), "Home"], ["batch", BATCH_SVG, "Batch"], ["tests", svg("doc"), "Tests"], ["students", svg("chart"), "Students"], ["more", svg("grid"), "More"]]
       .map(function (i) { return '<button type="button" data-k="' + i[0] + '">' + i[1] + i[2] + "</button>"; }).join("");
     ap.appendChild(nav);
     nav.querySelectorAll("button").forEach(function (b) { b.onclick = function (ev) { ev.preventDefault(); aGo(b.dataset.k); }; });
