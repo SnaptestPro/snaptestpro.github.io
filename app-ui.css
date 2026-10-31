@@ -143,3 +143,24 @@ a.sn-row{text-decoration:none;color:inherit}
 
 /* v234 institute header: lamba naam kate nahi, ... se kate */
 #sn-top .lg>div{min-width:0;flex:1}#sn-top .lg b,#sn-top .lg small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}#sn-top .lg small{display:block;font-size:.6rem}
+
+/* ===== v263 ===== */
+/* header: coaching ka naam kabhi "..." se na kate — JS (fitHeader) font ghatata hai, zarurat ho to 2 line */
+#sn-top .lg b.fit2{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.12;word-break:break-word;overflow-wrap:anywhere}
+#sn-top .lg{overflow:visible}
+#sn-top .lg>div{overflow:visible}
+#sn-top .lg small{overflow:hidden}
+
+/* ADMIN bottom nav (#an-nav) — student ke #sn-nav jaisa hi look */
+#admin-panel{padding-bottom:calc(var(--snh) + 24px)}
+#an-nav{position:fixed;left:14px;right:14px;bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:900;display:flex;justify-content:space-around;
+  border-radius:34px;border:1px solid var(--lg-edge,rgba(255,255,255,.8));padding:6px;
+  background:linear-gradient(145deg,rgba(255,255,255,.94),rgba(246,249,255,.90));
+  box-shadow:0 8px 24px rgba(36,60,130,.2),inset 0 1px 0 #fff}
+#an-nav button{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:0;box-shadow:none;
+  padding:6px 0;font-size:.64rem;font-weight:700;color:#5b6b8c;border-radius:28px;cursor:pointer;font-family:inherit}
+#an-nav button svg{width:22px;height:22px}
+#an-nav button.on{color:var(--lg-blue,#2563eb);background:linear-gradient(145deg,rgba(255,255,255,.95),rgba(255,255,255,.55));box-shadow:0 4px 14px rgba(36,60,130,.18),inset 0 1px 0 #fff}
+html.sn-ovl #an-nav{visibility:visible}
+html.lg-scan #an-nav{display:none!important}
+#admin-panel.hidden #an-nav{display:none}

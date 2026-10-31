@@ -690,7 +690,7 @@ function vPay(m) {
     });
   }
   function closeStudent() { var o = $("#bm-student"); o && o.classList.add("bm-hidden"); setNav(false); }
-  function setNav(on) { var n = $("#sn-nav"); if (!n) return; n.querySelectorAll("button").forEach(function (b) { b.classList.toggle("on", on && b.dataset.k === "batch"); }); }
+  function setNav(on) { if (window.snSyncNav) { window.snSyncNav(); return; } var n = $("#sn-nav"); if (!n) return; n.querySelectorAll("button").forEach(function (b) { b.classList.toggle("on", on && b.dataset.k === "batch"); }); }
   function fetchAllBatches(ver) {
     var fq = function () { return bref(S.inst).where("published", "==", true).get(); };
     return window.SnapDiet ? window.SnapDiet.cached("snap_diet_avail_" + S.inst, "batches", fq, ver, false) : fq().then(function (q) { return q.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); });

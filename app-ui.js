@@ -11,7 +11,40 @@
   function fixNav() { var n = $("sn-nav"); n && n.offsetHeight > 0 && document.documentElement.style.setProperty("--snh", n.offsetHeight + "px"); }
   function go(id) { try { typeof goStudentSection === "function" && goStudentSection(id); } catch (e) { console.warn(e); } window.scrollTo(0, 0); }
   function toast(m) { var b = document.createElement("div"); b.textContent = m; b.style.cssText = "position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#1e1b4b;color:#fff;padding:10px 18px;border-radius:22px;font-size:.82rem;z-index:99999;max-width:86vw;text-align:center"; document.body.appendChild(b); setTimeout(function () { b.remove(); }, 2200); }
-  function mark(k) { document.querySelectorAll("#sn-nav button").forEach(function (b) { b.classList.toggle("on", b.dataset.k === (k === "help" || k === "about" ? "more" : k === "notifs" ? "home" : k)); }); }
+  /* v263: nav ka "on" ab click se nahi, ASLI screen se nikalta hai — Home par ho to Home, Analysis ke section me ho to Analysis,
+     chahe wahan quick-card, back button, Batch band karke ya kisi bhi raaste se pahunche. */
+  var SEC_TAB = { "student-form-fields-anchor": "tests", "practice-mode-card": "tests", "student-results-card": "analysis", "my-result-detail-card": "analysis", "my-progress-card": "analysis", "my-mistakes-card": "analysis", "student-settings-card": "more", "student-solids-lab-card": "more" };
+  function shown(el) { return !!el && el.isConnected && !el.classList.contains("hidden") && !el.classList.contains("bm-hidden") && el.style.display !== "none"; }
+  function pageOpen() { var p = $("sn-page"); return !!p && p.style.display === "block"; }
+  function activeKey() {
+    if (pageOpen() && curPage.indexOf("a-") !== 0) return curPage === "help" || curPage === "about" ? "more" : curPage === "notifs" ? "home" : (curPage || "home");
+    if (shown($("bm-student"))) return "batch";
+    for (var id in SEC_TAB) if (shown($(id))) return SEC_TAB[id];
+    return "home";
+  }
+  function syncNav() {
+    var n = $("sn-nav"); if (!n) return;
+    var k = activeKey();
+    n.querySelectorAll("button").forEach(function (b) { var on = b.dataset.k === k; b.classList.toggle("on", on); on ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"); });
+  }
+  window.snSyncNav = syncNav;
+  function mark() { syncNav(); setTimeout(syncNav, 0); setTimeout(syncNav, 120); }
+  /* v263: coaching ka naam header me poora dikhe — pehle font chhota karke ek line me, phir bhi na aaye to 2 line (kabhi "..." nahi) */
+  function fitHeader() {
+    var b = document.querySelector("#sn-top .lg b"); if (!b || !b.parentNode) return;
+    var box = b.parentNode, small = box.querySelector("small");
+    if (!box.clientWidth) return;
+    var key = b.textContent + "|" + box.clientWidth + "|" + (small ? small.textContent : "");
+    if (b.getAttribute("data-fit") === key) return;
+    b.classList.remove("fit2"); b.style.fontSize = ""; if (small) small.style.fontSize = "";
+    var max = 16, min = 11.5, f = max;
+    b.style.fontSize = f + "px";
+    while (b.scrollWidth > box.clientWidth + 0.5 && f > min) { f -= 0.5; b.style.fontSize = f + "px"; }
+    if (b.scrollWidth > box.clientWidth + 0.5) { b.classList.add("fit2"); f = 13.5; b.style.fontSize = f + "px"; while (b.scrollHeight > f * 2.5 && f > 11) { f -= 0.5; b.style.fontSize = f + "px"; } }
+    if (small) { var sf = 10; small.style.fontSize = sf + "px"; while (small.scrollWidth > box.clientWidth + 0.5 && sf > 7.5) { sf -= 0.5; small.style.fontSize = sf + "px"; } }
+    b.setAttribute("data-fit", b.textContent + "|" + box.clientWidth + "|" + (small ? small.textContent : ""));
+  }
+  window.snFitHeader = fitHeader;
   function hidePage() { var p = $("sn-page"); curPage = ""; p && (p.style.display = "none"); }
   var __C = window.SNAP_CONFIG || {}, APP_VER = (__C.version || "1.0") + " (build " + (__C.build || "155") + ")", SUPPORT_PHONE = __C.supportPhone || "9525208263", SUPPORT_EMAIL = __C.supportEmail || "vishnu1234stm@gmail.com";
   /* ---------- Notifications (bell) ----------
@@ -196,6 +229,14 @@
     form.appendChild(nav);
     var pg = document.createElement("div"); pg.id = "sn-page"; document.body.appendChild(pg);
     mark("home"); fixNav(); setTimeout(fixNav, 600); window.addEventListener("resize", fixNav);
+    (function () {
+      var mo = new MutationObserver(function () { syncNav(); }), seen = {};
+      function attach() { Object.keys(SEC_TAB).concat(["student-dashboard-home", "sn-page", "bm-student"]).forEach(function (id) { var el = $(id); if (el && seen[id] !== el) { seen[id] = el; mo.observe(el, { attributes: true, attributeFilter: ["class", "style"] }); } }); }
+      attach(); mo.observe(document.body, { childList: true });
+      setInterval(function () { if (!document.hidden) { attach(); syncNav(); } }, 700);
+      document.addEventListener("visibilitychange", function () { !document.hidden && syncNav(); });
+      window.addEventListener("pageshow", syncNav);
+    })();
     nav.querySelectorAll("button").forEach(function (b) {
       b.onclick = function () {
         var k = b.dataset.k; hidePage();
@@ -211,6 +252,9 @@
     top.innerHTML = '<button type="button" class="ic" data-a="m" aria-label="Menu">' + svg("menu") + '</button><div class="lg"><img src="icon-512-maskable.png" alt=""><div><b>SnapTestPro</b><small>Smart Practice • Better Result</small></div></div><button type="button" class="ic" data-a="b" aria-label="Notifications" style="color:#f59e0b">' + svg("bell") + '</button><button type="button" class="av" data-a="u" aria-label="Profile and settings">' + svg("user") + '</button>';
     home.insertBefore(top, home.firstChild);
     try { window.SnapBrand && SnapBrand.paintHeader && SnapBrand.paintHeader(); } catch (e) {}
+    fitHeader(); setTimeout(fitHeader, 400); setTimeout(fitHeader, 1500); window.addEventListener("resize", fitHeader); window.addEventListener("orientationchange", function () { setTimeout(fitHeader, 250); });
+    try { new MutationObserver(function () { fitHeader(); }).observe(top.querySelector(".lg"), { childList: true, subtree: true, characterData: true }); } catch (e) {}
+    document.fonts && document.fonts.ready && document.fonts.ready.then(fitHeader);
     top.querySelector('[data-a="m"]').onclick = function (ev) { ev.preventDefault(); showPage("more"); };
     top.querySelector('[data-a="b"]').onclick = function (ev) { ev.preventDefault(); showPage("notifs", "home"); nRefresh(true).then(function () { curPage === "notifs" && showPage("notifs", "home"); }); };
     var bell = top.querySelector('[data-a="b"]'); bell.style.position = "relative"; bell.insertAdjacentHTML("beforeend", '<i class="sn-dot"></i>'); nDot();
@@ -249,4 +293,71 @@
     var wrap = $("cd-podium-wrap"); wrap && new MutationObserver(function () { enhanceRank(); }).observe(wrap, { childList: true, subtree: true });
     setInterval(function () { if (!document.hidden) enhanceRank(); }, 8000); enhanceRank();
   });
+  /* =====================================================================================
+     v263 ADMIN BOTTOM NAV — student jaisa: Home · Batch · Tests · Analysis · More
+     (#an-nav, #admin-panel ke andar — admin panel dikhta hai to hi nav dikhta hai)
+     ===================================================================================== */
+  var A_SEC = { "tests-area": "tests", "records-box": "analysis", "leaderboard-box": "analysis", "grade-box": "analysis", "omr-box": "analysis",
+    "bank-box": "more", "bulk-upload-box": "more", "generator-box": "more", "trash-box": "more", "settings-box": "more", "solidslab-box": "more" };
+  function aActive() {
+    if (pageOpen() && curPage.indexOf("a-") === 0) return curPage.slice(2);
+    var bm = $("bm-admin"); if (bm && shown(bm)) return "batch";
+    for (var id in A_SEC) if (shown($(id))) return A_SEC[id];
+    return "home";
+  }
+  function aSync() {
+    var n = $("an-nav"); if (!n) return;
+    var k = aActive();
+    n.querySelectorAll("button").forEach(function (b) { var on = b.dataset.k === k; b.classList.toggle("on", on); on ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"); });
+  }
+  var BATCH_SVG = '<span class="sn-i"><svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>';
+  var A_ANALYSIS = [["📁", "#e8e7ff", "Records", "Students & results", "records"], ["🏆", "#fff0cc", "Top Performers", "Kiske kitne marks", "leaderboard"], ["📝", "#ffedd5", "Grade Subjective", "Answers check karein", "grade"], ["🔲", "#d9f7f3", "OMR", "Sheets scan karein", "omr"]];
+  var A_MORE = [["📄", "#fce7f3", "Paper Generator", "Question paper banayein", "generator"], ["🏦", "#ede9fe", "Question Bank", "Saare questions ek jagah", "bank"], ["📦", "#d9f7f3", "Bulk Upload", "Ek saath kai questions", "bulk-upload"],
+    ["🧊", "#dbeafe", "Solids Lab", "3D solids", "solidslab"], ["🗑️", "#ffe4e4", "Recycle Bin", "Delete kiye items recover", "trash"], ["🎓", "#dcfce7", "Student View", "Student ki tarah dekhein", "@student"], ["⚙️", "#e5e7eb", "Settings", "Profile, institute & logout", "settings"]];
+  function aPage(k) {
+    var rows = k === "analysis" ? A_ANALYSIS : A_MORE;
+    if (k === "analysis") {
+      return '<div class="ph"><button type="button" data-a="menu">' + svg("menu") + '</button><b>Analysis</b></div><div class="sn-tiles">' +
+        rows.map(function (x) { return '<button type="button" class="sn-tile" data-aa="' + x[4] + '"><div class="i" style="background:' + x[1] + '">' + E(x[0]) + "</div><b>" + x[2] + "</b><small>" + x[3] + "</small></button>"; }).join("") + "</div>";
+    }
+    return '<div class="ph"><button type="button" data-a="menu">' + svg("menu") + '</button><b>More</b></div>' +
+      rows.map(function (x) { return '<button type="button" class="sn-row" data-aa="' + x[4] + '"><div class="i" style="background:' + x[1] + '">' + E(x[0]) + "</div><div>" + x[2] + "<small>" + x[3] + "</small></div></button>"; }).join("");
+  }
+  function aShow(k) {
+    var p = $("sn-page"); if (!p) return;
+    curPage = "a-" + k; p.innerHTML = aPage(k); p.style.display = "block"; p.scrollTop = 0;
+    p.querySelectorAll("button[data-aa]").forEach(function (b) {
+      b.onclick = function (ev) {
+        ev.preventDefault(); var a = b.dataset.aa; hidePage();
+        if (a === "@student") { try { showMode("student"); } catch (e) {} }
+        else { try { goAdmin(a); } catch (e) { console.warn(e); } }
+        window.scrollTo(0, 0); aSync();
+      };
+    });
+    var m = p.querySelector('[data-a="menu"]'); m && (m.onclick = function (ev) { ev.preventDefault(); aShow("more"); });
+    aSync();
+  }
+  function aGo(k) {
+    hidePage();
+    if (k === "home") { try { backToAdminDashboard(); } catch (e) {} window.scrollTo(0, 0); }
+    else if (k === "tests") { try { goAdmin("tests"); } catch (e) {} }
+    else if (k === "batch") { if (window.SnapBatch && SnapBatch.openAdmin) SnapBatch.openAdmin(); else toast("Batch abhi load ho raha hai — thodi der baad try karein"); }
+    else aShow(k);
+    aSync(); setTimeout(aSync, 0); setTimeout(aSync, 150);
+  }
+  function buildAdminNav() {
+    var ap = $("admin-panel"); if (!ap || $("an-nav")) return;
+    var nav = document.createElement("div"); nav.id = "an-nav";
+    nav.innerHTML = [["home", svg("home"), "Home"], ["batch", BATCH_SVG, "Batch"], ["tests", svg("doc"), "Tests"], ["analysis", svg("chart"), "Analysis"], ["more", svg("grid"), "More"]]
+      .map(function (i) { return '<button type="button" data-k="' + i[0] + '">' + i[1] + i[2] + "</button>"; }).join("");
+    ap.appendChild(nav);
+    nav.querySelectorAll("button").forEach(function (b) { b.onclick = function (ev) { ev.preventDefault(); aGo(b.dataset.k); }; });
+    var mo = new MutationObserver(function () { aSync(); }), seen = {};
+    function attach() { Object.keys(A_SEC).concat(["admin-dashboard-home", "sn-page", "bm-admin"]).forEach(function (id) { var el = $(id); if (el && seen[id] !== el) { seen[id] = el; mo.observe(el, { attributes: true, attributeFilter: ["class", "style"] }); } }); }
+    attach(); mo.observe(document.body, { childList: true });
+    setInterval(function () { if (!document.hidden && !ap.classList.contains("hidden")) { attach(); aSync(); } }, 700);
+    document.addEventListener("visibilitychange", function () { !document.hidden && aSync(); });
+    aSync();
+  }
+  ready(function () { buildAdminNav(); setTimeout(buildAdminNav, 1500); });
 })();
