@@ -170,3 +170,8 @@ html.lg-scan #an-nav{display:none!important}
 #admin-dashboard-home.an-split .cd-section-title:not(#an-qa-title){display:none!important}
 #admin-dashboard-home.an-split .cd-grid.an-empty{display:none!important}
 #admin-dashboard-home.an-split .cd-grid ~ .cd-grid{margin-top:12px}
+
+/* v266: admin Tests / Students / More pages — Home jaise square cards */
+#sn-page .cd-grid.an-pg{margin:2px 0 12px}
+#sn-page .cd-grid.an-pg .cd-card{aspect-ratio:1/1;min-height:0!important;width:100%;box-sizing:border-box}
+#sn-page .cd-grid.an-pg .cd-card-sub{flex-grow:1}

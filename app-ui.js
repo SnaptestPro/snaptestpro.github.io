@@ -348,18 +348,19 @@
     var home = $("admin-dashboard-home"), out = []; if (!home) return out;
     classifyAdmin();
     home.querySelectorAll('.cd-card[data-ag="' + k + '"]').forEach(function (c) {
-      var ic = c.querySelector(".cd-icon-circle"), t = c.querySelector(".cd-card-title"), sb = c.querySelector(".cd-card-sub");
+      var m = (c.className || "").match(/cd-(blue|pink|purple|teal|indigo|gold|orange|green|red)\b/);
       var o = A_ORDER.indexOf(c.dataset.ak);
-      out.push({ el: c, o: o < 0 ? 99 : o, ic: ic ? ic.textContent.trim() : "", t: t ? t.textContent.trim() : "", s: sb ? sb.textContent.trim() : "" });
+      out.push({ el: c, o: o < 0 ? 99 : o, cls: m ? m[0] : "cd-blue", h: c.innerHTML });
     });
     out.sort(function (a, b) { return a.o - b.o; });
     return out;
   }
+  /* v266: Home ke Quick Actions jaise SQUARE cards (2 column) — pehle lambi list thi */
   function aPage(k) {
     var cards = aCards(k), T = A_TABS[k].t;
     window.__aCards = cards;
     return '<div class="ph"><button type="button" data-a="menu">' + svg("menu") + "</button><b>" + T + "</b></div>" +
-      (cards.length ? cards.map(function (x, i) { return '<button type="button" class="sn-row" data-ai="' + i + '"><div class="i" style="background:' + BGS[i % BGS.length] + '">' + E(x.ic) + "</div><div>" + esc(x.t) + "<small>" + esc(x.s) + "</small></div></button>"; }).join("") : '<div class="sn-faq"><b>Abhi kuch nahi hai</b></div>');
+      (cards.length ? '<div class="cd-grid an-pg">' + cards.map(function (x, i) { return '<button type="button" class="cd-card ' + x.cls + '" data-ai="' + i + '">' + x.h + "</button>"; }).join("") + "</div>" : '<div class="sn-faq"><b>Abhi kuch nahi hai</b></div>');
   }
   function aShow(k) {
     var p = $("sn-page"); if (!p) return;
