@@ -4,7 +4,7 @@
           <div class="examgr-card-body">
             <div class="examgr-card-top">
               <span class="examgr-card-name">${escHtml(n.examName||"Untitled Exam")}</span>
-              ${n.published?'<span class="examgr-pub-badge">✅ Published</span>':""}
+              ${n.published?'<span class="examgr-pub-badge">✅ Published</span>':""}${n.isDraft?'<span class="examgr-pub-badge" style="background:#fff0cc;color:#92400e">📝 Draft</span>':""}
             </div>
             ${n.className?`<span class="examgr-card-class">Class: ${escHtml(n.className)}</span>`:""}
             <div class="examgr-card-stats">
