@@ -300,7 +300,36 @@
   var A_SEC = { "tests-area": "tests", "bank-box": "tests", "bulk-upload-box": "tests", "generator-box": "tests",
     "records-box": "students", "leaderboard-box": "students", "grade-box": "students", "omr-box": "students",
     "trash-box": "more", "settings-box": "more", "solidslab-box": "more" };
-  var A_TABS = { tests: { t: "Tests & Papers", sec: ["Tests & Papers"] }, students: { t: "Students & Results", sec: ["Students & Results"] }, more: { t: "More", sec: ["Tools", "Account"] } };
+  var A_TABS = { tests: { t: "Tests & Papers" }, students: { t: "Students & Results" }, more: { t: "More" } };
+  /* Har dashboard card ko ek tab-group milta hai; kuch zaroori cards Home par bhi rehte hain (baaki Home se chhup jaate hain) */
+  var A_GROUP = { tests: "tests", generator: "tests", bank: "tests", "bulk-upload": "tests", reports: "tests",
+    records: "students", leaderboard: "students", grade: "students", omr: "students",
+    solidslab: "more", trash: "more", "student-view": "more", settings: "more" };
+  var A_HOME = { tests: 1, records: 1, leaderboard: 1, reports: 1, batch: 1 };
+  var A_ORDER = ["tests", "generator", "bank", "bulk-upload", "reports", "records", "leaderboard", "grade", "omr", "student-view", "solidslab", "trash", "settings"];
+  function aKey(c) {
+    if (c.dataset.bm) return "batch";
+    var oc = c.getAttribute("onclick") || "", m = oc.match(/goAdmin\(['"]([^'"]+)['"]\)/);
+    if (m) return m[1];
+    if (/showMode\(['"]student['"]\)/.test(oc)) return "student-view";
+    var t = (c.querySelector(".cd-card-title") || {}).textContent || "";
+    if (/question reports/i.test(t)) return "reports";
+    return "";
+  }
+  function classifyAdmin() {
+    var home = $("admin-dashboard-home"); if (!home) return;
+    home.classList.add("an-split");
+    home.querySelectorAll(".cd-card").forEach(function (c) {
+      var k = aKey(c);
+      c.dataset.ak = k; c.dataset.ag = A_GROUP[k] || (k === "batch" ? "" : "more");
+      if (A_HOME[k]) c.dataset.ah = "1"; else c.removeAttribute("data-ah");
+    });
+    home.querySelectorAll(".cd-grid").forEach(function (g) { g.classList.toggle("an-empty", !g.querySelector(".cd-card[data-ah]")); });
+    if (!$("an-qa-title")) {
+      var first = home.querySelector(".cd-grid");
+      if (first) { var t = document.createElement("div"); t.id = "an-qa-title"; t.className = "cd-section-title"; t.textContent = "Quick Actions"; first.parentNode.insertBefore(t, first); }
+    }
+  }
   function aActive() {
     if (pageOpen() && curPage.indexOf("a-") === 0) return curPage.slice(2);
     var bm = $("bm-admin"); if (bm && shown(bm)) return "batch";
@@ -316,15 +345,14 @@
   var BGS = ["#e8e7ff", "#fce7f3", "#ede9fe", "#d9f7f3", "#fff0cc", "#ffedd5", "#dbeafe", "#dcfce7", "#ffe4e4", "#e5e7eb"];
   /* page admin dashboard ke sections se hi banta hai (naya card aaye to apne-aap judta hai, jaise Question Reports) */
   function aCards(k) {
-    var home = $("admin-dashboard-home"), out = [], want = A_TABS[k].sec; if (!home) return out;
-    home.querySelectorAll(".cd-section-title").forEach(function (h) {
-      if (want.indexOf(h.textContent.replace(/\s+/g, " ").trim()) < 0) return;
-      var g = h.nextElementSibling; if (!g) return;
-      g.querySelectorAll(".cd-card").forEach(function (c) {
-        var ic = c.querySelector(".cd-icon-circle"), t = c.querySelector(".cd-card-title"), sb = c.querySelector(".cd-card-sub");
-        out.push({ el: c, ic: ic ? ic.textContent.trim() : "", t: t ? t.textContent.trim() : "", s: sb ? sb.textContent.trim() : "" });
-      });
+    var home = $("admin-dashboard-home"), out = []; if (!home) return out;
+    classifyAdmin();
+    home.querySelectorAll('.cd-card[data-ag="' + k + '"]').forEach(function (c) {
+      var ic = c.querySelector(".cd-icon-circle"), t = c.querySelector(".cd-card-title"), sb = c.querySelector(".cd-card-sub");
+      var o = A_ORDER.indexOf(c.dataset.ak);
+      out.push({ el: c, o: o < 0 ? 99 : o, ic: ic ? ic.textContent.trim() : "", t: t ? t.textContent.trim() : "", s: sb ? sb.textContent.trim() : "" });
     });
+    out.sort(function (a, b) { return a.o - b.o; });
     return out;
   }
   function aPage(k) {
@@ -355,6 +383,7 @@
   }
   function buildAdminNav() {
     var ap = $("admin-panel"); if (!ap || $("an-nav")) return;
+    classifyAdmin();
     var nav = document.createElement("div"); nav.id = "an-nav";
     nav.innerHTML = [["home", svg("home"), "Home"], ["batch", BATCH_SVG, "Batch"], ["tests", svg("doc"), "Tests"], ["students", svg("chart"), "Students"], ["more", svg("grid"), "More"]]
       .map(function (i) { return '<button type="button" data-k="' + i[0] + '">' + i[1] + i[2] + "</button>"; }).join("");
@@ -363,6 +392,7 @@
     var mo = new MutationObserver(function () { aSync(); }), seen = {};
     function attach() { Object.keys(A_SEC).concat(["admin-dashboard-home", "sn-page", "bm-admin"]).forEach(function (id) { var el = $(id); if (el && seen[id] !== el) { seen[id] = el; mo.observe(el, { attributes: true, attributeFilter: ["class", "style"] }); } }); }
     attach(); mo.observe(document.body, { childList: true });
+    try { new MutationObserver(function () { classifyAdmin(); }).observe($("admin-dashboard-home"), { childList: true, subtree: true }); } catch (e) {}
     setInterval(function () { if (!document.hidden && !ap.classList.contains("hidden")) { attach(); aSync(); } }, 700);
     document.addEventListener("visibilitychange", function () { !document.hidden && aSync(); });
     aSync();

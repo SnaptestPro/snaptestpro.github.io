@@ -164,3 +164,9 @@ a.sn-row{text-decoration:none;color:inherit}
 html.sn-ovl #an-nav{visibility:visible}
 html.lg-scan #an-nav{display:none!important}
 #admin-panel.hidden #an-nav{display:none}
+
+/* v265: admin Home par sirf zaroori cards; baaki Tests / Students / More tab me */
+#admin-dashboard-home.an-split .cd-card:not([data-ah]){display:none!important}
+#admin-dashboard-home.an-split .cd-section-title:not(#an-qa-title){display:none!important}
+#admin-dashboard-home.an-split .cd-grid.an-empty{display:none!important}
+#admin-dashboard-home.an-split .cd-grid ~ .cd-grid{margin-top:12px}

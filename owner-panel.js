@@ -63,7 +63,7 @@ Owner Panel sirf iss email se khulta hai: `+OWNER_TRUE_EMAIL+`
         <button type="button" class="owner-mini-btn" onclick="ownerResetAdminPassword('${ownerEscAttr(e.email)}')">🔑 Password Reset Email</button>
         <button type="button" class="owner-mini-btn owner-mini-danger" onclick="ownerRemoveAdminRecord('${ownerEscAttr(e.email)}')">🗑️ Remove</button>
       </div>
-    </div>`}function ownerEsc(e){return String(e??"").replace(/[&<>"']/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[t])}function ownerEscAttr(e){return String(e??"").replace(/'/g,"\\'")}function ownerDecorateInstituteName(e){return"█▓▒▒░░░"+ownerEsc(String(e||"").toUpperCase())+"░░░▒▒▓█"}function ownerClassChipsHtml(e){const t=Array.isArray(e.allowedClasses)?e.allowedClasses:null;return SAVYA_CLASS_OPTIONS.map(n=>{const r=t===null?!0:t.includes(n.id);return`
+    </div>`}function ownerEsc(e){return String(e??"").replace(/[&<>"']/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[t])}function ownerEscAttr(e){return String(e??"").replace(/'/g,"\\'")}function ownerDecorateInstituteName(e){return ownerEsc(String(e||"").trim().toUpperCase())}function ownerClassChipsHtml(e){const t=Array.isArray(e.allowedClasses)?e.allowedClasses:null;return SAVYA_CLASS_OPTIONS.map(n=>{const r=t===null?!0:t.includes(n.id);return`
       <label class="owner-class-chip ${r?"owner-class-chip-on":""}">
         <input type="checkbox" ${r?"checked":""}
           onchange="ownerToggleInstituteClass('${__sj(e.id)}', '${n.id}', this.checked)"> ${ownerEsc(n.label)}
