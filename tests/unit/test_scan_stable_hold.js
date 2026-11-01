@@ -35,7 +35,7 @@ function simulate(frameFn, maxMs = 6000, onCap, onStatus, pre) {
   vm.createContext(ctx);
   vm.runInContext([
     'let dt=0,Ae=0,fe=[],Me=-Infinity,ht=0,Je=false,ae=null,be=null,_shMax=0,_shOk=false,_stSince=0,_foundSince=0,_prevFresh=null,_miss=0,_retryNote="",_infK="",_needClear=false,_clearTicks=0,_lastSaved="",_lastVp=null;',
-    'const pa=220,ya=2,_HOLD=500,_e={},_trk={},kn=6,wn=["top-left","top-right","bottom-left","bottom-right"];',
+    'const pa=100,ya=2,_HOLD=60,_e={},_trk={},kn=6,wn=["top-left","top-right","bottom-left","bottom-right"];',
     grab('vn'), grab('_egSpread'), grab('_med'), grab('_quadOk'), grab('Ct'),
   ].join('\n'), ctx);
   ctx.ea = ea; pre && vm.runInContext(pre, ctx);
@@ -50,8 +50,8 @@ function simulate(frameFn, maxMs = 6000, onCap, onStatus, pre) {
 const jit = (amp) => () => (rand() * 2 - 1) * amp;
 function frames(over) { return (t) => { const o = {}; KEYS.forEach((k, i) => { const j = over.jitter ? over.jitter(t, k) : [0, 0]; o[k] = [BASE[k][0] + j[0], BASE[k][1] + j[1]]; }); return over.drop ? over.drop(t, o) : o; }; }
 let pass = 0; const T = (n, f) => { try { f(); pass++; console.log('  PASS ' + n); } catch (e) { console.log('  FAIL ' + n + '\n   ' + (e.stack || e)); process.exitCode = 1; } };
-T('steady hand (±1px) captures after ~0.5–0.9s, not instantly', () => {
-  for (let r = 0; r < 20; r++) { const t = simulate(frames({ jitter: () => [jit(1)(), jit(1)()] })); assert.ok(t !== null && t >= 450 && t <= 900, 'capture time ' + t); }
+T('steady hand (±1px) captures very fast (<0.5s) but only after 2+ stable frames', () => {
+  for (let r = 0; r < 20; r++) { const t = simulate(frames({ jitter: () => [jit(1)(), jit(1)()] })); assert.ok(t !== null && t >= 60 && t <= 500, 'capture time ' + t); }
 });
 T('hand moving continuously never captures while moving', () => {
   const t = simulate(frames({ jitter: (t) => [t * 0.2, t * 0.1] }), 4000); assert.strictEqual(t, null);
@@ -60,19 +60,19 @@ T('moderate tremor (±0.4% of width) still captures, within ≤2.2s', () => {
   for (let r = 0; r < 20; r++) { const t = simulate(frames({ jitter: () => [jit(0.004 * VW)(), jit(0.004 * VW)()] })); assert.ok(t !== null && t <= 2200, 'capture time ' + t); }
 });
 T('single missed corner tick does NOT restart the hold', () => {
-  const t = simulate(frames({ drop: (t, o) => { if (t > 400 && t < 520) delete o['top-left']; return o; } })); assert.ok(t !== null && t <= 900, 'capture time ' + t);
+  const t = simulate(frames({ drop: (t, o) => { if (t > 400 && t < 520) delete o['top-left']; return o; } })); assert.ok(t !== null && t <= 700, 'capture time ' + t);
 });
 T('two corners lost for ~1s restarts the hold (captures later than steady)', () => {
-  const t = simulate(frames({ drop: (t, o) => { if (t > 300 && t < 1300) { delete o['bottom-right']; delete o['top-left']; } return o; } })); assert.ok(t !== null && t >= 1500, 'capture time ' + t);
+  const t = simulate(frames({ drop: (t, o) => { if (t > 30 && t < 1300) { delete o['bottom-right']; delete o['top-left']; } return o; } })); assert.ok(t !== null && t >= 1300, 'capture time ' + t);
 });
 T('sheet jumps mid-hold → hold restarts from the jump', () => {
-  const t = simulate(frames({ jitter: (t) => (t > 300 ? [60, 40] : [0, 0]) })); assert.ok(t !== null && t >= 750, 'capture time ' + t);
+  const t = simulate(frames({ jitter: (t) => (t > 40 ? [60, 40] : [0, 0]) })); assert.ok(t !== null && t >= 100, 'capture time ' + t);
 });
 T('only 3 corners ever visible -> still captures fast and 4th corner is inferred exactly', () => {
   for (const miss of KEYS) {
     let got = null;
     const t = simulate(frames({ drop: (t, o) => { delete o[miss]; return o; } }), 6000, (c) => { got = c; });
-    assert.ok(t !== null && t >= 450 && t <= 900, miss + ' capture time ' + t);
+    assert.ok(t !== null && t >= 60 && t <= 600, miss + ' capture time ' + t);
     assert.ok(Math.hypot(got.pts[miss].x - BASE[miss][0], got.pts[miss].y - BASE[miss][1]) < 1.5, 'inferred ' + miss + ' ' + JSON.stringify(got.pts[miss]));
   }
 });
@@ -83,14 +83,14 @@ T('blinking detector (each corner randomly fails 45% of ticks) still locks and c
 });
 T('green state never flickers off during a steady hold with 30% random misses', () => {
   const states = []; simulate(frames({ drop: (t, o) => { KEYS.forEach(k => { if (rand() < 0.3) delete o[k]; }); return o; } }), 900, null, (d) => states.push(d));
-  assert.ok(states.length > 4 && states.slice(1).every(Boolean), 'ready flicker: ' + states.join(','));
+  const fi = states.indexOf(true); assert.ok(states.length > 2 && fi >= 0 && states.slice(fi).every(Boolean), 'ready flicker: ' + states.join(','));
 });
 T('after a save the SAME sheet is never re-captured until it leaves the view', () => {
   assert.strictEqual(simulate(frames({}), 4000, null, null, '_needClear=true;'), null);
 });
 T('after a save, removing the sheet (~1s) and showing the next one captures it again (not before)', () => {
   const t = simulate(frames({ drop: (t, o) => (t > 300 && t < 1400 ? {} : o) }), 6000, null, null, '_needClear=true;');
-  assert.ok(t !== null && t >= 1900 && t <= 3000, 'capture time ' + t);
+  assert.ok(t !== null && t >= 1400 && t <= 2200, 'capture time ' + t);
 });
 T('blinking detector on the SAME sheet never falsely counts as "sheet removed" (no duplicate scans)', () => {
   let dup = 0;
