@@ -245,6 +245,7 @@
       } catch (e) { return null; }
     },
     nameOf: function (id, roll) { var R = C[id]; if (!on() || !R || !R.by) return ""; var en = R.by[String(roll || "").trim()]; return en && en.name ? String(en.name) : ""; },
+    absentees: function (id, rows) { var R = C[id]; if (!on() || !R || !R.list || !R.list.length) return null; return summary(R, rows || []).absent.map(function (e) { return { roll: e.roll, name: e.name || "" }; }); },
     tag: function (id, roll) {
       var R = C[id]; if (!on() || !R || !R.by || !R.by[String(roll || "").trim()]) return "";
       return " · " + String(R.by[String(roll).trim()].name).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
