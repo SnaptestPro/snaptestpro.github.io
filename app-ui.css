@@ -175,3 +175,8 @@ html.lg-scan #an-nav{display:none!important}
 #sn-page .cd-grid.an-pg{margin:2px 0 12px}
 #sn-page .cd-grid.an-pg .cd-card{aspect-ratio:1/1;min-height:0!important;width:100%;box-sizing:border-box}
 #sn-page .cd-grid.an-pg .cd-card-sub{flex-grow:1}
+
+/* v272: popup/modal khule ho to neeche ka floating nav chhup jaye (pehle "Link Karein" jaise buttons nav ke piche chhip jaate the) */
+html:has(.test-analysis-overlay:not(.hidden)) :is(#sn-nav,#an-nav){display:none!important}
+html .test-analysis-overlay:not(.examgr-overlay-full) .test-analysis-sheet{background:#fff!important;padding-bottom:calc(28px + env(safe-area-inset-bottom,0px))!important;max-height:90vh!important;-webkit-overflow-scrolling:touch}
+html .test-analysis-overlay:not(.hidden){z-index:1000}
