@@ -16,7 +16,9 @@ function grab(name) {
   throw new Error('unbalanced ' + name);
 }
 const ctx = { Math, Uint8Array, Uint32Array, Int32Array, Float64Array };
-vm.createContext(ctx); vm.runInContext([grab('yn'), grab('aa'), grab('_detLum')].join('\n'), ctx);
+vm.createContext(ctx); const pbStart = src.indexOf('const _pb={'); assert.ok(pbStart >= 0, 'const _pb not found');
+const pbDecl = src.slice(pbStart, src.indexOf('};', pbStart) + 2); // shared scratch buffers used by _detLum
+vm.runInContext([pbDecl, grab('_pbS'), grab('_pbQ'), grab('yn'), grab('aa'), grab('_detLum')].join('\n'), ctx);
 const detNew = vm.runInContext('_detLum', ctx), detOld = vm.runInContext('aa', ctx);
 let seed = 12345; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296; const rr = (a, b) => a + (b - a) * rnd();
 const W = 250, H = 250, BOX = 156; // region = 1.6 x blue box
