@@ -244,6 +244,7 @@
         return v.level === "ok" && v.entry ? v.entry.mobile : null;
       } catch (e) { return null; }
     },
+    nameOf: function (id, roll) { var R = C[id]; if (!on() || !R || !R.by) return ""; var en = R.by[String(roll || "").trim()]; return en && en.name ? String(en.name) : ""; },
     tag: function (id, roll) {
       var R = C[id]; if (!on() || !R || !R.by || !R.by[String(roll || "").trim()]) return "";
       return " · " + String(R.by[String(roll).trim()].name).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
