@@ -180,3 +180,11 @@ html.lg-scan #an-nav{display:none!important}
 html:has(.test-analysis-overlay:not(.hidden)) :is(#sn-nav,#an-nav){display:none!important}
 html .test-analysis-overlay:not(.examgr-overlay-full) .test-analysis-sheet{background:#fff!important;padding-bottom:calc(28px + env(safe-area-inset-bottom,0px))!important;max-height:90vh!important;-webkit-overflow-scrolling:touch}
 html .test-analysis-overlay:not(.hidden){z-index:1000}
+
+/* v273: (1) neeche ki jagah: floating nav + gesture bar ke upar poora content/footer dikhe (admin, student) */
+#student-form,#admin-panel{padding-bottom:calc(var(--snh) + 28px + env(safe-area-inset-bottom,0px))!important}
+#snap-powered-by{margin-bottom:calc(var(--snh) + env(safe-area-inset-bottom,0px) + 8px)}
+#ssp-page,#asp-page{padding-bottom:calc(16px + env(safe-area-inset-bottom,0px))}
+/* (2) smooth: hamesha screen par rehne wale nav bar par live blur band (har scroll frame par GPU kaam karta tha) —
+   uski jagah thoda zyada safed glass fill; look lagbhag same, scroll/tap zyada smooth. Blur sirf popup/sheet par rehta hai. */
+html :is(#sn-nav,#an-nav,.oa-tab){-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:rgba(255,255,255,.95)!important;transform:translateZ(0)}
